@@ -5882,13 +5882,13 @@ button:disabled {
     }
     function populateMetricsTrackFilter(tracks) {
       const currentValue = elements.metricsTrackFilter.value;
-      const preferredTracks = tracks.filter((track) => track.handlerType === "vide");
-      const optionTracks = preferredTracks.length ? preferredTracks : tracks;
+      const optionTracks = tracks;
+      const defaultTrack = tracks.find((track) => track.handlerType === "vide") || tracks[0] || null;
       elements.metricsTrackFilter.innerHTML = optionTracks.length ? optionTracks.map((track) => '<option value="' + track.trackId + '">' + escapeHtml(formatTrackLabel(track) + " / " + track.codec) + "</option>").join("") : '<option value="">' + escapeHtml(t("option.noTrack")) + "</option>";
       if (currentValue && optionTracks.some((track) => String(track.trackId) === currentValue)) {
         elements.metricsTrackFilter.value = currentValue;
-      } else if (optionTracks.length) {
-        elements.metricsTrackFilter.value = String(optionTracks[0].trackId);
+      } else if (defaultTrack) {
+        elements.metricsTrackFilter.value = String(defaultTrack.trackId);
       }
     }
     function renderMetrics() {

@@ -7,6 +7,7 @@ const sourceHtmlPath = path.join(rootDirectory, "src", "index.html");
 const sourceStylePath = path.join(rootDirectory, "src", "styles.css");
 const sourceUiPath = path.join(rootDirectory, "src", "js", "ui", "analyzer-ui.js");
 const samplePath = path.join(rootDirectory, "validation", "generated", "avc_fragmented.mp4");
+const webmSamplePath = path.join(rootDirectory, "validation", "generated", "webm_vp9_opus.webm");
 
 class FakeElement {
   constructor(id = "") {
@@ -221,11 +222,32 @@ async function main() {
   const progressText = fakeDocument.getElementById("progressText").textContent;
   if (progressText.startsWith("Failed:")) throw new Error(progressText);
 
+  const webmSampleBytes = fs.readFileSync(webmSamplePath);
+  const webmSampleFile = new File([webmSampleBytes], "webm_vp9_opus.webm", { type: "video/webm" });
+  await window.MP4AnalyzerDevTools.analyzeFile(webmSampleFile);
+
+  const webmSummary = window.MP4AnalyzerDevTools.summarize();
+  if (webmSummary.tracks.length !== 2) throw new Error(`Expected 2 WebM tracks, got ${webmSummary.tracks.length}.`);
+  const metricsTrackOptionsHtml = fakeDocument.getElementById("metricsTrackFilter").innerHTML;
+  for (const expectedTrack of webmSummary.tracks) {
+    if (!metricsTrackOptionsHtml.includes('value="' + expectedTrack.trackId + '"') || !metricsTrackOptionsHtml.includes(expectedTrack.codec)) {
+      throw new Error(`Metrics track selector is missing track ${expectedTrack.trackId} (${expectedTrack.codec}).`);
+    }
+  }
+  const audioTrack = webmSummary.tracks.find((track) => track.handlerType === "soun");
+  if (!audioTrack) throw new Error("WebM Opus track was not parsed.");
+  fakeDocument.getElementById("metricsTrackFilter").value = String(audioTrack.trackId);
+  const audioMetricsSummary = window.MP4AnalyzerDevTools.getMetricsSummary();
+  if (!audioMetricsSummary || audioMetricsSummary.averageBitrate <= 0 || audioMetricsSummary.averageFps <= 0) {
+    throw new Error("Metrics summary should be calculable for the WebM Opus track.");
+  }
+
   console.log(JSON.stringify({
     loaded: summary.loaded,
     sampleRows: summary.sampleRows,
     frameTypes: Array.from(frameTypes).sort(),
-    averageBitrate: metricsSummary.averageBitrate
+    averageBitrate: metricsSummary.averageBitrate,
+    webmMetricTrackCodecs: webmSummary.tracks.map((track) => track.codec).sort()
   }, null, 2));
 }
 
