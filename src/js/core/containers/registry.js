@@ -1,3 +1,5 @@
+import { readResourcePrefix } from "../common/binary.js";
+
 const CONTAINER_DESCRIPTORS = [
   {
     id: "webm",
@@ -69,8 +71,7 @@ async function loadContainerAnalyzer(descriptor) {
 }
 
 async function readHeader(file) {
-  if (!file || typeof file.slice !== "function") return new Uint8Array();
-  return new Uint8Array(await file.slice(0, Math.min(file.size || 0, 64)).arrayBuffer());
+  return readResourcePrefix(file, 64);
 }
 
 function hasExtension(file, extension) {

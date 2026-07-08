@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { createSourceModuleLoader } = require("./helpers/source-module-loader.cjs");
+const { SourceModuleLoader, createSourceModuleLoader } = require("./helpers/source-module-loader.cjs");
 
 const rootDirectory = path.resolve(__dirname, "..");
 
@@ -53,6 +53,47 @@ test("BlobRangeReader chunks, caches, returns empty ranges, and cancels", async 
   assert.ok(reader.cache.size >= 1);
   reader.cancel();
   await assert.rejects(() => reader.readRange(0n, 1n), /cancelled/);
+});
+
+test("HttpRangeReader reads byte ranges without downloading the full resource", async () => {
+  const bytes = new Uint8Array(4 * 1024 * 1024 + 8);
+  bytes[4 * 1024 * 1024 - 1] = 8;
+  bytes[4 * 1024 * 1024] = 9;
+  bytes[4 * 1024 * 1024 + 7] = 10;
+  const rangeRequests = [];
+  const loader = new SourceModuleLoader({
+    rootDirectory,
+    globals: {
+      fetch: async (url, options = {}) => {
+        rangeRequests.push({ url, range: options.headers.Range });
+        const match = String(options.headers.Range).match(/^bytes=(\d+)-(\d+)$/);
+        assert.ok(match, "missing Range header");
+        const start = Number(match[1]);
+        const end = Number(match[2]);
+        return {
+          status: 206,
+          headers: { get: () => "" },
+          async arrayBuffer() {
+            return bytes.slice(start, end + 1).buffer;
+          }
+        };
+      }
+    }
+  });
+  const { HttpRangeReader, readResourcePrefix } = await loader.import("src/js/core/common/binary.js");
+  const resource = {
+    kind: "remote-url",
+    url: "https://example.test/range.bin",
+    name: "range.bin",
+    type: "application/octet-stream",
+    size: bytes.byteLength,
+    rangeSupported: true
+  };
+  const reader = new HttpRangeReader(resource);
+
+  assert.deepEqual(Array.from(await reader.readRange(BigInt(4 * 1024 * 1024 - 1), 3n)), [8, 9, 0]);
+  assert.equal(rangeRequests.length, 2);
+  assert.deepEqual(Array.from(await readResourcePrefix(resource, 2)), [0, 0]);
 });
 
 test("bitstream helpers remove emulation-prevention bytes and decode Exp-Golomb", async () => {

@@ -1,11 +1,11 @@
-import { BlobRangeReader } from "../../common/binary.js";
+import { createRangeReader, getResourceInfo, readResourcePrefix } from "../../common/binary.js";
 import { parseOpusHead, parseOpusPacket } from "../../codecs/audio/opus.js";
 
 export const oggOpusContainer = {
   id: "ogg-opus",
   label: "Ogg Opus",
   async canAnalyze(file) {
-    const bytes = new Uint8Array(await file.slice(0, Math.min(file.size, 64)).arrayBuffer());
+    const bytes = await readResourcePrefix(file, 64);
     return bytes.byteLength >= 36 && ascii(bytes, 0, 4) === "OggS";
   },
   analyzeFile: analyzeOggOpusFile
@@ -14,7 +14,7 @@ export const oggOpusContainer = {
 async function analyzeOggOpusFile(file, options) {
   const onProgress = options && options.onProgress ? options.onProgress : function () {};
   const warnings = [];
-  const reader = new BlobRangeReader(file);
+  const reader = createRangeReader(file);
   if (options && options.onReader) options.onReader(reader);
   const topBoxes = [];
   const rows = [];
@@ -106,7 +106,7 @@ async function analyzeOggOpusFile(file, options) {
   track.duration = String(dts);
   onProgress("Structure parsed", 100);
   return {
-    file: { name: file.name || "unnamed", size: file.size, type: file.type || "" },
+    file: getResourceInfo(file),
     reader,
     topBoxes,
     allBoxes: flattenNodes(topBoxes, []),

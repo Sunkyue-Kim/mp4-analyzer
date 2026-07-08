@@ -1,4 +1,4 @@
-import { BlobRangeReader } from "../../common/binary.js";
+import { createRangeReader, getResourceInfo, readResourcePrefix } from "../../common/binary.js";
 import { parseMp3FrameHeader, readId3v2Header } from "../../codecs/audio/mp3.js";
 
 const MP3_SCAN_CHUNK_BYTES = 512 * 1024;
@@ -7,7 +7,7 @@ export const mp3Container = {
   id: "mp3",
   label: "MP3 / MPEG Audio",
   async canAnalyze(file) {
-    const bytes = new Uint8Array(await file.slice(0, Math.min(file.size, 64)).arrayBuffer());
+    const bytes = await readResourcePrefix(file, 64);
     const lowerName = String(file.name || "").toLowerCase();
     const declaredMp3 = lowerName.endsWith(".mp3") || file.type === "audio/mpeg" || file.type === "audio/mp3";
     const id3 = readId3v2Header(bytes);
@@ -25,7 +25,7 @@ export const mp3Container = {
 async function analyzeMp3File(file, options) {
   const onProgress = options && options.onProgress ? options.onProgress : function () {};
   const warnings = [];
-  const reader = new BlobRangeReader(file);
+  const reader = createRangeReader(file);
   if (options && options.onReader) options.onReader(reader);
   const firstBytes = await reader.readRange(0n, BigInt(Math.min(file.size, 4096)));
   const id3 = readId3v2Header(firstBytes);
@@ -146,7 +146,7 @@ async function analyzeMp3File(file, options) {
 
   onProgress("Structure parsed", 100);
   return {
-    file: { name: file.name || "unnamed", size: file.size, type: file.type || "" },
+    file: getResourceInfo(file),
     reader,
     topBoxes,
     allBoxes: flattenNodes(topBoxes, []),

@@ -36,6 +36,7 @@
           </select>
         </label>
         <button id="openButton" class="primary" data-i18n="button.open">Open file</button>
+        <button id="openUrlButton" data-i18n="button.openUrl">Open URL</button>
         <button id="scanButton" disabled data-i18n="button.scan">Scan frame types</button>
         <button id="cancelButton" class="danger" disabled data-i18n="button.cancel">Cancel</button>
         <button id="exportJsonButton" disabled data-i18n="button.exportJson">Export JSON</button>
@@ -202,6 +203,28 @@
     <div class="drop-hint">
       <strong data-i18n="drop.title">Drop media file to analyze</strong>
       <span data-i18n="drop.subtitle">Release anywhere in this window for MP4/fMP4/MOV, WebM, MP3, or Ogg Opus parsing.</span>
+    </div>
+  </div>
+  <div id="remoteUrlModal" class="modal-backdrop" hidden aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="remoteUrlTitle">
+      <form id="remoteUrlForm">
+        <div class="modal-head">
+          <div>
+            <h2 id="remoteUrlTitle" data-i18n="remote.title">Open media URL</h2>
+            <p data-i18n="remote.subtitle">Use HTTP range reads when the server and CORS policy allow it. Otherwise the file is downloaded before analysis.</p>
+          </div>
+          <button id="remoteUrlCloseButton" type="button" class="icon-button" aria-label="Close" data-i18n-aria-label="button.close">×</button>
+        </div>
+        <label class="remote-url-field">
+          <span data-i18n="remote.urlLabel">Media URL</span>
+          <input id="remoteUrlInput" type="url" placeholder="https://example.com/video.mp4" data-i18n-placeholder="remote.urlPlaceholder" autocomplete="off" spellcheck="false">
+        </label>
+        <p id="remoteUrlStatus" class="remote-url-status" data-i18n="remote.statusIdle">Range support is checked before analysis starts.</p>
+        <div class="modal-actions">
+          <button id="remoteUrlCancelButton" type="button" data-i18n="button.cancel">Cancel</button>
+          <button id="remoteUrlSubmitButton" type="submit" class="primary" data-i18n="remote.load">Load URL</button>
+        </div>
+      </form>
     </div>
   </div>
 

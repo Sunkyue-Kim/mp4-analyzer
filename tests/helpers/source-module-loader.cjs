@@ -31,7 +31,8 @@ class SourceModuleLoader {
       clearTimeout,
       console,
       fetch,
-      setTimeout
+      setTimeout,
+      ...(options.globals || {})
     });
     this.linkPromises = new Map();
   }

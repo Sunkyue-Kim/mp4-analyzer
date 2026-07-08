@@ -31,6 +31,7 @@ import {
   renderDataGridTable
 } from "./data-grid.js";
 import { createRecyclerView } from "./recycler-view.js";
+import { downloadRemoteMediaFile, probeRemoteMediaResource } from "./remote-loader.js";
 import { getVisibleSummaryCodecTrackCounts } from "./summary-model.js";
 import {
   canUseSampleCatalogLocation,
@@ -58,7 +59,9 @@ const state = {
   frameViewMode: "table",
   graphMaxSize: 1,
   filePreviewUrl: "",
+  filePreviewObjectUrl: false,
   dropHintHideTimer: 0,
+  remoteAbortController: null,
   transientWarnings: [],
   progressSourceLabel: "Open or drop a media file to begin.",
   progressRawLabel: t("status.initial"),
@@ -77,6 +80,7 @@ const elements = {
   sampleField: document.getElementById("sampleField"),
   sampleSelect: document.getElementById("sampleSelect"),
   openButton: document.getElementById("openButton"),
+  openUrlButton: document.getElementById("openUrlButton"),
   scanButton: document.getElementById("scanButton"),
   cancelButton: document.getElementById("cancelButton"),
   exportJsonButton: document.getElementById("exportJsonButton"),
@@ -128,7 +132,14 @@ const elements = {
   metricsTrackFilter: document.getElementById("metricsTrackFilter"),
   metricsWindowInput: document.getElementById("metricsWindowInput"),
   metricsPointLimitInput: document.getElementById("metricsPointLimitInput"),
-  metricsBody: document.getElementById("metricsBody")
+  metricsBody: document.getElementById("metricsBody"),
+  remoteUrlModal: document.getElementById("remoteUrlModal"),
+  remoteUrlForm: document.getElementById("remoteUrlForm"),
+  remoteUrlInput: document.getElementById("remoteUrlInput"),
+  remoteUrlStatus: document.getElementById("remoteUrlStatus"),
+  remoteUrlCloseButton: document.getElementById("remoteUrlCloseButton"),
+  remoteUrlCancelButton: document.getElementById("remoteUrlCancelButton"),
+  remoteUrlSubmitButton: document.getElementById("remoteUrlSubmitButton")
 };
 
 const frameTableRecycler = createRecyclerView({
@@ -223,6 +234,8 @@ const devToolsApi = {
   canUseSamples: () => canUseSampleCatalog(),
   getSamples: () => canUseSampleCatalog() ? SAMPLE_FILES.slice() : [],
   loadSample: (sampleId) => loadSampleById(sampleId),
+  loadRemoteUrl: (url) => loadRemoteUrl(url),
+  openRemoteUrlModal: () => openRemoteUrlModal(),
   analyzeFile: (file) => startAnalysis(file),
   summarize: () => {
     if (!state.analysis) return { loaded: false };
@@ -251,9 +264,19 @@ elements.sampleSelect.addEventListener("change", () => {
   if (canUseSampleCatalog() && elements.sampleSelect.value) loadSampleById(elements.sampleSelect.value);
 });
 elements.openButton.addEventListener("click", () => elements.fileInput.click());
+elements.openUrlButton.addEventListener("click", openRemoteUrlModal);
 elements.fileInput.addEventListener("change", () => {
   const file = elements.fileInput.files && elements.fileInput.files[0];
   if (file) startAnalysis(file);
+});
+elements.remoteUrlForm.addEventListener("submit", handleRemoteUrlSubmit);
+elements.remoteUrlCloseButton.addEventListener("click", closeRemoteUrlModal);
+elements.remoteUrlCancelButton.addEventListener("click", closeRemoteUrlModal);
+elements.remoteUrlModal.addEventListener("click", (event) => {
+  if (event.target === elements.remoteUrlModal) closeRemoteUrlModal();
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !elements.remoteUrlModal.hidden) closeRemoteUrlModal();
 });
 
 window.addEventListener("dragenter", handleWindowDragEnter, true);
@@ -273,6 +296,7 @@ document.addEventListener("click", handleDocumentBoxTreeClick, true);
 document.addEventListener("pointerup", handleDocumentBoxTreePointerUp, true);
 
 elements.cancelButton.addEventListener("click", () => {
+  if (state.remoteAbortController) state.remoteAbortController.abort();
   analysisWorkerClient.cancel();
   setProgress("Cancelling...", 0);
 });
@@ -350,6 +374,7 @@ setLanguage(options.initialLanguage || elements.languageSelect.value || "en");
 if (options.initialActiveTab) setActiveTab(options.initialActiveTab);
 if (options.initialFile) Promise.resolve().then(() => startAnalysis(options.initialFile));
 if (options.initialSampleId) Promise.resolve().then(() => loadSampleById(options.initialSampleId));
+if (options.initialOpenRemoteUrlModal) Promise.resolve().then(openRemoteUrlModal);
 
 return devToolsApi;
 
@@ -451,24 +476,114 @@ async function loadSampleById(sampleId) {
 async function loadSampleFile(sample) {
   const label = getSampleLabel(sample);
   try {
+    await loadRemoteUrl(sample.path, {
+      name: sample.fileName,
+      type: sample.type || "video/mp4",
+      keepSampleSelection: true,
+      loadingLabel: t("status.loadingSample", { name: label }),
+      failureStatusKey: "status.sampleLoadFailed",
+      failureWarningKey: "warning.sampleLoadFailed"
+    });
+  } catch (_) {
+    // The loadRemoteUrl path already rendered the user-visible failure state.
+  }
+}
+
+function openRemoteUrlModal() {
+  elements.remoteUrlStatus.classList.remove("error");
+  elements.remoteUrlStatus.textContent = t("remote.statusIdle");
+  elements.remoteUrlModal.hidden = false;
+  elements.remoteUrlModal.setAttribute("aria-hidden", "false");
+  setTimeout(() => elements.remoteUrlInput.focus(), 0);
+}
+
+function closeRemoteUrlModal() {
+  elements.remoteUrlModal.hidden = true;
+  elements.remoteUrlModal.setAttribute("aria-hidden", "true");
+}
+
+async function handleRemoteUrlSubmit(event) {
+  event.preventDefault();
+  const url = elements.remoteUrlInput.value;
+  elements.remoteUrlStatus.classList.remove("error");
+  elements.remoteUrlStatus.textContent = t("status.probingRemoteUrl");
+  try {
+    closeRemoteUrlModal();
+    await loadRemoteUrl(url);
+  } catch (error) {
+    openRemoteUrlModal();
+    elements.remoteUrlStatus.classList.add("error");
+    elements.remoteUrlStatus.textContent = error && error.message ? error.message : String(error);
+  }
+}
+
+async function loadRemoteUrl(url, options = {}) {
+  const abortController = new AbortController();
+  state.remoteAbortController = abortController;
+  const failureStatusKey = options.failureStatusKey || "status.remoteLoadFailed";
+  const failureWarningKey = options.failureWarningKey || "warning.remoteLoadFailed";
+  try {
     state.transientWarnings = [];
     setBusy(true);
-    setProgress(t("status.loadingSample", { name: label }), 3);
-    const response = await fetch(sample.path, { cache: "no-store" });
-    if (!response.ok) throw new Error(response.status + " " + response.statusText);
-    const blob = await response.blob();
-    const file = new File([blob], sample.fileName, {
-      type: sample.type || blob.type || "video/mp4",
-      lastModified: 0
+    setProgress(options.loadingLabel || t("status.probingRemoteUrl"), 3);
+    const probe = await probeRemoteMediaResource(url, {
+      baseUrl: window.location.href,
+      name: options.name,
+      type: options.type,
+      signal: abortController.signal
     });
-    await startAnalysis(file, { keepSampleSelection: true });
+    if (probe.canStream) {
+      setProgress(t("status.remoteRangeReady"), 8);
+      try {
+        await startAnalysis(probe.resource, {
+          keepSampleSelection: options.keepSampleSelection,
+          previewUrl: probe.resource.previewUrl,
+          rethrow: true
+        });
+        return probe.resource;
+      } catch (streamError) {
+        if (isCancellationError(streamError)) throw streamError;
+        probe.canStream = false;
+        probe.fallback = {
+          url: probe.resource.url,
+          name: probe.resource.name,
+          type: probe.resource.type,
+          size: probe.resource.size
+        };
+        probe.fallbackReason = streamError && streamError.message ? streamError.message : String(streamError);
+      }
+    }
+    const fallbackWarning = t("warning.remoteRangeFallback", { reason: probe.fallbackReason });
+    state.transientWarnings = [fallbackWarning];
+    setProgress(t("status.remoteRangeFallback"), 8);
+    const file = await downloadRemoteMediaFile(probe.fallback.url, probe.fallback, {
+      baseUrl: window.location.href,
+      signal: abortController.signal,
+      onProgress: (loadedBytes, totalBytes) => {
+        const percent = totalBytes ? 8 + (loadedBytes * 52 / totalBytes) : 12;
+        setProgress(t("status.downloadingRemote"), percent);
+      }
+    });
+    await startAnalysis(file, {
+      keepSampleSelection: options.keepSampleSelection,
+      initialWarnings: [fallbackWarning],
+      rethrow: true
+    });
+    return file;
   } catch (error) {
     const message = error && error.message ? error.message : String(error);
     setBusy(false);
-    state.transientWarnings = [t("warning.sampleLoadFailed", { message })];
-    setProgress(t("status.sampleLoadFailed", { message }), 0);
+    state.transientWarnings = [t(failureWarningKey, { message })];
+    setProgress(t(failureStatusKey, { message }), 0);
     renderWarnings();
+    throw error;
+  } finally {
+    if (state.remoteAbortController === abortController) state.remoteAbortController = null;
   }
+}
+
+function isCancellationError(error) {
+  return Boolean(error && /cancelled|aborted/i.test(error.message || ""));
 }
 
 function handleFrameRowPointerActivation(event) {
@@ -823,6 +938,7 @@ async function startAnalysis(file, options = {}) {
     setBusy(false);
     setProgress("Failed: " + error.message, 0);
     elements.summaryBody.innerHTML = emptyHtml("status.failed", { message: error.message });
+    if (options.rethrow) throw error;
   }
 }
 
@@ -848,6 +964,8 @@ async function scanCurrentAnalysis() {
 function setBusy(isBusy) {
   elements.cancelButton.disabled = !isBusy;
   elements.openButton.disabled = isBusy;
+  elements.openUrlButton.disabled = isBusy;
+  elements.remoteUrlSubmitButton.disabled = isBusy;
   elements.sampleSelect.disabled = isBusy || !canUseSampleCatalog();
 }
 
@@ -860,9 +978,9 @@ function resetView(file, options = {}) {
   state.lastPlaybackSynchronizationFrameKey = "";
   state.lastPlaybackSynchronizationFragmentIndex = 0;
   state.fragmentRows = [];
-  state.transientWarnings = [];
+  state.transientWarnings = options.initialWarnings ? options.initialWarnings.slice() : [];
   if (!options.keepSampleSelection && elements.sampleSelect) elements.sampleSelect.value = "";
-  setFilePreview(file);
+  setFilePreview(file, options);
   elements.boxTree.innerHTML = "";
   elements.summaryBody.innerHTML = emptyHtml("empty.parsingStructure");
   elements.boxDetail.innerHTML = emptyHtml("empty.selectBox");
@@ -889,9 +1007,14 @@ function resetView(file, options = {}) {
   setProgress("Reading " + file.name, 0);
 }
 
-function setFilePreview(file) {
-  if (state.filePreviewUrl) URL.revokeObjectURL(state.filePreviewUrl);
-  state.filePreviewUrl = URL.createObjectURL(file);
+function setFilePreview(file, options = {}) {
+  if (state.filePreviewUrl && state.filePreviewObjectUrl) URL.revokeObjectURL(state.filePreviewUrl);
+  state.filePreviewObjectUrl = false;
+  state.filePreviewUrl = options.previewUrl || file.previewUrl || "";
+  if (!state.filePreviewUrl) {
+    state.filePreviewUrl = URL.createObjectURL(file);
+    state.filePreviewObjectUrl = true;
+  }
   elements.filePreview.src = state.filePreviewUrl;
   elements.filePreview.load();
   elements.mediaPreviewName.textContent = file.name || "Unnamed media";

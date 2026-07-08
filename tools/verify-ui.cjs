@@ -76,6 +76,7 @@ class FakeElement {
   appendChild(child) { this.children.push(child); return child; }
   remove() {}
   click() {}
+  focus() {}
   load() {}
   closest() { return null; }
   contains(candidate) {
@@ -443,6 +444,9 @@ async function main() {
   if (!/id="fragmentPlaybackSynchronizationToggle"/.test(sourceHtml) || !/id="fragmentsBody"/.test(sourceHtml)) {
     throw new Error("Fragments tab must expose playback synchronization controls and a render body.");
   }
+  if (!/id="openUrlButton"/.test(sourceHtml) || !/id="remoteUrlModal"/.test(sourceHtml) || !/id="remoteUrlInput"/.test(sourceHtml)) {
+    throw new Error("Source HTML must expose the remote URL button and modal controls.");
+  }
   if (!/row\.sampleIndex[\s\S]*row\.trackId[\s\S]*formatFrameTypeLabel\(type\)[\s\S]*row\.offset/.test(sourceUi)) {
     throw new Error("Frame table row renderer must place Type immediately after Index and Track.");
   }
@@ -460,6 +464,9 @@ async function main() {
   }
   if (!/createAnalysisWorkerClient/.test(sourceUi) || !/analysisWorkerClient\.analyzeFile/.test(sourceUi) || !/analysisWorkerClient\.scanFrameTypes/.test(sourceUi)) {
     throw new Error("File analysis and frame scanning must be routed through the analysis worker client.");
+  }
+  if (!/probeRemoteMediaResource/.test(sourceUi) || !/downloadRemoteMediaFile/.test(sourceUi) || !/openRemoteUrlModal/.test(sourceUi)) {
+    throw new Error("Remote URL loading must probe range support and provide full-download fallback.");
   }
   if (!/frameWrap\.addEventListener\("scroll"/.test(sourceUi) || /frameScroller\.addEventListener\("scroll"/.test(sourceUi)) {
     throw new Error("Frame table virtual scroll must listen on frameWrap, not frameScroller.");

@@ -1,4 +1,4 @@
-import { BlobRangeReader } from "../../common/binary.js";
+import { createRangeReader, getResourceInfo, readResourcePrefix } from "../../common/binary.js";
 import { parseOpusHead, parseOpusPacket } from "../../codecs/audio/opus.js";
 
 const UNKNOWN_SIZE = -1n;
@@ -87,7 +87,7 @@ export const webmContainer = {
   id: "webm",
   label: "WebM / Matroska",
   async canAnalyze(file) {
-    const bytes = new Uint8Array(await file.slice(0, Math.min(file.size, 16)).arrayBuffer());
+    const bytes = await readResourcePrefix(file, 16);
     return bytes.byteLength >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
   },
   analyzeFile: analyzeWebmFile
@@ -96,7 +96,7 @@ export const webmContainer = {
 async function analyzeWebmFile(file, options) {
   const onProgress = options && options.onProgress ? options.onProgress : function () {};
   const warnings = [];
-  const reader = new BlobRangeReader(file);
+  const reader = createRangeReader(file);
   if (options && options.onReader) options.onReader(reader);
   onProgress("Parsing EBML elements", 5);
   const topBoxes = await parseEbmlElements(reader, 0n, BigInt(file.size), "", 0, warnings, onProgress);
@@ -112,7 +112,7 @@ async function analyzeWebmFile(file, options) {
   }
   onProgress("Structure parsed", 100);
   return {
-    file: { name: file.name || "unnamed", size: file.size, type: file.type || "" },
+    file: getResourceInfo(file),
     reader,
     topBoxes,
     allBoxes: flattenNodes(topBoxes, []),

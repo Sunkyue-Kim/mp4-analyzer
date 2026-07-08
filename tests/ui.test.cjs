@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { createSourceModuleLoader } = require("./helpers/source-module-loader.cjs");
+const { SourceModuleLoader, createSourceModuleLoader } = require("./helpers/source-module-loader.cjs");
 
 test("UI helpers keep sample catalog, media detection, escaping, CSV, and frame classes stable", async () => {
   const loader = await createSourceModuleLoader();
@@ -185,6 +185,74 @@ test("analysis worker client falls back to direct core and preserves progress, s
   assert.equal(reader.cancelled, true);
 });
 
+test("remote loader chooses HTTP range streaming only when verified and falls back to full download", async () => {
+  const calls = [];
+  const makeHeaders = (values) => ({
+    get(name) {
+      return values[String(name).toLowerCase()] || "";
+    }
+  });
+  const loader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: {
+      fetch: async (url, options = {}) => {
+        const method = options.method || "GET";
+        const range = options.headers && options.headers.Range || "";
+        calls.push({ url, method, range });
+        if (method === "HEAD") {
+          return {
+            ok: true,
+            status: 200,
+            headers: makeHeaders({
+              "content-length": "12",
+              "content-type": "video/mp4",
+              "accept-ranges": "bytes"
+            })
+          };
+        }
+        if (range) {
+          return {
+            status: url.includes("no-range") ? 200 : 206,
+            headers: makeHeaders({
+              "content-range": "bytes 0-0/12",
+              "content-type": "video/mp4"
+            }),
+            async arrayBuffer() {
+              return new Uint8Array([0]).buffer;
+            }
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: makeHeaders({
+            "content-length": "3",
+            "content-type": "video/mp4"
+          }),
+          async blob() {
+            return new Blob([new Uint8Array([1, 2, 3])], { type: "video/mp4" });
+          }
+        };
+      }
+    }
+  });
+  const remoteLoader = await loader.import("src/js/ui/remote-loader.js");
+
+  const streamingPlan = await remoteLoader.probeRemoteMediaResource("https://media.test/video.mp4");
+  assert.equal(streamingPlan.canStream, true);
+  assert.equal(streamingPlan.resource.size, 12);
+  assert.equal(streamingPlan.resource.rangeSupported, true);
+
+  const fallbackPlan = await remoteLoader.probeRemoteMediaResource("https://media.test/no-range.mp4");
+  assert.equal(fallbackPlan.canStream, false);
+  assert.match(fallbackPlan.fallbackReason, /206/);
+  const downloadedFile = await remoteLoader.downloadRemoteMediaFile(fallbackPlan.fallback.url, fallbackPlan.fallback);
+  assert.equal(downloadedFile.name, "no-range.mp4");
+  assert.equal(downloadedFile.size, 3);
+  assert.throws(() => remoteLoader.normalizeRemoteMediaUrl("file:///tmp/video.mp4"), /Only http/);
+  assert.ok(calls.some((call) => call.range === "bytes=0-0"));
+});
+
 test("source HTML has required controls, tabs, and no external runtime assets after build", () => {
   const rootDirectory = path.resolve(__dirname, "..");
   const sourceHtml = fs.readFileSync(path.join(rootDirectory, "src", "index.html"), "utf8");
@@ -194,14 +262,15 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   const chunkedHtmlPath = path.join(rootDirectory, "chunked", "index.html");
 
   for (const id of [
-    "fileInput", "languageSelect", "sampleField", "sampleSelect", "openButton",
+    "fileInput", "languageSelect", "sampleField", "sampleSelect", "openButton", "openUrlButton",
     "scanButton", "cancelButton", "exportJsonButton", "exportCsvButton",
     "mediaPreviewBar", "summaryPanel", "summaryBody", "boxesPanel", "tracksPanel",
     "tracksBody", "framesPanel", "metricsPanel", "fragmentsPanel", "warningsPanel",
     "warningsBody",
     "frameGraphButton", "frameTableButton", "autoPlaybackSynchronizationToggle",
     "fragmentPlaybackSynchronizationToggle", "fragmentCountText", "fragmentsBody",
-    "frameWrap", "frameHeader", "frameScroller", "graphScroller"
+    "frameWrap", "frameHeader", "frameScroller", "graphScroller",
+    "remoteUrlModal", "remoteUrlForm", "remoteUrlInput", "remoteUrlSubmitButton"
   ]) {
     assert.match(sourceHtml, new RegExp("id=\"" + id + "\""));
   }
@@ -221,6 +290,9 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /renderDataGridCells/);
   assert.match(sourceUi, /frameTableRecycler\.setRows\(rows\)/);
   assert.match(sourceUi, /createAnalysisWorkerClient/);
+  assert.match(sourceUi, /probeRemoteMediaResource/);
+  assert.match(sourceUi, /downloadRemoteMediaFile/);
+  assert.match(sourceUi, /openRemoteUrlModal/);
   assert.match(sourceWorker, /self\.onmessage/);
   assert.match(sourceWorker, /analysisStart/);
   assert.match(sourceWorker, /sampleRows/);

@@ -6,8 +6,10 @@ const BOOTSTRAP_I18N = {
     "status.initial": "Open or drop a media file to begin.",
     "status.loadingAnalyzer": "Loading analyzer...",
     "button.open": "Open file",
+    "button.openUrl": "Open URL",
     "button.scan": "Scan frame types",
     "button.cancel": "Cancel",
+    "button.close": "Close",
     "button.exportJson": "Export JSON",
     "button.exportCsv": "Export CSV",
     "preview.loadedMedia": "Loaded media",
@@ -27,6 +29,12 @@ const BOOTSTRAP_I18N = {
     "field.sample": "Sample",
     "field.autoFragmentPlaybackSynchronization": "Sync fragment to playback",
     "option.samplePlaceholder": "Sample files...",
+    "remote.title": "Open media URL",
+    "remote.subtitle": "Use HTTP range reads when the server and CORS policy allow it. Otherwise the file is downloaded before analysis.",
+    "remote.urlLabel": "Media URL",
+    "remote.urlPlaceholder": "https://example.com/video.mp4",
+    "remote.statusIdle": "Range support is checked before analysis starts.",
+    "remote.load": "Load URL",
     "drop.title": "Drop media file to analyze",
     "drop.subtitle": "Release anywhere in this window for MP4/fMP4/MOV, WebM, MP3, or Ogg Opus parsing."
   },
@@ -37,8 +45,10 @@ const BOOTSTRAP_I18N = {
     "status.initial": "미디어 파일을 열거나 끌어다 놓으세요.",
     "status.loadingAnalyzer": "분석기 로드 중...",
     "button.open": "파일 열기",
+    "button.openUrl": "URL 열기",
     "button.scan": "프레임 타입 스캔",
     "button.cancel": "취소",
+    "button.close": "닫기",
     "button.exportJson": "JSON 내보내기",
     "button.exportCsv": "CSV 내보내기",
     "preview.loadedMedia": "로드된 미디어",
@@ -58,6 +68,12 @@ const BOOTSTRAP_I18N = {
     "field.sample": "샘플",
     "field.autoFragmentPlaybackSynchronization": "프래그먼트 재생 위치 동기화",
     "option.samplePlaceholder": "샘플 파일 선택...",
+    "remote.title": "미디어 URL 열기",
+    "remote.subtitle": "서버와 CORS 정책이 허용하면 HTTP range 읽기로 분석합니다. 불가능하면 파일을 먼저 다운로드한 뒤 분석합니다.",
+    "remote.urlLabel": "미디어 URL",
+    "remote.urlPlaceholder": "https://example.com/video.mp4",
+    "remote.statusIdle": "분석 시작 전에 range 지원 여부를 확인합니다.",
+    "remote.load": "URL 로드",
     "drop.title": "분석할 미디어 파일 드롭",
     "drop.subtitle": "이 창 어디에서든 MP4/fMP4/MOV, WebM, MP3, Ogg Opus 파일을 놓으면 파싱합니다."
   }
@@ -169,6 +185,10 @@ function startBootstrapUserInterface({ loadRuntime }) {
     elements.fileInput.click();
   }
 
+  function handleOpenUrlButtonClick() {
+    ensureRuntime({ initialOpenRemoteUrlModal: true });
+  }
+
   function handleFileInputChange() {
     const file = elements.fileInput.files && elements.fileInput.files[0];
     if (file) ensureRuntime({ initialFile: file });
@@ -248,6 +268,7 @@ function startBootstrapUserInterface({ loadRuntime }) {
 
   function cleanupBootstrapListeners() {
     elements.openButton.removeEventListener("click", handleOpenButtonClick);
+    elements.openUrlButton.removeEventListener("click", handleOpenUrlButtonClick);
     elements.fileInput.removeEventListener("change", handleFileInputChange);
     elements.sampleSelect.removeEventListener("change", handleSampleSelectChange);
     elements.languageSelect.removeEventListener("change", handleLanguageChange);
@@ -260,6 +281,7 @@ function startBootstrapUserInterface({ loadRuntime }) {
   }
 
   elements.openButton.addEventListener("click", handleOpenButtonClick);
+  elements.openUrlButton.addEventListener("click", handleOpenUrlButtonClick);
   elements.fileInput.addEventListener("change", handleFileInputChange);
   elements.sampleSelect.addEventListener("change", handleSampleSelectChange);
   elements.languageSelect.addEventListener("change", handleLanguageChange);
@@ -278,6 +300,7 @@ function startBootstrapUserInterface({ loadRuntime }) {
     getSamples: () => canUseSampleCatalog() ? BOOTSTRAP_SAMPLE_FILES.slice() : [],
     runSmokeTests: async () => (await ensureRuntime()).runSmokeTests(),
     analyzeFile: async (file) => (await ensureRuntime()).analyzeFile(file),
+    openRemoteUrlModal: async () => (await ensureRuntime({ initialOpenRemoteUrlModal: true })).openRemoteUrlModal(),
     loadSample: async (sampleId) => {
       const alreadyLoaded = Boolean(runtimeApi);
       const api = await ensureRuntime(alreadyLoaded ? {} : { initialSampleId: sampleId });
@@ -300,6 +323,7 @@ function collectBootstrapElements() {
     sampleField: document.getElementById("sampleField"),
     sampleSelect: document.getElementById("sampleSelect"),
     openButton: document.getElementById("openButton"),
+    openUrlButton: document.getElementById("openUrlButton"),
     dropOverlay: document.getElementById("dropOverlay"),
     progressText: document.getElementById("progressText"),
     progressPercent: document.getElementById("progressPercent"),

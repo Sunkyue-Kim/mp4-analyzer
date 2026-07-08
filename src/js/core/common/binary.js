@@ -92,7 +92,7 @@ function readFullBoxHeader(cursor) {
   };
 }
 
-class BlobRangeReader {
+class CachedRangeReader {
   constructor(file) {
     this.file = file;
     this.cache = new Map();
@@ -117,8 +117,9 @@ class BlobRangeReader {
       if (this.cancelled) throw new Error("Analysis cancelled.");
       const chunkIndex = Math.floor(cursor / CACHE_CHUNK_BYTES);
       const chunkStart = chunkIndex * CACHE_CHUNK_BYTES;
-      const chunk = await this.readChunk(chunkIndex);
+      const chunk = await this.getCachedChunk(chunkIndex);
       const localStart = cursor - chunkStart;
+      if (localStart >= chunk.byteLength) throw new Error("Range reader returned too few bytes at " + cursor);
       const copyLength = Math.min(chunk.byteLength - localStart, end - cursor);
       result.set(chunk.subarray(localStart, localStart + copyLength), written);
       written += copyLength;
@@ -127,21 +128,22 @@ class BlobRangeReader {
     return result;
   }
 
-  async readChunk(chunkIndex) {
+  async getCachedChunk(chunkIndex) {
     const cached = this.cache.get(chunkIndex);
     if (cached) {
       this.cache.delete(chunkIndex);
       this.cache.set(chunkIndex, cached);
       return cached.bytes;
     }
-    const chunkStart = chunkIndex * CACHE_CHUNK_BYTES;
-    const chunkEnd = Math.min(chunkStart + CACHE_CHUNK_BYTES, this.file.size);
-    const buffer = await this.file.slice(chunkStart, chunkEnd).arrayBuffer();
-    const bytes = new Uint8Array(buffer);
+    const bytes = await this.readChunk(chunkIndex);
     this.cache.set(chunkIndex, { bytes, size: bytes.byteLength });
     this.cacheBytes += bytes.byteLength;
     this.evict();
     return bytes;
+  }
+
+  async readChunk() {
+    throw new Error("readChunk must be implemented by a range reader.");
   }
 
   evict() {
@@ -154,6 +156,79 @@ class BlobRangeReader {
   }
 }
 
+class BlobRangeReader extends CachedRangeReader {
+  async readChunk(chunkIndex) {
+    const chunkStart = chunkIndex * CACHE_CHUNK_BYTES;
+    const chunkEnd = Math.min(chunkStart + CACHE_CHUNK_BYTES, this.file.size);
+    const buffer = await this.file.slice(chunkStart, chunkEnd).arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+}
+
+class HttpRangeReader extends CachedRangeReader {
+  constructor(file) {
+    super(file);
+    this.activeControllers = new Set();
+  }
+
+  cancel() {
+    super.cancel();
+    for (const controller of this.activeControllers) controller.abort();
+    this.activeControllers.clear();
+  }
+
+  async readChunk(chunkIndex) {
+    const chunkStart = chunkIndex * CACHE_CHUNK_BYTES;
+    const chunkEndExclusive = Math.min(chunkStart + CACHE_CHUNK_BYTES, this.file.size);
+    if (chunkEndExclusive <= chunkStart) return new Uint8Array(0);
+    const controller = new AbortController();
+    this.activeControllers.add(controller);
+    try {
+      const response = await fetch(this.file.url, {
+        cache: "no-store",
+        headers: {
+          Range: "bytes=" + chunkStart + "-" + (chunkEndExclusive - 1)
+        },
+        signal: controller.signal
+      });
+      if (this.cancelled) throw new Error("Analysis cancelled.");
+      if (response.status !== 206) {
+        throw new Error("HTTP range request failed: expected 206, got " + response.status);
+      }
+      const buffer = await response.arrayBuffer();
+      return new Uint8Array(buffer);
+    } catch (error) {
+      if (this.cancelled || error.name === "AbortError") throw new Error("Analysis cancelled.");
+      throw error;
+    } finally {
+      this.activeControllers.delete(controller);
+    }
+  }
+}
+
+function createRangeReader(file) {
+  if (file && file.kind === "remote-url" && file.rangeSupported && file.url) return new HttpRangeReader(file);
+  return new BlobRangeReader(file);
+}
+
+async function readResourcePrefix(file, length) {
+  const prefixLength = Math.min(Number(file && file.size || 0), length);
+  if (prefixLength <= 0) return new Uint8Array(0);
+  const reader = createRangeReader(file);
+  return reader.readRange(0n, BigInt(prefixLength));
+}
+
+function getResourceInfo(file) {
+  return {
+    name: file && file.name || "unnamed",
+    size: file && file.size || 0,
+    type: file && file.type || "",
+    source: file && file.kind === "remote-url" ? "remote-url" : "local-file",
+    url: file && file.kind === "remote-url" ? file.url : undefined,
+    rangeSupported: Boolean(file && file.kind === "remote-url" && file.rangeSupported)
+  };
+}
+
 export {
   MAX_SAFE_BIGINT,
   toSafeNumber,
@@ -162,5 +237,9 @@ export {
   safeJsonReplacer,
   ByteCursor,
   readFullBoxHeader,
-  BlobRangeReader
+  BlobRangeReader,
+  HttpRangeReader,
+  createRangeReader,
+  readResourcePrefix,
+  getResourceInfo
 };
