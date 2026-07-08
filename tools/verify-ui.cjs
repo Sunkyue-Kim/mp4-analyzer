@@ -5,6 +5,7 @@ const rootDirectory = path.resolve(__dirname, "..");
 const htmlPath = path.join(rootDirectory, "mp4-analyzer.html");
 const sourceHtmlPath = path.join(rootDirectory, "src", "index.html");
 const sourceStylePath = path.join(rootDirectory, "src", "styles.css");
+const sourceUiPath = path.join(rootDirectory, "src", "js", "ui", "analyzer-ui.js");
 const samplePath = path.join(rootDirectory, "validation", "generated", "avc_fragmented.mp4");
 
 class FakeElement {
@@ -139,14 +140,28 @@ function verifyResponsiveLayoutCss() {
   );
   assertCssRule(
     sourceCss,
-    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?--frame-table-width:\s*100%;[\s\S]*?\.filters\s*\{[\s\S]*?display:\s*grid;/,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.filters\s*\{[\s\S]*?display:\s*grid;/,
     "Mobile layout must use full-width compact frame controls."
   );
+  if (/--frame-table-width:\s*100%;/.test(sourceCss)) {
+    throw new Error("Frame table must not collapse to viewport width on mobile.");
+  }
+  if (/\.frame-(?:header|row)\s+div:nth-child\([\s\S]*?display:\s*none;/.test(sourceCss)) {
+    throw new Error("Frame table columns must not be hidden at narrow widths.");
+  }
 }
 
 async function main() {
   const sourceHtml = fs.readFileSync(sourceHtmlPath, "utf8");
+  const sourceUi = fs.readFileSync(sourceUiPath, "utf8");
   verifyResponsiveLayoutCss();
+
+  if (!/column\.index[\s\S]*column\.track[\s\S]*column\.type[\s\S]*column\.offset/.test(sourceHtml)) {
+    throw new Error("Frame table header must place Type immediately after Index and Track.");
+  }
+  if (!/row\.sampleIndex[\s\S]*row\.trackId[\s\S]*formatFrameTypeLabel\(type\)[\s\S]*row\.offset/.test(sourceUi)) {
+    throw new Error("Frame table row renderer must place Type immediately after Index and Track.");
+  }
 
   const sourceSampleFieldMatch = sourceHtml.match(/<label[^>]+id="sampleField"[^>]*>/);
   if (!sourceSampleFieldMatch || !sourceSampleFieldMatch[0].includes("hidden") || !sourceSampleFieldMatch[0].includes("display: none")) {

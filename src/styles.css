@@ -771,7 +771,7 @@
 
     .frame-header, .frame-row {
       display: grid;
-      grid-template-columns: 72px 76px minmax(120px, 1.2fr) 92px 98px 98px 90px 70px 92px 120px 120px;
+      grid-template-columns: 72px 76px 92px minmax(120px, 1.2fr) 92px 98px 98px 90px 70px 120px 120px;
       align-items: center;
     }
 
@@ -1079,11 +1079,10 @@
       .metrics-summary-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
       .metrics-insights { grid-template-columns: 1fr; }
       .detail-grid { grid-template-columns: 1fr; }
-      .frame-header, .frame-row { grid-template-columns: 64px 64px 120px 82px 90px 90px 80px 60px 82px 110px 110px; }
+      .frame-header, .frame-row { grid-template-columns: 64px 64px 82px 120px 82px 90px 90px 80px 60px 110px 110px; }
     }
 
     @media (max-width: 700px) {
-      :root { --frame-table-width: 100%; }
       body { font-size: 13px; }
       .topbar { gap: 10px; }
       .brand { min-width: 0; }
@@ -1165,31 +1164,7 @@
         padding: 7px 0;
         text-align: right;
       }
-      .frame-header, .frame-row {
-        width: 100%;
-        min-width: 100%;
-        grid-template-columns: 50px 44px 72px minmax(68px, 1fr) 70px;
-        font-size: 11px;
-      }
-      .frame-scroller,
-      .frame-spacer {
-        width: 100%;
-        min-width: 100%;
-      }
-      .frame-header div:nth-child(3),
-      .frame-header div:nth-child(5),
-      .frame-header div:nth-child(7),
-      .frame-header div:nth-child(8),
-      .frame-header div:nth-child(10),
-      .frame-header div:nth-child(11),
-      .frame-row div:nth-child(3),
-      .frame-row div:nth-child(5),
-      .frame-row div:nth-child(7),
-      .frame-row div:nth-child(8),
-      .frame-row div:nth-child(10),
-      .frame-row div:nth-child(11) {
-        display: none;
-      }
+      .frame-header, .frame-row { font-size: 11px; }
       .frame-header div, .frame-row div { padding: 0 5px; }
       .graph-wrap { grid-template-rows: 34px 1fr; }
       .graph-axis, .graph-row { grid-template-columns: 92px minmax(0, 1fr) 70px; }

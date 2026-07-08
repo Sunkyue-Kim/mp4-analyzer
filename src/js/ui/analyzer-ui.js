@@ -1094,7 +1094,7 @@ function renderFrameRow(row, visualIndex) {
   const selectedClass = frameRowKey === state.selectedFrameKey ? " selected" : "";
   const ariaLabel = t("aria.seekFrame", { trackId: row.trackId, sampleIndex: row.sampleIndex, time: formatGraphTime(row) });
   return '<div class="frame-row' + selectedClass + '" role="button" tabindex="0" data-frame-key="' + escapeHtml(frameRowKey) + '" aria-label="' + escapeHtml(ariaLabel) + '" style="top:' + (visualIndex * ROW_HEIGHT) + 'px">' +
-    '<div>' + row.sampleIndex + '</div><div>' + row.trackId + '</div><div title="' + escapeHtml(row.offset) + '">' + escapeHtml(row.offset) + '</div><div>' + row.size + '</div><div>' + row.dts + '</div><div>' + row.pts + '</div><div>' + row.duration + '</div><div>' + (row.isSync ? t("value.yes") : t("value.no")) + '</div><div><span class="pill ' + typeClass + '">' + escapeHtml(formatFrameTypeLabel(type)) + '</span></div><div title="' + escapeHtml(row.nalTypes.join(", ")) + '">' + escapeHtml(row.nalTypes.join(",")) + '</div><div>' + escapeHtml(chunkOrFragment) + '</div></div>';
+    '<div>' + row.sampleIndex + '</div><div>' + row.trackId + '</div><div><span class="pill ' + typeClass + '">' + escapeHtml(formatFrameTypeLabel(type)) + '</span></div><div title="' + escapeHtml(row.offset) + '">' + escapeHtml(row.offset) + '</div><div>' + row.size + '</div><div>' + row.dts + '</div><div>' + row.pts + '</div><div>' + row.duration + '</div><div>' + (row.isSync ? t("value.yes") : t("value.no")) + '</div><div title="' + escapeHtml(row.nalTypes.join(", ")) + '">' + escapeHtml(row.nalTypes.join(",")) + '</div><div>' + escapeHtml(chunkOrFragment) + '</div></div>';
 }
 
 function renderGraphRow(row, visualIndex) {
