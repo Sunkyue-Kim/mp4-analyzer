@@ -12,6 +12,7 @@
       --warn: #b54708;
       --ok: #087443;
       --shadow: 0 10px 28px rgba(16, 24, 40, 0.08);
+      --frame-table-width: 1048px;
       --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -66,6 +67,7 @@
 
     .brand {
       min-width: 232px;
+      flex: 0 1 280px;
     }
 
     .brand h1 {
@@ -116,6 +118,12 @@
       gap: 8px;
       flex-wrap: wrap;
       justify-content: flex-end;
+      flex: 0 1 auto;
+      min-width: 0;
+    }
+
+    .toolbar button {
+      white-space: nowrap;
     }
 
     .language-field,
@@ -652,21 +660,28 @@
     }
 
     .filters {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+      display: flex;
+      flex-wrap: wrap;
       align-items: end;
       gap: 10px;
       padding: 12px;
       border-bottom: 1px solid var(--line);
       background: #f8fafc;
+      min-width: 0;
+      overflow: visible;
     }
 
     .field {
       display: grid;
+      flex: 1 1 140px;
       min-width: 0;
       gap: 4px;
       color: var(--muted);
       font-size: 12px;
+    }
+
+    .view-field {
+      flex: 0 1 160px;
     }
 
     .field input, .field select {
@@ -684,6 +699,7 @@
       display: flex;
       align-items: center;
       gap: 7px;
+      flex: 0 1 150px;
       min-height: 34px;
       color: var(--text);
       font-size: 13px;
@@ -712,12 +728,14 @@
     }
 
     #clearFiltersButton {
-      width: 100%;
+      flex: 0 1 150px;
+      width: auto;
       min-height: 34px;
       align-self: end;
     }
 
     .frame-count-text {
+      flex: 1 1 84px;
       align-self: center;
       justify-self: end;
       margin: 0;
@@ -747,6 +765,8 @@
       min-height: 0;
       display: grid;
       grid-template-rows: 34px 1fr;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
 
     .frame-header, .frame-row {
@@ -756,6 +776,8 @@
     }
 
     .frame-header {
+      width: var(--frame-table-width);
+      min-width: var(--frame-table-width);
       background: #f8fafc;
       color: var(--muted);
       border-bottom: 1px solid var(--line);
@@ -773,21 +795,27 @@
 
     .frame-scroller {
       position: relative;
-      overflow: auto;
+      overflow-x: hidden;
+      overflow-y: auto;
       min-height: 0;
+      width: var(--frame-table-width);
+      min-width: var(--frame-table-width);
       font-family: var(--mono);
       font-size: 12px;
     }
 
     .frame-spacer {
       position: relative;
-      width: 100%;
+      width: var(--frame-table-width);
+      min-width: var(--frame-table-width);
     }
 
     .frame-row {
       position: absolute;
       left: 0;
-      right: 0;
+      right: auto;
+      width: var(--frame-table-width);
+      min-width: var(--frame-table-width);
       height: 32px;
       border-bottom: 1px solid #edf1f6;
       background: #fff;
@@ -1017,7 +1045,32 @@
       margin: 0 0 12px;
     }
 
+    @media (max-width: 1120px) {
+      .topbar {
+        align-items: flex-start;
+        height: auto;
+        padding: 12px;
+        flex-direction: column;
+      }
+      .brand,
+      .statusbar,
+      .toolbar {
+        width: 100%;
+      }
+      .brand {
+        min-width: 0;
+        flex-basis: auto;
+      }
+      .statusbar {
+        min-width: 0;
+      }
+      .toolbar {
+        justify-content: flex-start;
+      }
+    }
+
     @media (max-width: 980px) {
+      :root { --frame-table-width: 952px; }
       .shell { grid-template-columns: 1fr; }
       .boxes-layout { grid-template-columns: 1fr; }
       .box-tree-pane { max-height: 300px; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -1026,12 +1079,11 @@
       .metrics-summary-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
       .metrics-insights { grid-template-columns: 1fr; }
       .detail-grid { grid-template-columns: 1fr; }
-      .topbar { align-items: flex-start; height: auto; padding: 12px; flex-direction: column; }
-      .toolbar { justify-content: flex-start; }
       .frame-header, .frame-row { grid-template-columns: 64px 64px 120px 82px 90px 90px 80px 60px 82px 110px 110px; }
     }
 
     @media (max-width: 700px) {
+      :root { --frame-table-width: 100%; }
       body { font-size: 13px; }
       .topbar { gap: 10px; }
       .brand { min-width: 0; }
@@ -1073,8 +1125,16 @@
       .frames-panel.active { grid-template-rows: auto minmax(0, 1fr); }
       .filters {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        display: grid;
         gap: 8px;
         padding: 10px;
+      }
+      .field,
+      .view-field,
+      .checkbox-field,
+      #clearFiltersButton,
+      .frame-count-text {
+        width: 100%;
       }
       .metrics-controls {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1106,8 +1166,15 @@
         text-align: right;
       }
       .frame-header, .frame-row {
+        width: 100%;
+        min-width: 100%;
         grid-template-columns: 50px 44px 72px minmax(68px, 1fr) 70px;
         font-size: 11px;
+      }
+      .frame-scroller,
+      .frame-spacer {
+        width: 100%;
+        min-width: 100%;
       }
       .frame-header div:nth-child(3),
       .frame-header div:nth-child(5),

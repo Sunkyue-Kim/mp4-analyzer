@@ -4,6 +4,7 @@ const path = require("node:path");
 const rootDirectory = path.resolve(__dirname, "..");
 const htmlPath = path.join(rootDirectory, "mp4-analyzer.html");
 const sourceHtmlPath = path.join(rootDirectory, "src", "index.html");
+const sourceStylePath = path.join(rootDirectory, "src", "styles.css");
 const samplePath = path.join(rootDirectory, "validation", "generated", "avc_fragmented.mp4");
 
 class FakeElement {
@@ -92,8 +93,61 @@ function loadAnalyzerIntoFakeDom(protocol) {
   return { fakeDocument, fakeWindow };
 }
 
+function assertCssRule(css, pattern, message) {
+  if (!pattern.test(css)) {
+    throw new Error(message);
+  }
+}
+
+function verifyResponsiveLayoutCss() {
+  const sourceCss = fs.readFileSync(sourceStylePath, "utf8");
+
+  assertCssRule(
+    sourceCss,
+    /--frame-table-width:\s*1048px;/,
+    "Frame table must define a desktop intrinsic width for internal horizontal scrolling."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.toolbar\s*\{[\s\S]*?flex-wrap:\s*wrap;/,
+    "Toolbar must wrap controls instead of clipping them at boundary widths."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.filters\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex-wrap:\s*wrap;/,
+    "Frame filters must wrap before the mobile breakpoint."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.frame-wrap\s*\{[\s\S]*?overflow-x:\s*auto;/,
+    "Frame table wrapper must own horizontal scrolling."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.frame-header\s*\{[\s\S]*?width:\s*var\(--frame-table-width\);[\s\S]*?min-width:\s*var\(--frame-table-width\);/,
+    "Frame header must use the same intrinsic width as virtualized rows."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.frame-scroller\s*\{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;[\s\S]*?width:\s*var\(--frame-table-width\);/,
+    "Frame virtual scroller must keep vertical scroll while the wrapper handles horizontal scroll."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*1120px\)\s*\{[\s\S]*?\.topbar\s*\{[\s\S]*?flex-direction:\s*column;/,
+    "Top bar must switch to stacked layout before controls become crowded."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?--frame-table-width:\s*100%;[\s\S]*?\.filters\s*\{[\s\S]*?display:\s*grid;/,
+    "Mobile layout must use full-width compact frame controls."
+  );
+}
+
 async function main() {
   const sourceHtml = fs.readFileSync(sourceHtmlPath, "utf8");
+  verifyResponsiveLayoutCss();
+
   const sourceSampleFieldMatch = sourceHtml.match(/<label[^>]+id="sampleField"[^>]*>/);
   if (!sourceSampleFieldMatch || !sourceSampleFieldMatch[0].includes("hidden") || !sourceSampleFieldMatch[0].includes("display: none")) {
     throw new Error("Source HTML sample selector must be hidden by default for file:// src/index.html.");
