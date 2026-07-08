@@ -15,6 +15,9 @@ class FakeElement {
     this.dataset = {};
     this.style = createFakeStyleDeclaration();
     this.children = [];
+    this.eventListeners = new Map();
+    this._innerHTML = "";
+    this._treeRows = [];
     this.value = "";
     this.checked = false;
     this.disabled = false;
@@ -27,20 +30,89 @@ class FakeElement {
     this.scrollHeight = 0;
     this.clientHeight = 640;
     this.classList = {
-      add() {},
-      remove() {},
-      toggle() {}
+      add: (className) => this._classNames = new Set([...(this._classNames || []), className]),
+      remove: (className) => {
+        this._classNames = new Set(this._classNames || []);
+        this._classNames.delete(className);
+      },
+      toggle: (className, force) => {
+        this._classNames = new Set(this._classNames || []);
+        const shouldAdd = force === undefined ? !this._classNames.has(className) : Boolean(force);
+        if (shouldAdd) this._classNames.add(className);
+        else this._classNames.delete(className);
+        return shouldAdd;
+      },
+      contains: (className) => Boolean(this._classNames && this._classNames.has(className))
     };
   }
 
-  addEventListener() {}
-  removeEventListener() {}
+  get innerHTML() {
+    return this._innerHTML;
+  }
+
+  set innerHTML(value) {
+    this._innerHTML = String(value);
+    if (this.id === "boxTree") this._treeRows = createFakeTreeRows(this._innerHTML);
+  }
+
+  addEventListener(type, listener) {
+    if (!this.eventListeners.has(type)) this.eventListeners.set(type, []);
+    this.eventListeners.get(type).push(listener);
+  }
+
+  removeEventListener(type, listener) {
+    const listeners = this.eventListeners.get(type) || [];
+    this.eventListeners.set(type, listeners.filter((candidate) => candidate !== listener));
+  }
+
+  dispatchEvent(event) {
+    const listeners = this.eventListeners.get(event.type) || [];
+    for (const listener of listeners) listener(event);
+    return true;
+  }
+
   setAttribute(name, value) { this[name] = value; }
   appendChild(child) { this.children.push(child); return child; }
   remove() {}
   click() {}
   load() {}
   closest() { return null; }
+  querySelectorAll(selector) {
+    if (selector === ".tree-row") return this._treeRows || [];
+    return [];
+  }
+}
+
+class FakeTreeRow extends FakeElement {
+  constructor(pathValue) {
+    super("tree-row");
+    this.dataset.path = pathValue;
+    this.nodeType = 1;
+  }
+
+  closest(selector) {
+    return selector === ".tree-row" ? this : null;
+  }
+}
+
+function createFakeTreeRows(html) {
+  const rows = [];
+  const pattern = /class="tree-row"[^>]*data-path="([^"]+)"/g;
+  let match = pattern.exec(html);
+  while (match) {
+    rows.push(new FakeTreeRow(decodeHtmlAttribute(match[1])));
+    match = pattern.exec(html);
+  }
+  return rows;
+}
+
+function decodeHtmlAttribute(value) {
+  return String(value)
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 function createFakeStyleDeclaration() {
@@ -280,6 +352,15 @@ async function main() {
   if (/metric-axis-label/.test(sourceUi)) {
     throw new Error("Metric chart must not render axis text inside the stretched SVG.");
   }
+  if (!/tree-row" data-path=/.test(sourceUi) && !/tree-row"[^>]*data-path=/.test(sourceUi)) {
+    throw new Error("Box tree rows must carry a data-path for selection.");
+  }
+  if (!/type="button" class="tree-row"/.test(sourceUi)) {
+    throw new Error("Box tree rows must be explicit buttons.");
+  }
+  if (!/boxTree\.addEventListener\("click", handleBoxTreeClick\)/.test(sourceUi) || !/boxTree\.addEventListener\("pointerup", handleBoxTreePointerUp\)/.test(sourceUi)) {
+    throw new Error("Box tree must bind robust pointer and click selection handlers.");
+  }
 
   const sourceSampleFieldMatch = sourceHtml.match(/<label[^>]+id="sampleField"[^>]*>/);
   if (!sourceSampleFieldMatch || !sourceSampleFieldMatch[0].includes("hidden") || !sourceSampleFieldMatch[0].includes("display: none")) {
@@ -340,6 +421,40 @@ async function main() {
   const fragmentsHtml = fakeDocument.getElementById("fragmentsPanel").innerHTML;
   if (!fragmentsHtml.includes("data-grid-shell fragments-grid") || !fragmentsHtml.includes("data-grid-header") || !fragmentsHtml.includes(">5</div>")) {
     throw new Error("Fragment panel did not render the fMP4 fragments data grid.");
+  }
+
+  const boxTree = fakeDocument.getElementById("boxTree");
+  const firstBoxRow = boxTree.querySelectorAll(".tree-row")[0];
+  if (!firstBoxRow) throw new Error("Box tree did not render clickable rows.");
+  const clickListeners = boxTree.eventListeners && boxTree.eventListeners.get("click") || [];
+  if (clickListeners.length) {
+    boxTree.dispatchEvent({
+      type: "click",
+      target: {
+        parentElement: firstBoxRow
+      }
+    });
+  } else {
+    window.MP4AnalyzerDevTools.selectBoxByPath(firstBoxRow.dataset.path);
+  }
+  const selectedBox = window.MP4AnalyzerDevTools.getSelectedBox();
+  if (!selectedBox || selectedBox.path !== firstBoxRow.dataset.path) {
+    const analysis = window.MP4AnalyzerDevTools.getAnalysis();
+    throw new Error(
+      "Clicking a box tree row did not update the selected box. " +
+      "clicked=" + firstBoxRow.dataset.path +
+      " selected=" + (selectedBox && selectedBox.path || "") +
+      " firstAnalysisPath=" + (analysis && analysis.allBoxes[0] && analysis.allBoxes[0].path || "") +
+      " rowCount=" + boxTree.querySelectorAll(".tree-row").length +
+      " clickListeners=" + clickListeners.length
+    );
+  }
+  const boxDetailHtml = fakeDocument.getElementById("boxDetail").innerHTML;
+  if (!boxDetailHtml.includes(selectedBox.path) || !boxDetailHtml.includes("Parsed fields")) {
+    throw new Error("Clicking a box tree row did not render box details.");
+  }
+  if (!firstBoxRow.classList.contains("selected")) {
+    throw new Error("Clicking a box tree row did not mark the row as selected.");
   }
 
   const frameTypes = new Set(window.MP4AnalyzerDevTools.getAnalysis().sampleRows.map((row) => row.frameType));

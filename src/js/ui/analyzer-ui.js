@@ -144,6 +144,8 @@ const devToolsApi = {
   getAnalysis: () => state.analysis,
   getFilteredRows: () => state.filteredRows,
   getSelectedFrameKey: () => state.selectedFrameKey,
+  getSelectedBox: () => state.selectedBox,
+  selectBoxByPath: (path) => selectBoxByPath(path),
   setAutoPlaybackSynchronization: (enabled) => {
     elements.autoPlaybackSynchronizationToggle.checked = Boolean(enabled);
     state.lastPlaybackSynchronizationFrameKey = "";
@@ -838,19 +840,49 @@ function renderBoxTree() {
 
 function renderBoxNode(node) {
   const childHtml = node.children && node.children.length ? '<div class="tree-children">' + node.children.map(renderBoxNode).join("") + '</div>' : "";
-  return '<div class="tree-node"><button class="tree-row" data-path="' + escapeHtml(node.path) + '" title="' + escapeHtml(formatBoxTypeLabel(node.type)) + '">' +
+  return '<div class="tree-node"><button type="button" class="tree-row" data-path="' + escapeHtml(node.path) + '" title="' + escapeHtml(formatBoxTypeLabel(node.type)) + '">' +
     '<span class="type">' + escapeHtml(node.type) + '</span><span class="size">' + formatBytes(Number(node.size)) + ' @ ' + escapeHtml(node.offset) + '</span></button>' + childHtml + '</div>';
 }
 
-elements.boxTree.addEventListener("click", (event) => {
-  const row = event.target.closest(".tree-row");
+elements.boxTree.addEventListener("click", handleBoxTreeClick);
+elements.boxTree.addEventListener("pointerup", handleBoxTreePointerUp);
+elements.boxTree.addEventListener("keydown", handleBoxTreeKeyDown);
+
+function handleBoxTreeClick(event) {
+  activateBoxTreeEvent(event);
+}
+
+function handleBoxTreePointerUp(event) {
+  if (event.button !== undefined && event.button !== 0) return;
+  activateBoxTreeEvent(event);
+}
+
+function handleBoxTreeKeyDown(event) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  activateBoxTreeEvent(event);
+}
+
+function activateBoxTreeEvent(event) {
+  const row = findClosestElement(event.target, ".tree-row");
   if (!row || !state.analysis) return;
-  const path = row.dataset.path;
-  state.selectedBox = state.analysis.allBoxes.find((box) => box.path === path) || null;
-  for (const node of elements.boxTree.querySelectorAll(".tree-row")) node.classList.toggle("selected", node === row);
-  renderSelectedBox();
+  selectBoxByPath(row.dataset.path, row);
   setActiveTab("boxes");
-});
+}
+
+function findClosestElement(target, selector) {
+  const element = target && target.nodeType === 1 ? target : target && target.parentElement;
+  return element && typeof element.closest === "function" ? element.closest(selector) : null;
+}
+
+function selectBoxByPath(path, row) {
+  if (!state.analysis || !path) return null;
+  state.selectedBox = state.analysis.allBoxes.find((box) => box.path === path) || null;
+  const selectedRow = row || Array.from(elements.boxTree.querySelectorAll(".tree-row")).find((node) => node.dataset.path === path) || null;
+  for (const node of elements.boxTree.querySelectorAll(".tree-row")) node.classList.toggle("selected", node === selectedRow);
+  renderSelectedBox();
+  return state.selectedBox;
+}
 
 function renderSelectedBox() {
   if (!state.selectedBox) {
