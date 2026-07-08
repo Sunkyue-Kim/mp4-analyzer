@@ -4,6 +4,7 @@ import { analyzeFileWithRegisteredContainer } from "./containers/registry.js";
 import { parseAudioSpecificConfig, parseEsds } from "./codecs/audio/aac.js";
 import { parseAvcSample } from "./codecs/video/avc.js";
 import { parseHevcC, parseHevcSample } from "./codecs/video/hevc.js";
+import { getFrameTypeScanner } from "./codecs/registry.js";
 import { scanAvcFrameTypes, scanFrameTypes, shouldAutoScan } from "./codecs/frame-scanner.js";
 import { runParserSelfTests } from "./self-tests.js";
 import {
@@ -39,7 +40,8 @@ export const Core = {
   runParserSelfTests,
   shouldAutoScan,
   formatBytes,
-  getDefaultSampleFrameType
+  getDefaultSampleFrameType,
+  getFrameTypeScanner
 };
 
 export {
@@ -57,5 +59,6 @@ export {
   formatTime,
   safeJsonReplacer,
   findDescendants,
-  getDefaultSampleFrameType
+  getDefaultSampleFrameType,
+  getFrameTypeScanner
 };

@@ -13,7 +13,8 @@ import {
   formatTime,
   safeJsonReplacer,
   findDescendants,
-  getDefaultSampleFrameType
+  getDefaultSampleFrameType,
+  getFrameTypeScanner
 } from "../core/analyzer-core.js";
 import {
   I18N,
@@ -107,6 +108,7 @@ window.MP4AnalyzerDevTools = {
   runSmokeTests: () => Core.runParserSelfTests(),
   getSamples: () => SAMPLE_FILES.slice(),
   loadSample: (sampleId) => loadSampleById(sampleId),
+  analyzeFile: (file) => startAnalysis(file),
   summarize: () => {
     if (!state.analysis) return { loaded: false };
     return {

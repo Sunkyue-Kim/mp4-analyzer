@@ -2125,7 +2125,7 @@ button:disabled {
     "aprh"
   ]);
   var AUDIO_SAMPLE_ENTRIES = /* @__PURE__ */ new Set(["mp4a", "enca", "ac-3", "ec-3", "Opus", "alac"]);
-  function getFrameTypeScanner2(track) {
+  function getFrameTypeScanner(track) {
     if ((track.codec === "avc1" || track.codec === "avc3") && track.avcConfig && track.avcConfig.nalLengthSize) {
       return {
         codec: "AVC",
@@ -3041,7 +3041,7 @@ button:disabled {
     const reader = analysis.reader;
     const scannableTracks = /* @__PURE__ */ new Map();
     for (const track of analysis.tracks) {
-      const scanner = getFrameTypeScanner2(track);
+      const scanner = getFrameTypeScanner(track);
       if (scanner) scannableTracks.set(track.trackId, { track, scanner });
     }
     const rows = analysis.sampleRows.filter((row) => scannableTracks.has(row.trackId) && row.offset !== "" && row.size > 0);
@@ -3070,7 +3070,7 @@ button:disabled {
   function shouldAutoScan(analysis) {
     const videoRows = analysis.sampleRows.filter((row) => {
       const track = analysis.tracks.find((candidate) => candidate.trackId === row.trackId);
-      return track && getFrameTypeScanner2(track);
+      return track && getFrameTypeScanner(track);
     });
     const totalBytes = videoRows.reduce((sum, row) => sum + (row.size || 0), 0);
     return videoRows.length > 0 && (videoRows.length <= 1e4 || totalBytes <= 512 * 1024 * 1024);
@@ -3576,7 +3576,8 @@ button:disabled {
     runParserSelfTests,
     shouldAutoScan,
     formatBytes,
-    getDefaultSampleFrameType
+    getDefaultSampleFrameType,
+    getFrameTypeScanner
   };
 
   // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\samples\sample-manifest.js
@@ -3705,6 +3706,7 @@ button:disabled {
       runSmokeTests: () => Core2.runParserSelfTests(),
       getSamples: () => SAMPLE_FILES.slice(),
       loadSample: (sampleId) => loadSampleById(sampleId),
+      analyzeFile: (file) => startAnalysis(file),
       summarize: () => {
         if (!state.analysis) return { loaded: false };
         return {

@@ -6,7 +6,8 @@
   "scripts": {
     "extract:source": "node tools/extract-source.cjs",
     "build": "node tools/build.cjs",
-    "verify:samples": "node tools/verify-samples.cjs"
+    "verify:samples": "node tools/verify-samples.cjs",
+    "verify:ui": "node tools/verify-ui.cjs"
   },
   "devDependencies": {
     "esbuild": "latest",
