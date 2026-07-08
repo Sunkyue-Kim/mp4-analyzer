@@ -93,7 +93,10 @@ test("HttpRangeReader reads byte ranges without downloading the full resource", 
 
   assert.deepEqual(Array.from(await reader.readRange(BigInt(4 * 1024 * 1024 - 1), 3n)), [8, 9, 0]);
   assert.equal(rangeRequests.length, 2);
+  assert.deepEqual(Array.from(await reader.readExactRange(1n, 2n)), [0, 0]);
+  assert.equal(rangeRequests[2].range, "bytes=1-2");
   assert.deepEqual(Array.from(await readResourcePrefix(resource, 2)), [0, 0]);
+  assert.equal(rangeRequests[3].range, "bytes=0-1");
 });
 
 test("bitstream helpers remove emulation-prevention bytes and decode Exp-Golomb", async () => {

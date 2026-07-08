@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { createSourceModuleLoader } = require("./helpers/source-module-loader.cjs");
+const { SourceModuleLoader, createSourceModuleLoader } = require("./helpers/source-module-loader.cjs");
 
 const rootDirectory = path.resolve(__dirname, "..");
 const samplesDirectory = path.join(rootDirectory, "validation", "generated");
@@ -91,3 +91,64 @@ test("container registry rejects unsupported files and auto-scan boundary is con
     sampleRows: [{ trackId: 1, offset: "0", size: 100 }]
   }), true);
 });
+
+test("remote ISO BMFF analysis starts with small exact range probes before large cached reads", async () => {
+  const fileSize = 5 * 1024 * 1024;
+  const bytes = new Uint8Array(fileSize);
+  writeUint32(bytes, 0, 24);
+  writeAscii(bytes, 4, "ftyp");
+  writeAscii(bytes, 8, "isom");
+  writeUint32(bytes, 12, 0);
+  writeAscii(bytes, 16, "isom");
+  writeAscii(bytes, 20, "mp42");
+  writeUint32(bytes, 24, fileSize - 24);
+  writeAscii(bytes, 28, "free");
+  const rangeRequests = [];
+  const loader = new SourceModuleLoader({
+    rootDirectory,
+    globals: {
+      fetch: async (_url, options = {}) => {
+        const match = String(options.headers && options.headers.Range || "").match(/^bytes=(\d+)-(\d+)$/);
+        assert.ok(match, "missing Range header");
+        const start = Number(match[1]);
+        const end = Number(match[2]);
+        rangeRequests.push({ start, end, length: end - start + 1 });
+        return {
+          status: 206,
+          headers: { get: () => "" },
+          async arrayBuffer() {
+            return bytes.slice(start, end + 1).buffer;
+          }
+        };
+      }
+    }
+  });
+  const containers = await loader.import("src/js/core/containers/registry.js");
+  const analysis = await containers.analyzeFileWithRegisteredContainer({
+    kind: "remote-url",
+    url: "https://media.test/large-header.mp4",
+    name: "large-header.mp4",
+    type: "video/mp4",
+    size: fileSize,
+    rangeSupported: true
+  }, {});
+
+  assert.equal(analysis.container.id, "isobmff");
+  assert.deepEqual(JSON.parse(JSON.stringify(analysis.topBoxes.map((box) => box.type))), ["ftyp", "free"]);
+  assert.ok(rangeRequests.length >= 4);
+  assert.ok(rangeRequests.every((request) => request.length <= 64 * 1024), JSON.stringify(rangeRequests));
+  assert.ok(rangeRequests.some((request) => request.start === 0 && request.end < 4096), JSON.stringify(rangeRequests));
+});
+
+function writeUint32(bytes, offset, value) {
+  bytes[offset] = (value >>> 24) & 0xff;
+  bytes[offset + 1] = (value >>> 16) & 0xff;
+  bytes[offset + 2] = (value >>> 8) & 0xff;
+  bytes[offset + 3] = value & 0xff;
+}
+
+function writeAscii(bytes, offset, value) {
+  for (let index = 0; index < value.length; index += 1) {
+    bytes[offset + index] = value.charCodeAt(index);
+  }
+}

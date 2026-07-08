@@ -128,6 +128,16 @@ class CachedRangeReader {
     return result;
   }
 
+  async readExactRange(offsetBig, lengthBig) {
+    if (this.cancelled) throw new Error("Analysis cancelled.");
+    const offset = toSafeNumber(offsetBig, "offset");
+    const length = toSafeNumber(lengthBig, "length");
+    if (length <= 0) return new Uint8Array(0);
+    const resourceSize = Number(this.file && this.file.size || 0);
+    if (offset >= resourceSize) return new Uint8Array(0);
+    return this.readExactRangeBytes(offset, Math.min(length, resourceSize - offset));
+  }
+
   async getCachedChunk(chunkIndex) {
     const cached = this.cache.get(chunkIndex);
     if (cached) {
@@ -146,6 +156,10 @@ class CachedRangeReader {
     throw new Error("readChunk must be implemented by a range reader.");
   }
 
+  async readExactRangeBytes() {
+    throw new Error("readExactRangeBytes must be implemented by a range reader.");
+  }
+
   evict() {
     while (this.cacheBytes > MAX_CACHE_BYTES && this.cache.size > 1) {
       const firstKey = this.cache.keys().next().value;
@@ -161,6 +175,11 @@ class BlobRangeReader extends CachedRangeReader {
     const chunkStart = chunkIndex * CACHE_CHUNK_BYTES;
     const chunkEnd = Math.min(chunkStart + CACHE_CHUNK_BYTES, this.file.size);
     const buffer = await this.file.slice(chunkStart, chunkEnd).arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
+  async readExactRangeBytes(offset, length) {
+    const buffer = await this.file.slice(offset, offset + length).arrayBuffer();
     return new Uint8Array(buffer);
   }
 }
@@ -204,6 +223,32 @@ class HttpRangeReader extends CachedRangeReader {
       this.activeControllers.delete(controller);
     }
   }
+
+  async readExactRangeBytes(offset, length) {
+    if (length <= 0) return new Uint8Array(0);
+    const controller = new AbortController();
+    this.activeControllers.add(controller);
+    try {
+      const response = await fetch(this.file.url, {
+        cache: "no-store",
+        headers: {
+          Range: "bytes=" + offset + "-" + (offset + length - 1)
+        },
+        signal: controller.signal
+      });
+      if (this.cancelled) throw new Error("Analysis cancelled.");
+      if (response.status !== 206) {
+        throw new Error("HTTP range request failed: expected 206, got " + response.status);
+      }
+      const buffer = await response.arrayBuffer();
+      return new Uint8Array(buffer);
+    } catch (error) {
+      if (this.cancelled || error.name === "AbortError") throw new Error("Analysis cancelled.");
+      throw error;
+    } finally {
+      this.activeControllers.delete(controller);
+    }
+  }
 }
 
 function createRangeReader(file) {
@@ -215,7 +260,7 @@ async function readResourcePrefix(file, length) {
   const prefixLength = Math.min(Number(file && file.size || 0), length);
   if (prefixLength <= 0) return new Uint8Array(0);
   const reader = createRangeReader(file);
-  return reader.readRange(0n, BigInt(prefixLength));
+  return reader.readExactRange(0n, BigInt(prefixLength));
 }
 
 function getResourceInfo(file) {

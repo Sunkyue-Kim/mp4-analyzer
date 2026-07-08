@@ -6,6 +6,8 @@ import {
 } from "../../codecs/registry.js";
 import { CONTAINER_BOXES, FULLBOX_CONTAINER_OFFSETS, PARSED_FIELD_BOXES } from "./box-types.js";
 
+const SMALL_METADATA_READ_BYTES = 64 * 1024;
+
 async function readBoxPayload(reader, node, maxBytes) {
   const payloadSize = node.sizeBig - BigInt(node.headerSize);
   if (payloadSize < 0n) throw new Error("Invalid payload size for " + node.path);
@@ -13,7 +15,16 @@ async function readBoxPayload(reader, node, maxBytes) {
     node.warnings.push("Payload too large to parse inline: " + payloadSize.toString() + " bytes.");
     return null;
   }
-  return reader.readRange(node.offsetBig + BigInt(node.headerSize), payloadSize);
+  const payloadOffset = node.offsetBig + BigInt(node.headerSize);
+  if (payloadSize <= BigInt(SMALL_METADATA_READ_BYTES) && typeof reader.readExactRange === "function") {
+    return reader.readExactRange(payloadOffset, payloadSize);
+  }
+  return reader.readRange(payloadOffset, payloadSize);
+}
+
+function readBoxHeaderProbe(reader, offset, length) {
+  if (typeof reader.readExactRange === "function") return reader.readExactRange(offset, length);
+  return reader.readRange(offset, length);
 }
 
 async function parseBoxes(reader, startBig, endBig, parentPath, depth, warnings, progress) {
@@ -28,7 +39,7 @@ async function parseBoxes(reader, startBig, endBig, parentPath, depth, warnings,
       break;
     }
     const remaining = endBig - offset;
-    const headerProbe = await reader.readRange(offset, remaining < 32n ? remaining : 32n);
+    const headerProbe = await readBoxHeaderProbe(reader, offset, remaining < 32n ? remaining : 32n);
     if (headerProbe.byteLength < 8) break;
     const cursor = new ByteCursor(headerProbe);
     const size32 = cursor.uint32(0);
