@@ -163,6 +163,12 @@ async function main() {
   if (!/row\.sampleIndex[\s\S]*row\.trackId[\s\S]*formatFrameTypeLabel\(type\)[\s\S]*row\.offset/.test(sourceUi)) {
     throw new Error("Frame table row renderer must place Type immediately after Index and Track.");
   }
+  if (!/metric-y-axis-label/.test(sourceUi) || !/metric-x-axis/.test(sourceUi)) {
+    throw new Error("Metric chart axis labels must be rendered outside the stretched SVG.");
+  }
+  if (/metric-axis-label/.test(sourceUi)) {
+    throw new Error("Metric chart must not render axis text inside the stretched SVG.");
+  }
 
   const sourceSampleFieldMatch = sourceHtml.match(/<label[^>]+id="sampleField"[^>]*>/);
   if (!sourceSampleFieldMatch || !sourceSampleFieldMatch[0].includes("hidden") || !sourceSampleFieldMatch[0].includes("display: none")) {

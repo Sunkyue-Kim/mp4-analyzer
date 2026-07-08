@@ -3,7 +3,6 @@ import {
   GRAPH_ROW_HEIGHT,
   METRIC_CHART_WIDTH,
   METRIC_CHART_HEIGHT,
-  METRIC_CHART_PADDING,
   BOX_TYPE_INFO,
   clamp,
   formatBytes,
@@ -933,26 +932,31 @@ function renderMetricChart(title, points, valueKey, pointLimit, formatter, class
   const minTime = chartPoints[0].time;
   const maxTime = chartPoints[chartPoints.length - 1].time;
   const timeSpan = Math.max(0.000001, maxTime - minTime);
-  const innerWidth = METRIC_CHART_WIDTH - METRIC_CHART_PADDING.left - METRIC_CHART_PADDING.right;
-  const innerHeight = METRIC_CHART_HEIGHT - METRIC_CHART_PADDING.top - METRIC_CHART_PADDING.bottom;
   const polylinePoints = chartPoints.map((point) => {
-    const x = METRIC_CHART_PADDING.left + ((point.time - minTime) / timeSpan) * innerWidth;
-    const y = METRIC_CHART_PADDING.top + innerHeight - ((Number(point[valueKey]) || 0) / maxValue) * innerHeight;
+    const x = ((point.time - minTime) / timeSpan) * METRIC_CHART_WIDTH;
+    const y = METRIC_CHART_HEIGHT - ((Number(point[valueKey]) || 0) / maxValue) * METRIC_CHART_HEIGHT;
     return x.toFixed(2) + "," + y.toFixed(2);
   }).join(" ");
-  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-    const y = METRIC_CHART_PADDING.top + innerHeight - ratio * innerHeight;
+  const axisRatios = [0, 0.25, 0.5, 0.75, 1];
+  const gridLines = axisRatios.map((ratio) => {
+    const y = METRIC_CHART_HEIGHT - ratio * METRIC_CHART_HEIGHT;
+    return '<line class="metric-grid-line" x1="0" x2="' + METRIC_CHART_WIDTH + '" y1="' + y.toFixed(2) + '" y2="' + y.toFixed(2) + '"></line>';
+  }).join("");
+  const yAxisLabels = axisRatios.map((ratio) => {
+    const topPercent = 100 - ratio * 100;
     const label = formatter(maxValue * ratio);
-    return '<line class="metric-grid-line" x1="' + METRIC_CHART_PADDING.left + '" x2="' + (METRIC_CHART_WIDTH - METRIC_CHART_PADDING.right) + '" y1="' + y.toFixed(2) + '" y2="' + y.toFixed(2) + '"></line>' +
-      '<text class="metric-axis-label" x="8" y="' + (y + 4).toFixed(2) + '">' + escapeHtml(label) + '</text>';
+    const edgeClass = ratio === 0 ? " bottom" : ratio === 1 ? " top" : "";
+    return '<span class="metric-y-axis-label' + edgeClass + '" style="top:' + topPercent.toFixed(2) + '%">' + escapeHtml(label) + '</span>';
   }).join("");
   return '<section class="metric-chart-card"><div class="metric-chart-head"><strong>' + escapeHtml(title) + '</strong><span>' + escapeHtml(t("metrics.chartMax", { value: formatter(maxValue), count: chartPoints.length })) + '</span></div>' +
-    '<svg class="metric-chart" viewBox="0 0 ' + METRIC_CHART_WIDTH + ' ' + METRIC_CHART_HEIGHT + '" preserveAspectRatio="none" aria-label="' + escapeHtml(title) + '">' +
-    gridLines +
-    '<text class="metric-axis-label" x="' + METRIC_CHART_PADDING.left + '" y="' + (METRIC_CHART_HEIGHT - 8) + '">' + escapeHtml(formatMetricNumber(minTime, 2)) + 's</text>' +
-    '<text class="metric-axis-label" text-anchor="end" x="' + (METRIC_CHART_WIDTH - METRIC_CHART_PADDING.right) + '" y="' + (METRIC_CHART_HEIGHT - 8) + '">' + escapeHtml(formatMetricNumber(maxTime, 2)) + 's</text>' +
-    '<polyline class="metric-line ' + escapeHtml(className) + '" points="' + polylinePoints + '"></polyline>' +
-    '</svg></section>';
+    '<div class="metric-chart-body" aria-label="' + escapeHtml(title) + '">' +
+    '<div class="metric-y-axis" aria-hidden="true">' + yAxisLabels + '</div>' +
+    '<div class="metric-plot-area">' +
+    '<svg class="metric-chart" viewBox="0 0 ' + METRIC_CHART_WIDTH + ' ' + METRIC_CHART_HEIGHT + '" preserveAspectRatio="none" role="img" aria-label="' + escapeHtml(title) + '">' +
+    gridLines + '<polyline class="metric-line ' + escapeHtml(className) + '" points="' + polylinePoints + '"></polyline>' +
+    '</svg></div>' +
+    '<div class="metric-x-axis" aria-hidden="true"><span>' + escapeHtml(formatMetricNumber(minTime, 2)) + 's</span><span>' + escapeHtml(formatMetricNumber(maxTime, 2)) + 's</span></div>' +
+    '</div></section>';
 }
 
 function downsamplePoints(points, limit) {
