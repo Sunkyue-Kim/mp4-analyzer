@@ -13,7 +13,7 @@ class FakeElement {
   constructor(id = "") {
     this.id = id;
     this.dataset = {};
-    this.style = {};
+    this.style = createFakeStyleDeclaration();
     this.children = [];
     this.value = "";
     this.checked = false;
@@ -34,12 +34,32 @@ class FakeElement {
   }
 
   addEventListener() {}
+  removeEventListener() {}
   setAttribute(name, value) { this[name] = value; }
   appendChild(child) { this.children.push(child); return child; }
   remove() {}
   click() {}
   load() {}
   closest() { return null; }
+}
+
+function createFakeStyleDeclaration() {
+  const properties = {};
+  return {
+    setProperty(name, value) {
+      properties[name] = String(value);
+      this[name] = String(value);
+    },
+    getPropertyValue(name) {
+      return properties[name] || "";
+    },
+    removeProperty(name) {
+      const previousValue = properties[name] || "";
+      delete properties[name];
+      delete this[name];
+      return previousValue;
+    }
+  };
 }
 
 function createFakeDocument() {
@@ -66,6 +86,7 @@ function createFakeWindow(protocol) {
   return {
     location: { protocol },
     addEventListener() {},
+    removeEventListener() {},
     clearTimeout,
     setTimeout,
     requestAnimationFrame(callback) {
@@ -108,8 +129,8 @@ function verifyResponsiveLayoutCss() {
 
   assertCssRule(
     sourceCss,
-    /--frame-table-width:\s*1048px;/,
-    "Frame table must define a desktop intrinsic width for internal horizontal scrolling."
+    /\.frame-wrap\s*\{[\s\S]*?--data-grid-columns:[\s\S]*?--data-grid-width:\s*1048px;/,
+    "Frame table must use the shared data grid layout variables for its fallback intrinsic width."
   );
   assertCssRule(
     sourceCss,
@@ -168,13 +189,13 @@ function verifyResponsiveLayoutCss() {
   );
   assertCssRule(
     sourceCss,
-    /\.frame-header\s*\{[\s\S]*?width:\s*var\(--frame-table-width\);[\s\S]*?min-width:\s*var\(--frame-table-width\);/,
-    "Frame header must use the same intrinsic width as virtualized rows."
+    /\.frame-header\s*\{[\s\S]*?width:\s*max\(100%,\s*var\(--data-grid-width\)\);[\s\S]*?min-width:\s*var\(--data-grid-width\);/,
+    "Frame header must fill available width while preserving the shared data grid minimum width."
   );
   assertCssRule(
     sourceCss,
-    /\.frame-scroller\s*\{[\s\S]*?overflow:\s*visible;[\s\S]*?width:\s*var\(--frame-table-width\);/,
-    "Frame virtual scroller must not own scrollbars."
+    /\.frame-scroller\s*\{[\s\S]*?overflow:\s*visible;[\s\S]*?width:\s*max\(100%,\s*var\(--data-grid-width\)\);/,
+    "Frame virtual scroller must use the shared data grid width and must not own scrollbars."
   );
   assertCssRule(
     sourceCss,
@@ -186,8 +207,38 @@ function verifyResponsiveLayoutCss() {
     /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.filters\s*\{[\s\S]*?display:\s*grid;/,
     "Mobile layout must use full-width compact frame controls."
   );
-  if (/--frame-table-width:\s*100%;/.test(sourceCss)) {
-    throw new Error("Frame table must not collapse to viewport width on mobile.");
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.app\s*\{[\s\S]*?height:\s*auto;[\s\S]*?min-height:\s*100dvh;[\s\S]*?overflow:\s*visible;/,
+    "Mobile layout must allow document scrolling instead of clipping the tab content."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.tabs\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;[\s\S]*?z-index:\s*30;/,
+    "Mobile tab selector must remain sticky while scrolling tab content."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.content\s*\{[\s\S]*?min-height:\s*calc\(100dvh - 48px\);[\s\S]*?overflow:\s*visible;/,
+    "Mobile tab content must reserve at least one viewport of height."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.panel\s*\{[\s\S]*?height:\s*auto;[\s\S]*?min-height:\s*calc\(100dvh - 48px\);[\s\S]*?overflow:\s*visible;/,
+    "Mobile panels must keep stable viewport-height surfaces across tab changes."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frames-panel\.active\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(320px,\s*auto\);/,
+    "Mobile frame panel must preserve a minimum table row instead of collapsing below filters."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frame-wrap,\s*[\s\S]*?\.graph-wrap\s*\{[\s\S]*?height:\s*clamp\(320px,\s*58dvh,\s*520px\);[\s\S]*?min-height:\s*320px;/,
+    "Mobile frame table and graph must keep a scrollable minimum height."
+  );
+  if (/--frame-table-width/.test(sourceCss)) {
+    throw new Error("Frame table must not use a separate frame-only width variable.");
   }
   if (/\.frame-(?:header|row)\s+div:nth-child\([\s\S]*?display:\s*none;/.test(sourceCss)) {
     throw new Error("Frame table columns must not be hidden at narrow widths.");
@@ -202,7 +253,7 @@ async function main() {
   if (!/column\.index[\s\S]*column\.track[\s\S]*column\.type[\s\S]*column\.offset/.test(sourceHtml)) {
     throw new Error("Frame table header must place Type immediately after Index and Track.");
   }
-  if (!/class="frame-header data-grid-header"/.test(sourceHtml)) {
+  if (!/id="frameHeader"\s+class="frame-header data-grid-header"/.test(sourceHtml)) {
     throw new Error("Frame table header must use the reusable data grid header style.");
   }
   if (!/warningOnlyFilter[\s\S]*autoPlaybackSynchronizationToggle/.test(sourceHtml)) {
@@ -213,6 +264,9 @@ async function main() {
   }
   if (!/renderDataGridTable/.test(sourceUi) || !/className:\s*"tracks-grid"/.test(sourceUi) || !/className:\s*"fragments-grid"/.test(sourceUi) || !/className:\s*"largest-samples-grid"/.test(sourceUi)) {
     throw new Error("Tracks, fragments, and largest samples must use the reusable data grid component.");
+  }
+  if (!/createDataGridLayout/.test(sourceUi) || !/renderDataGridCells/.test(sourceUi) || !/renderDataGridHeaderCells/.test(sourceUi)) {
+    throw new Error("Frame table recycler must share the reusable data grid layout and cell renderers.");
   }
   if (!/createAnalysisWorkerClient/.test(sourceUi) || !/analysisWorkerClient\.analyzeFile/.test(sourceUi) || !/analysisWorkerClient\.scanFrameTypes/.test(sourceUi)) {
     throw new Error("File analysis and frame scanning must be routed through the analysis worker client.");
@@ -256,6 +310,7 @@ async function main() {
   if (!window.MP4AnalyzerDevTools || typeof window.MP4AnalyzerDevTools.analyzeFile !== "function") {
     throw new Error("MP4AnalyzerDevTools.analyzeFile is not exposed.");
   }
+  await window.MP4AnalyzerDevTools.loadRuntime();
   if (typeof window.MP4AnalyzerDevTools.synchronizeFrameSelectionToPlayback !== "function") {
     throw new Error("MP4AnalyzerDevTools.synchronizeFrameSelectionToPlayback is not exposed.");
   }

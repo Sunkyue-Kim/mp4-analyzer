@@ -1,5 +1,25 @@
 export const SAMPLE_FILES = [
   {
+    id: "android-avc-aac-co64",
+    fileName: "1000024017.mp4",
+    path: "validation/generated/1000024017.mp4",
+    type: "video/mp4",
+    labels: {
+      en: "Android AVC + AAC co64 sample",
+      ko: "Android AVC + AAC co64 샘플"
+    }
+  },
+  {
+    id: "android-hevc-main10-aac-co64",
+    fileName: "20260612_091058.mp4",
+    path: "validation/generated/20260612_091058.mp4",
+    type: "video/mp4",
+    labels: {
+      en: "Android HEVC Main10 + AAC co64 sample",
+      ko: "Android HEVC Main10 + AAC co64 샘플"
+    }
+  },
+  {
     id: "avc-bframes",
     fileName: "avc_bframes.mp4",
     path: "validation/generated/avc_bframes.mp4",

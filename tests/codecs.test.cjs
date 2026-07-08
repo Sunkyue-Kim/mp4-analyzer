@@ -96,5 +96,5 @@ test("codec registry provides interchangeable descriptors and scanners", async (
     codecConfig: { nalLengthSize: 4 }
   });
   assert.equal(scanner.codec, "AVC / H.264");
-  assert.equal(scanner.parse(new Uint8Array([0x00, 0x00, 0x00, 0x02, 0x65, 0xb0])).frameType, "I");
+  assert.equal((await scanner.parse(new Uint8Array([0x00, 0x00, 0x00, 0x02, 0x65, 0xb0]))).frameType, "I");
 });

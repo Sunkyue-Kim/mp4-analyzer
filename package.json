@@ -6,6 +6,8 @@
   "scripts": {
     "extract:source": "node tools/extract-source.cjs",
     "build": "node tools/build.cjs",
+    "build:single": "node tools/build.cjs single",
+    "build:chunked": "node tools/build.cjs chunked",
     "test": "node --no-warnings --experimental-vm-modules --test \"tests/*.test.cjs\"",
     "test:coverage": "node --no-warnings --experimental-vm-modules --test --experimental-test-coverage \"tests/*.test.cjs\"",
     "verify": "node tools/build.cjs && node --no-warnings --experimental-vm-modules --test \"tests/*.test.cjs\" && node tools/verify-samples.cjs && node tools/verify-ui.cjs",

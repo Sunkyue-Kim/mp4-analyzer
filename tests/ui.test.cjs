@@ -22,7 +22,7 @@ test("UI helpers keep sample catalog, media detection, escaping, CSV, and frame 
 
 test("data grid renderer builds reusable scrollable grid markup", async () => {
   const loader = await createSourceModuleLoader();
-  const { renderDataGridTable } = await loader.import("src/js/ui/data-grid.js");
+  const { createDataGridLayout, renderDataGridTable } = await loader.import("src/js/ui/data-grid.js");
   const html = renderDataGridTable({
     className: "test-grid",
     minimumWidth: "320px",
@@ -45,6 +45,7 @@ test("data grid renderer builds reusable scrollable grid markup", async () => {
   assert.match(html, /class="data-grid-row clickable" role="button" data-frame-key="1:2"/);
   assert.match(html, /&lt;unsafe&gt;/);
   assert.match(html, /title="abc"/);
+  assert.equal(createDataGridLayout({ minimumWidth: "320px", columns: [{ label: "Name", width: "120px" }], rows: [] }).minimumWidth, "320px");
 });
 
 test("data grid renderer expands overflow width from headers and cell content", async () => {
@@ -190,6 +191,7 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   const sourceUi = fs.readFileSync(path.join(rootDirectory, "src", "js", "ui", "analyzer-ui.js"), "utf8");
   const sourceWorker = fs.readFileSync(path.join(rootDirectory, "src", "js", "worker", "analyzer-worker.js"), "utf8");
   const builtHtml = fs.readFileSync(path.join(rootDirectory, "mp4-analyzer.html"), "utf8");
+  const chunkedHtmlPath = path.join(rootDirectory, "chunked", "index.html");
 
   for (const id of [
     "fileInput", "languageSelect", "sampleField", "sampleSelect", "openButton",
@@ -197,7 +199,7 @@ test("source HTML has required controls, tabs, and no external runtime assets af
     "mediaPreviewBar", "summaryPanel", "boxesPanel", "tracksPanel",
     "framesPanel", "metricsPanel", "fragmentsPanel", "warningsPanel",
     "frameGraphButton", "frameTableButton", "autoPlaybackSynchronizationToggle",
-    "frameWrap", "frameScroller", "graphScroller"
+    "frameWrap", "frameHeader", "frameScroller", "graphScroller"
   ]) {
     assert.match(sourceHtml, new RegExp("id=\"" + id + "\""));
   }
@@ -211,6 +213,8 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /requestVideoFrameCallback/);
   assert.match(sourceUi, /requestAnimationFrame\(runPlaybackSynchronizationStep\)/);
   assert.match(sourceUi, /createRecyclerView/);
+  assert.match(sourceUi, /createDataGridLayout/);
+  assert.match(sourceUi, /renderDataGridCells/);
   assert.match(sourceUi, /frameTableRecycler\.setRows\(rows\)/);
   assert.match(sourceUi, /createAnalysisWorkerClient/);
   assert.match(sourceWorker, /self\.onmessage/);
@@ -220,6 +224,13 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(builtHtml, /MP4AnalyzerWorkerSource/);
   assert.match(builtHtml, /window\.MP4AnalyzerCore/);
   assert.match(builtHtml, /window\.MP4AnalyzerDevTools/);
+  if (fs.existsSync(chunkedHtmlPath)) {
+    const chunkedHtml = fs.readFileSync(chunkedHtmlPath, "utf8");
+    assert.match(chunkedHtml, /<base href="\.\.\/">/);
+    assert.match(chunkedHtml, /MP4AnalyzerWorkerModuleUrl/);
+    assert.match(chunkedHtml, /<script type="module" src="chunked\/assets\/app-/);
+    assert.doesNotMatch(chunkedHtml, /MP4AnalyzerWorkerSource/);
+  }
 });
 
 test("i18n catalog contains matching Korean and English keys for visible UI strings", async () => {

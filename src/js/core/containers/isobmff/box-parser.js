@@ -1,8 +1,8 @@
-import { ByteCursor, fourCcFromBytes, hexByte, readFullBoxHeader } from "../../common/binary.js";
+import { ByteCursor, MAX_SAFE_BIGINT, fourCcFromBytes, hexByte, readFullBoxHeader } from "../../common/binary.js";
 import {
   VIDEO_SAMPLE_ENTRIES,
   AUDIO_SAMPLE_ENTRIES,
-  getCodecByConfigurationBoxType
+  parseCodecConfiguration
 } from "../../codecs/registry.js";
 import { CONTAINER_BOXES, FULLBOX_CONTAINER_OFFSETS, PARSED_FIELD_BOXES } from "./box-types.js";
 
@@ -100,7 +100,7 @@ async function parseKnownBoxFields(reader, node) {
     else if (node.type === "tkhd") parseTkhd(cursor, node);
     else if (node.type === "mdhd") parseMdhd(cursor, node);
     else if (node.type === "hdlr") parseHdlr(cursor, node);
-    else if (node.type === "stsd") parseStsd(cursor, node);
+    else if (node.type === "stsd") await parseStsd(cursor, node);
     else if (node.type === "stts") parseStts(cursor, node);
     else if (node.type === "ctts") parseCtts(cursor, node);
     else if (node.type === "stss") parseStss(cursor, node);
@@ -173,7 +173,7 @@ function parseHdlr(cursor, node) {
   node.fields = { version: full.version, flags: full.flags, handlerType, name };
 }
 
-function parseStsd(cursor, node) {
+async function parseStsd(cursor, node) {
   const full = readFullBoxHeader(cursor);
   const entryCount = cursor.uint32(4);
   const entries = [];
@@ -189,15 +189,15 @@ function parseStsd(cursor, node) {
       entry.width = cursor.uint16(entryStart + 32);
       entry.height = cursor.uint16(entryStart + 34);
       entry.depth = cursor.uint16(entryStart + 82);
-      parseSampleEntryChildren(cursor, entryStart + 86, entryEnd, entry);
+      await parseSampleEntryChildren(cursor, entryStart + 86, entryEnd, entry);
     } else if (AUDIO_SAMPLE_ENTRIES.has(format) && entryStart + 36 <= entryEnd) {
       entry.dataReferenceIndex = cursor.uint16(entryStart + 14);
       entry.channelCount = cursor.uint16(entryStart + 24);
       entry.sampleSize = cursor.uint16(entryStart + 26);
       entry.sampleRate = cursor.uint32(entryStart + 32) / 65536;
-      parseSampleEntryChildren(cursor, entryStart + 36, entryEnd, entry);
+      await parseSampleEntryChildren(cursor, entryStart + 36, entryEnd, entry);
     } else {
-      parseSampleEntryChildren(cursor, entryStart + 16, entryEnd, entry);
+      await parseSampleEntryChildren(cursor, entryStart + 16, entryEnd, entry);
     }
     entries.push(entry);
     if (entrySize <= 0) break;
@@ -206,18 +206,18 @@ function parseStsd(cursor, node) {
   node.fields = { version: full.version, flags: full.flags, entryCount, entries };
 }
 
-function parseSampleEntryChildren(cursor, start, end, entry) {
+async function parseSampleEntryChildren(cursor, start, end, entry) {
   let offset = start;
   while (offset + 8 <= end) {
     const childSize = cursor.uint32(offset);
     const childType = cursor.string(offset + 4, 4);
     if (childSize < 8 || offset + childSize > end) break;
     const child = { type: childType, size: childSize };
-    const codecDescriptor = getCodecByConfigurationBoxType(childType);
-    if (codecDescriptor && typeof codecDescriptor.parseConfiguration === "function") {
-      child.fields = codecDescriptor.parseConfiguration(cursor.bytesAt(offset + 8, childSize - 8));
-      entry.codecDescriptor = codecDescriptor.id;
-      entry.codecConfig = codecDescriptor.extractTrackConfig ? codecDescriptor.extractTrackConfig(child.fields) : child.fields;
+    const codecConfiguration = await parseCodecConfiguration(childType, cursor.bytesAt(offset + 8, childSize - 8));
+    if (codecConfiguration) {
+      child.fields = codecConfiguration.fields;
+      entry.codecDescriptor = codecConfiguration.codecDescriptor.id;
+      entry.codecConfig = codecConfiguration.trackConfig;
       if (childType === "esds") entry.esds = child.fields;
     } else if (childType === "pasp" && childSize >= 16) {
       child.fields = { hSpacing: cursor.uint32(offset + 8), vSpacing: cursor.uint32(offset + 12) };

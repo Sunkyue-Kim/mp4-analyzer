@@ -1,9 +1,19 @@
 const WORKER_SOURCE_GLOBAL = "MP4AnalyzerWorkerSource";
+const WORKER_MODULE_URL_GLOBAL = "MP4AnalyzerWorkerModuleUrl";
 
 export function createAnalysisWorkerClient(options) {
+  const workerModuleUrl = getWorkerModuleUrl();
+  if (workerModuleUrl && typeof Worker !== "undefined") {
+    return new BrowserAnalysisWorkerClient(() => new Worker(workerModuleUrl, { type: "module" }));
+  }
   const workerSource = getInlineWorkerSource();
   if (workerSource && typeof Worker !== "undefined" && typeof Blob !== "undefined" && typeof URL !== "undefined") {
-    return new BlobAnalysisWorkerClient(workerSource);
+    return new BrowserAnalysisWorkerClient(() => {
+      const workerUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
+      const worker = new Worker(workerUrl);
+      URL.revokeObjectURL(workerUrl);
+      return worker;
+    });
   }
   return new DirectAnalysisWorkerClient(options.Core);
 }
@@ -13,9 +23,14 @@ function getInlineWorkerSource() {
   return window[WORKER_SOURCE_GLOBAL] || "";
 }
 
-class BlobAnalysisWorkerClient {
-  constructor(workerSource) {
-    this.workerSource = workerSource;
+function getWorkerModuleUrl() {
+  if (typeof window === "undefined") return "";
+  return window[WORKER_MODULE_URL_GLOBAL] || "";
+}
+
+class BrowserAnalysisWorkerClient {
+  constructor(createWorker) {
+    this.createWorker = createWorker;
     this.worker = null;
     this.nextRequestId = 1;
     this.pendingRequest = null;
@@ -67,9 +82,7 @@ class BlobAnalysisWorkerClient {
 
   ensureWorker() {
     if (this.worker) return;
-    const workerUrl = URL.createObjectURL(new Blob([this.workerSource], { type: "text/javascript" }));
-    this.worker = new Worker(workerUrl);
-    URL.revokeObjectURL(workerUrl);
+    this.worker = this.createWorker();
     this.worker.onmessage = (event) => this.handleMessage(event.data || {});
     this.worker.onerror = (event) => this.rejectPending(new Error(event.message || "Analysis worker failed."));
   }

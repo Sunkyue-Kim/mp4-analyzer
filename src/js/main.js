@@ -1,8 +1,11 @@
-import { Core } from "./core/analyzer-core.js";
-import { startUserInterface } from "./ui/analyzer-ui.js";
+import { startBootstrapUserInterface } from "./ui/bootstrap-ui.js";
+
+const loadAnalyzerRuntime = (options) => import("./runtime.js").then((module) => module.startAnalyzerRuntime(options));
 
 if (typeof window !== "undefined") {
-  window.MP4AnalyzerCore = Core;
+  window.MP4AnalyzerLoadRuntime = loadAnalyzerRuntime;
 }
 
-startUserInterface(Core);
+startBootstrapUserInterface({
+  loadRuntime: loadAnalyzerRuntime
+});

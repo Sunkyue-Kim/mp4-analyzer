@@ -155,6 +155,7 @@ class BlobRangeReader {
 }
 
 export {
+  MAX_SAFE_BIGINT,
   toSafeNumber,
   hexByte,
   fourCcFromBytes,

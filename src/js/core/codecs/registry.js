@@ -1,11 +1,61 @@
-import { aacAudioCodec } from "./audio/aac.js";
-import { mp3AudioCodec } from "./audio/mp3.js";
-import { opusAudioCodec } from "./audio/opus.js";
-import { avcVideoCodec } from "./video/avc.js";
-import { hevcVideoCodec } from "./video/hevc.js";
+const VIDEO_CODEC_DESCRIPTORS = [
+  {
+    id: "avc",
+    label: "AVC / H.264",
+    kind: "video",
+    sampleEntryTypes: ["avc1", "avc2", "avc3", "avc4"],
+    configurationBoxTypes: ["avcC"],
+    canScanSamples: true,
+    getSampleContext(track) {
+      return track && track.codecConfig && track.codecConfig.nalLengthSize
+        ? { nalLengthSize: track.codecConfig.nalLengthSize }
+        : null;
+    },
+    loadImplementation: () => import("./video/avc.js").then((module) => module.avcVideoCodec)
+  },
+  {
+    id: "hevc",
+    label: "HEVC / H.265",
+    kind: "video",
+    sampleEntryTypes: ["hvc1", "hev1"],
+    configurationBoxTypes: ["hvcC"],
+    canScanSamples: true,
+    getSampleContext(track) {
+      return track && track.codecConfig && track.codecConfig.nalLengthSize
+        ? { nalLengthSize: track.codecConfig.nalLengthSize }
+        : null;
+    },
+    loadImplementation: () => import("./video/hevc.js").then((module) => module.hevcVideoCodec)
+  }
+];
 
-const VIDEO_CODEC_DESCRIPTORS = [avcVideoCodec, hevcVideoCodec];
-const AUDIO_CODEC_DESCRIPTORS = [aacAudioCodec, mp3AudioCodec, opusAudioCodec];
+const AUDIO_CODEC_DESCRIPTORS = [
+  {
+    id: "aac",
+    label: "AAC",
+    kind: "audio",
+    sampleEntryTypes: ["mp4a"],
+    configurationBoxTypes: ["esds"],
+    loadImplementation: () => import("./audio/aac.js").then((module) => module.aacAudioCodec)
+  },
+  {
+    id: "mp3",
+    label: "MP3 / MPEG Audio",
+    kind: "audio",
+    sampleEntryTypes: ["mp3", ".mp3"],
+    configurationBoxTypes: [],
+    loadImplementation: () => import("./audio/mp3.js").then((module) => module.mp3AudioCodec)
+  },
+  {
+    id: "opus",
+    label: "Opus",
+    kind: "audio",
+    sampleEntryTypes: ["Opus", "A_OPUS"],
+    configurationBoxTypes: ["dOps", "OpusHead"],
+    loadImplementation: () => import("./audio/opus.js").then((module) => module.opusAudioCodec)
+  }
+];
+
 const CODEC_DESCRIPTORS = VIDEO_CODEC_DESCRIPTORS.concat(AUDIO_CODEC_DESCRIPTORS);
 
 export const VIDEO_SAMPLE_ENTRIES = new Set(VIDEO_CODEC_DESCRIPTORS.flatMap((codec) => codec.sampleEntryTypes).concat([
@@ -15,6 +65,8 @@ export const VIDEO_SAMPLE_ENTRIES = new Set(VIDEO_CODEC_DESCRIPTORS.flatMap((cod
 
 export const AUDIO_SAMPLE_ENTRIES = new Set(AUDIO_CODEC_DESCRIPTORS.flatMap((codec) => codec.sampleEntryTypes).concat(["enca", "ac-3", "ec-3", "Opus", "alac"]));
 
+const implementationPromises = new Map();
+
 function getCodecBySampleEntryType(sampleEntryType) {
   return CODEC_DESCRIPTORS.find((codec) => (codec.sampleEntryTypes || []).includes(sampleEntryType)) || null;
 }
@@ -23,14 +75,41 @@ function getCodecByConfigurationBoxType(configurationBoxType) {
   return CODEC_DESCRIPTORS.find((codec) => (codec.configurationBoxTypes || []).includes(configurationBoxType)) || null;
 }
 
+async function loadCodecImplementation(codecDescriptor) {
+  if (!codecDescriptor || typeof codecDescriptor.loadImplementation !== "function") return null;
+  if (!implementationPromises.has(codecDescriptor.id)) {
+    implementationPromises.set(codecDescriptor.id, codecDescriptor.loadImplementation());
+  }
+  return implementationPromises.get(codecDescriptor.id);
+}
+
+async function parseCodecConfiguration(configurationBoxType, bytes) {
+  const codecDescriptor = getCodecByConfigurationBoxType(configurationBoxType);
+  if (!codecDescriptor) return null;
+  const implementation = await loadCodecImplementation(codecDescriptor);
+  if (!implementation || typeof implementation.parseConfiguration !== "function") return null;
+  const fields = implementation.parseConfiguration(bytes);
+  return {
+    codecDescriptor,
+    fields,
+    trackConfig: implementation.extractTrackConfig ? implementation.extractTrackConfig(fields) : fields
+  };
+}
+
 function getFrameTypeScanner(track) {
-  const codec = getCodecBySampleEntryType(track && track.codec);
-  if (!codec || typeof codec.parseSample !== "function" || typeof codec.getSampleContext !== "function") return null;
-  const context = codec.getSampleContext(track);
+  const codecDescriptor = getCodecBySampleEntryType(track && track.codec);
+  if (!codecDescriptor || !codecDescriptor.canScanSamples || typeof codecDescriptor.getSampleContext !== "function") return null;
+  const context = codecDescriptor.getSampleContext(track);
   if (!context) return null;
   return {
-    codec: codec.label,
-    parse: (bytes) => codec.parseSample(bytes, context)
+    codec: codecDescriptor.label,
+    async parse(bytes) {
+      const implementation = await loadCodecImplementation(codecDescriptor);
+      if (!implementation || typeof implementation.parseSample !== "function") {
+        throw new Error(codecDescriptor.label + " sample parser is unavailable.");
+      }
+      return implementation.parseSample(bytes, context);
+    }
   };
 }
 
@@ -40,5 +119,7 @@ export {
   VIDEO_CODEC_DESCRIPTORS,
   getCodecByConfigurationBoxType,
   getCodecBySampleEntryType,
-  getFrameTypeScanner
+  getFrameTypeScanner,
+  loadCodecImplementation,
+  parseCodecConfiguration
 };

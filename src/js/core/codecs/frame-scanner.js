@@ -15,7 +15,7 @@ async function scanFrameTypes(analysis, options) {
     const item = scannableTracks.get(row.trackId);
     try {
       const bytes = await reader.readRange(BigInt(row.offset), BigInt(row.size));
-      const result = item.scanner.parse(bytes);
+      const result = await item.scanner.parse(bytes);
       row.frameType = result.frameType;
       row.nalTypes = result.nalTypes;
     } catch (error) {

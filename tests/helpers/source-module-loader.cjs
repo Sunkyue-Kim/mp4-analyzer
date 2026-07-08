@@ -58,6 +58,13 @@ class SourceModuleLoader {
     const sourceModule = new vm.SourceTextModule(source, {
       context: this.context,
       identifier: normalizedPath,
+      importModuleDynamically: async (specifier, referencingModule) => {
+        if (!specifier.startsWith(".")) {
+          throw new Error("Unsupported test dynamic import: " + specifier);
+        }
+        const resolvedPath = path.resolve(path.dirname(referencingModule.identifier), specifier);
+        return this.loadModule(resolvedPath);
+      },
       initializeImportMeta(meta) {
         meta.url = pathToFileURL(normalizedPath).href;
       }

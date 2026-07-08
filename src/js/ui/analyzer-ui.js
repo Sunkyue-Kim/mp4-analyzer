@@ -24,7 +24,12 @@ import {
 } from "../i18n/catalogs.js";
 import { SAMPLE_FILES } from "../samples/sample-manifest.js";
 import { createAnalysisWorkerClient } from "./analysis-worker-client.js";
-import { renderDataGridTable } from "./data-grid.js";
+import {
+  createDataGridLayout,
+  renderDataGridCells,
+  renderDataGridHeaderCells,
+  renderDataGridTable
+} from "./data-grid.js";
 import { createRecyclerView } from "./recycler-view.js";
 import { getVisibleSummaryCodecTrackCounts } from "./summary-model.js";
 import {
@@ -36,13 +41,14 @@ import {
   isLikelyMediaFile
 } from "./ui-helpers.js";
 
-export function startUserInterface(Core) {
+export function startUserInterface(Core, options = {}) {
   if (typeof document === "undefined" || !document.getElementById) return;
 const FRAME_TABLE_HEADER_HEIGHT = 34;
+const FRAME_TABLE_MINIMUM_WIDTH = "1048px";
 const state = {
   analysis: null,
-  language: getLanguage(),
-  activeTab: "summary",
+  language: options.initialLanguage || getLanguage(),
+  activeTab: options.initialActiveTab || "summary",
   selectedBox: null,
   selectedFrameKey: "",
   filteredRows: [],
@@ -101,6 +107,7 @@ const elements = {
   frameGraphView: document.getElementById("frameGraphView"),
   frameTableView: document.getElementById("frameTableView"),
   frameWrap: document.getElementById("frameWrap"),
+  frameHeader: document.getElementById("frameHeader"),
   frameScroller: document.getElementById("frameScroller"),
   frameSpacer: document.getElementById("frameSpacer"),
   graphAxisScale: document.getElementById("graphAxisScale"),
@@ -133,7 +140,7 @@ const frameGraphRecycler = createRecyclerView({
 
 const analysisWorkerClient = createAnalysisWorkerClient({ Core });
 
-window.MP4AnalyzerDevTools = {
+const devToolsApi = {
   getAnalysis: () => state.analysis,
   getFilteredRows: () => state.filteredRows,
   getSelectedFrameKey: () => state.selectedFrameKey,
@@ -190,6 +197,8 @@ window.MP4AnalyzerDevTools = {
     };
   }
 };
+
+window.MP4AnalyzerDevTools = devToolsApi;
 
 populateSampleSelect();
 elements.languageSelect.addEventListener("change", () => setLanguage(elements.languageSelect.value));
@@ -275,7 +284,12 @@ elements.clearFiltersButton.addEventListener("click", () => {
   renderFrames();
 });
 
-setLanguage(elements.languageSelect.value || "en");
+setLanguage(options.initialLanguage || elements.languageSelect.value || "en");
+if (options.initialActiveTab) setActiveTab(options.initialActiveTab);
+if (options.initialFile) Promise.resolve().then(() => startAnalysis(options.initialFile));
+if (options.initialSampleId) Promise.resolve().then(() => loadSampleById(options.initialSampleId));
+
+return devToolsApi;
 
 function setLanguage(language) {
   const languageCode = setI18nLanguage(language);
@@ -314,6 +328,7 @@ function refreshDynamicLanguage() {
     elements.warningsPanel.innerHTML = emptyHtml("empty.noWarnings");
     elements.frameCountText.textContent = t("count.rows", { count: 0 });
     elements.graphAxisUnit.textContent = t("unit.bytes");
+    renderFrameTableLayout([]);
     elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + '</option>';
     elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.noTrack")) + '</option>';
   }
@@ -678,6 +693,7 @@ function resetView(file, options = {}) {
   elements.metricsBody.innerHTML = emptyHtml("empty.parsingMetrics");
   elements.frameWrap.scrollTop = 0;
   elements.frameWrap.scrollLeft = 0;
+  renderFrameTableLayout([]);
   frameTableRecycler.setRows([]);
   frameTableRecycler.renderNow();
   frameGraphRecycler.setRows([]);
@@ -1240,6 +1256,7 @@ function renderFrames() {
   state.graphRows = rows.slice().sort(compareRowsByPresentationTime);
   state.graphMaxSize = Math.max(1, ...state.graphRows.map((row) => row.size || 0));
   elements.frameCountText.textContent = t("count.rows", { count: rows.length });
+  renderFrameTableLayout(rows);
   frameTableRecycler.setRows(rows);
   frameGraphRecycler.setRows(state.graphRows);
   renderGraphAxis();
@@ -1248,6 +1265,34 @@ function renderFrames() {
     if (state.selectedFrameKey && !rows.some((row) => getFrameRowKey(row) === state.selectedFrameKey)) state.selectedFrameKey = "";
     scheduleFrameRender();
   }
+}
+
+function renderFrameTableLayout(rows) {
+  const columns = getFrameTableColumns();
+  const layout = createDataGridLayout({
+    minimumWidth: FRAME_TABLE_MINIMUM_WIDTH,
+    columns,
+    rows: rows.map((row) => ({ cells: getFrameTableCells(row) }))
+  });
+  elements.frameWrap.style.setProperty("--data-grid-columns", layout.gridTemplateColumns);
+  elements.frameWrap.style.setProperty("--data-grid-width", layout.minimumWidth);
+  elements.frameHeader.innerHTML = renderDataGridHeaderCells(columns);
+}
+
+function getFrameTableColumns() {
+  return [
+    { label: t("column.index"), width: "72px" },
+    { label: t("column.track"), width: "76px" },
+    { label: t("column.type"), width: "92px" },
+    { label: t("column.offset"), width: "minmax(120px, 1.2fr)" },
+    { label: t("column.size"), width: "92px" },
+    { label: "DTS", width: "98px" },
+    { label: "PTS", width: "98px" },
+    { label: t("column.duration"), width: "90px" },
+    { label: t("column.sync"), width: "70px" },
+    { label: "NAL", width: "120px" },
+    { label: t("column.chunkFragment"), width: "120px" }
+  ];
 }
 
 function compareRowsByPresentationTime(left, right) {
@@ -1323,14 +1368,32 @@ function renderVisibleGraphRows() {
 }
 
 function renderFrameRow(row, visualIndex) {
-  const type = row.frameType || "unknown";
-  const typeClass = getFrameTypeClass(type);
-  const chunkOrFragment = row.fragmentIndex ? "frag " + row.fragmentIndex : row.chunkIndex ? "chunk " + row.chunkIndex : "";
   const frameRowKey = getFrameRowKey(row);
   const selectedClass = frameRowKey === state.selectedFrameKey ? " selected" : "";
   const ariaLabel = t("aria.seekFrame", { trackId: row.trackId, sampleIndex: row.sampleIndex, time: formatGraphTime(row) });
   return '<div class="frame-row data-grid-row clickable' + selectedClass + '" role="button" tabindex="0" data-frame-key="' + escapeHtml(frameRowKey) + '" aria-label="' + escapeHtml(ariaLabel) + '" style="top:' + (visualIndex * ROW_HEIGHT) + 'px">' +
-    '<div>' + row.sampleIndex + '</div><div>' + row.trackId + '</div><div><span class="pill ' + typeClass + '">' + escapeHtml(formatFrameTypeLabel(type)) + '</span></div><div title="' + escapeHtml(row.offset) + '">' + escapeHtml(row.offset) + '</div><div>' + row.size + '</div><div>' + row.dts + '</div><div>' + row.pts + '</div><div>' + row.duration + '</div><div>' + (row.isSync ? t("value.yes") : t("value.no")) + '</div><div title="' + escapeHtml(row.nalTypes.join(", ")) + '">' + escapeHtml(row.nalTypes.join(",")) + '</div><div>' + escapeHtml(chunkOrFragment) + '</div></div>';
+    renderDataGridCells(getFrameTableCells(row)) +
+    '</div>';
+}
+
+function getFrameTableCells(row) {
+  const type = row.frameType || "unknown";
+  const typeClass = getFrameTypeClass(type);
+  const nalTypes = row.nalTypes || [];
+  const chunkOrFragment = row.fragmentIndex ? "frag " + row.fragmentIndex : row.chunkIndex ? "chunk " + row.chunkIndex : "";
+  return [
+    row.sampleIndex,
+    row.trackId,
+    { html: '<span class="pill ' + typeClass + '">' + escapeHtml(formatFrameTypeLabel(type)) + '</span>' },
+    { value: row.offset, title: row.offset },
+    row.size,
+    row.dts,
+    row.pts,
+    row.duration,
+    row.isSync ? t("value.yes") : t("value.no"),
+    { value: nalTypes.join(","), title: nalTypes.join(", ") },
+    chunkOrFragment
+  ];
 }
 
 function renderGraphRow(row, visualIndex) {

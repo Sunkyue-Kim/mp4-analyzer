@@ -31,10 +31,19 @@ npm install
 npm run build
 ```
 
-Build outputs are still single HTML files:
+Single-file outputs:
 
 - `mp4-analyzer.html`: readable single-file HTML for inspection
 - `index.html`: minified single-file HTML and GitHub Pages entry point
+
+The build also emits a chunked lazy-load variant:
+
+- `chunked/index.html`: minified HTML shell that loads ESM chunks from `chunked/assets/`
+- `chunked/assets/`: minified app, worker, shared chunks, and CSS
+
+Use `npm run build:single` for only the single-file outputs, or `npm run build:chunked` for only the chunked lazy-load output. The default `npm run build` creates both.
+
+In the chunked build, the initial app chunk only handles the lightweight shell: language, file open/drop, sample selection, and tab switching before analysis starts. The full analyzer runtime is lazy-loaded when a file or hosted sample is opened. Container analyzers and codec implementations are also loaded through dynamic imports, so opening an MP4 does not load WebM/Ogg/MP3 analyzers, and parsing/scanning an AVC file does not load the HEVC codec chunk.
 
 ## Source Layout
 
@@ -72,7 +81,7 @@ Validation samples live under `validation/generated/` and are also exposed by th
 
 Current coverage snapshot from `npm run test:coverage`:
 
-- Tests: 16 passed, 0 failed
-- All files: 93.01% line coverage, 64.29% branch coverage, 92.73% function coverage
-- Strong coverage areas: binary readers, bitstream helpers, formatting, codec registry, i18n, UI helper logic, ISO BMFF sample modeling, and bundled sample container integration
-- Lower branch coverage remains mainly in malformed/edge container branches such as uncommon HEVC arrays, oversized/invalid MP4 boxes, MP3 ID3v1 edge metadata, and WebM lacing variants
+- Tests: 21 passed, 0 failed
+- All files: 91.77% line coverage, 63.83% branch coverage, 88.89% function coverage
+- Strong coverage areas: binary readers, bitstream helpers, formatting, codec registry, i18n, data grid/recycler helpers, ISO BMFF sample modeling, and bundled sample container integration
+- Lower branch coverage remains mainly in browser-worker runtime branches and malformed/edge container branches such as uncommon HEVC arrays, oversized/invalid MP4 boxes, MP3 ID3v1 edge metadata, and WebM lacing variants

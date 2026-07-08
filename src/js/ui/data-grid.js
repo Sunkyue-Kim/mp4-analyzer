@@ -8,24 +8,42 @@ export function renderDataGridTable(options) {
   const columns = options.columns || [];
   const rows = options.rows || [];
   const className = options.className ? " " + options.className : "";
-  const columnLayout = createDataGridColumnLayout(columns, rows);
-  const minimumWidth = normalizeDataGridMinimumWidth(options.minimumWidth, columnLayout.minimumWidthPixels);
-  const style = "--data-grid-columns:" + columnLayout.gridTemplateColumns + ";--data-grid-width:" + minimumWidth + ";";
-  return '<div class="data-grid-shell' + escapeHtml(className) + '" style="' + escapeHtml(style) + '">' +
+  const layout = createDataGridLayout(options);
+  return '<div class="data-grid-shell' + escapeHtml(className) + '" style="' + escapeHtml(layout.style) + '">' +
     '<div class="data-grid-scroll"><div class="data-grid-table">' +
     renderDataGridHeader(columns) +
     '<div class="data-grid-body">' + rows.map(renderDataGridRow).join("") + '</div>' +
     '</div></div></div>';
 }
 
-function renderDataGridHeader(columns) {
-  return '<div class="data-grid-header">' + columns.map((column) => {
+export function createDataGridLayout(options) {
+  const columns = options.columns || [];
+  const rows = options.rows || [];
+  const columnLayout = createDataGridColumnLayout(columns, rows);
+  const minimumWidth = normalizeDataGridMinimumWidth(options.minimumWidth, columnLayout.minimumWidthPixels);
+  return {
+    gridTemplateColumns: columnLayout.gridTemplateColumns,
+    minimumWidth,
+    style: "--data-grid-columns:" + columnLayout.gridTemplateColumns + ";--data-grid-width:" + minimumWidth + ";"
+  };
+}
+
+export function renderDataGridHeaderCells(columns) {
+  return columns.map((column) => {
     return renderDataGridCell({
       value: column.label,
       className: column.className,
       title: column.title
     });
-  }).join("") + '</div>';
+  }).join("");
+}
+
+function renderDataGridHeader(columns) {
+  return '<div class="data-grid-header">' + renderDataGridHeaderCells(columns) + '</div>';
+}
+
+export function renderDataGridCells(cells) {
+  return (cells || []).map(renderDataGridCell).join("");
 }
 
 function createDataGridColumnLayout(columns, rows) {
@@ -115,7 +133,7 @@ function decodeBasicHtmlEntities(value) {
 function renderDataGridRow(row) {
   const className = row.className ? " " + row.className : "";
   return '<div class="data-grid-row' + escapeHtml(className) + '"' + renderDataGridAttributes(row.attributes) + '>' +
-    (row.cells || []).map(renderDataGridCell).join("") +
+    renderDataGridCells(row.cells) +
     '</div>';
 }
 

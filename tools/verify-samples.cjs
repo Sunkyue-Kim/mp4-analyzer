@@ -6,6 +6,8 @@ const htmlPath = path.join(rootDirectory, "mp4-analyzer.html");
 const samplesDirectory = path.join(rootDirectory, "validation", "generated");
 
 const expectedSamples = new Map([
+  ["1000024017.mp4", { type: "video/mp4", container: "isobmff", tracks: 2, samples: 1752, frameTypes: ["I", "P", "AAC"], moofs: 0, codecs: ["avc1", "mp4a"] }],
+  ["20260612_091058.mp4", { type: "video/mp4", container: "isobmff", tracks: 2, samples: 1752, frameTypes: ["I", "P", "B", "AAC"], moofs: 0, codecs: ["hvc1", "mp4a"] }],
   ["avc_10020.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 10020, frameTypes: ["I", "P"], moofs: 0, codecs: ["avc1"] }],
   ["avc_bframes.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 120, frameTypes: ["I", "P", "B"], moofs: 0, codecs: ["avc1"] }],
   ["avc_fragmented.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 120, frameTypes: ["I", "P", "B"], moofs: 5, codecs: ["avc1"] }],
@@ -16,8 +18,8 @@ const expectedSamples = new Map([
 ]);
 
 async function main() {
-  const core = loadCoreFromHtml();
-  const selfTestResult = core.runParserSelfTests();
+  const core = await loadCoreFromHtml();
+  const selfTestResult = await core.runParserSelfTests();
   if (!selfTestResult.passed) throw new Error("Core self-tests failed.");
   if (typeof core.getDefaultSampleFrameType !== "function") {
     throw new Error("Core.getDefaultSampleFrameType is not exported.");
@@ -64,12 +66,14 @@ async function main() {
   console.log(JSON.stringify({ selfTests: selfTestResult.results.length, results }, null, 2));
 }
 
-function loadCoreFromHtml() {
+async function loadCoreFromHtml() {
   const html = fs.readFileSync(htmlPath, "utf8");
   const scriptMatch = html.match(/<script>([\s\S]*)<\/script>/i);
   if (!scriptMatch) throw new Error("mp4-analyzer.html has no inline script.");
   global.window = {};
   eval(scriptMatch[1]);
+  if (typeof window.MP4AnalyzerLoadRuntime !== "function") throw new Error("MP4AnalyzerLoadRuntime was not exposed.");
+  await window.MP4AnalyzerLoadRuntime();
   if (!window.MP4AnalyzerCore) throw new Error("MP4AnalyzerCore was not exposed.");
   return window.MP4AnalyzerCore;
 }
