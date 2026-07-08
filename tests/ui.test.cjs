@@ -625,6 +625,9 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceHtml, /id="autoPlaybackSynchronizationToggle" type="checkbox" checked/);
   assert.match(sourceUi, /requestVideoFrameCallback/);
   assert.match(sourceUi, /requestAnimationFrame\(runPlaybackSynchronizationStep\)/);
+  assert.match(sourceUi, /shouldUseVideoFramePlaybackSynchronization/);
+  assert.match(sourceUi, /hasVideoPlaybackSynchronizationTrack/);
+  assert.match(sourceUi, /getPlaybackSynchronizationDebug/);
   assert.match(sourceUi, /synchronizeFragmentSelectionToPlayback/);
   assert.match(sourceUi, /handleFragmentRowPointerActivation/);
   assert.match(sourceUi, /renderJsonViewer/);

@@ -9,6 +9,7 @@ const sourceStylePath = path.join(rootDirectory, "src", "styles.css");
 const sourceUiPath = path.join(rootDirectory, "src", "js", "ui", "analyzer-ui.js");
 const samplePath = path.join(rootDirectory, "validation", "generated", "avc_fragmented.mp4");
 const webmSamplePath = path.join(rootDirectory, "validation", "generated", "webm_vp9_opus.webm");
+const audioSamplePath = path.join(rootDirectory, "validation", "generated", "audio_mp3.mp3");
 
 class FakeElement {
   constructor(id = "") {
@@ -579,6 +580,8 @@ async function main() {
   }
 
   const sampleBytes = fs.readFileSync(samplePath);
+  fakeDocument.getElementById("filePreview").requestVideoFrameCallback = () => 1001;
+  fakeDocument.getElementById("filePreview").cancelVideoFrameCallback = () => {};
   const sampleFile = new File([sampleBytes], "avc_fragmented.mp4", { type: "video/mp4" });
   await window.MP4AnalyzerDevTools.analyzeFile(sampleFile);
 
@@ -590,6 +593,10 @@ async function main() {
   const metricsSummary = window.MP4AnalyzerDevTools.getMetricsSummary();
   if (!metricsSummary || metricsSummary.averageBitrate <= 0) {
     throw new Error("Metrics summary was not rendered/calculable.");
+  }
+  const videoPlaybackSynchronizationDebug = window.MP4AnalyzerDevTools.getPlaybackSynchronizationDebug();
+  if (!videoPlaybackSynchronizationDebug.shouldUseVideoFrameCallback || !videoPlaybackSynchronizationDebug.hasVideoTrack) {
+    throw new Error("Video playback synchronization should use requestVideoFrameCallback when video tracks are present.");
   }
   fakeDocument.getElementById("metricsWindowInput").value = "30";
   const metricsDebug = window.MP4AnalyzerDevTools.getMetricsDebug();
@@ -773,6 +780,14 @@ async function main() {
   const audioMetricsSummary = window.MP4AnalyzerDevTools.getMetricsSummary();
   if (!audioMetricsSummary || audioMetricsSummary.averageBitrate <= 0 || audioMetricsSummary.averageFps <= 0) {
     throw new Error("Metrics summary should be calculable for the WebM Opus track.");
+  }
+
+  const audioSampleBytes = fs.readFileSync(audioSamplePath);
+  const audioSampleFile = new File([audioSampleBytes], "audio_mp3.mp3", { type: "audio/mpeg" });
+  await window.MP4AnalyzerDevTools.analyzeFile(audioSampleFile);
+  const audioPlaybackSynchronizationDebug = window.MP4AnalyzerDevTools.getPlaybackSynchronizationDebug();
+  if (audioPlaybackSynchronizationDebug.shouldUseVideoFrameCallback || audioPlaybackSynchronizationDebug.hasVideoTrack) {
+    throw new Error("Audio-only playback synchronization must use animation-frame scheduling, not video-frame callbacks.");
   }
 
   console.log(JSON.stringify({

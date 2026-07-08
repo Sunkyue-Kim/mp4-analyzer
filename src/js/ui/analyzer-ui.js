@@ -199,6 +199,13 @@ const devToolsApi = {
     startPlaybackSynchronizationLoop();
     return row ? getFrameRowKey(row) : "";
   },
+  getPlaybackSynchronizationDebug: () => ({
+    requestType: state.playbackSynchronizationRequestType,
+    requestId: state.playbackSynchronizationRequestId,
+    shouldUseVideoFrameCallback: shouldUseVideoFramePlaybackSynchronization(),
+    hasVideoTrack: hasVideoPlaybackSynchronizationTrack(),
+    shouldRun: shouldRunPlaybackSynchronizationLoop()
+  }),
   synchronizeFrameSelectionToPlayback: (playbackSeconds) => {
     if (Number.isFinite(Number(playbackSeconds))) elements.filePreview.currentTime = Number(playbackSeconds);
     elements.autoPlaybackSynchronizationToggle.checked = true;
@@ -762,13 +769,28 @@ function stopPlaybackSynchronizationLoop() {
 }
 
 function requestNextPlaybackSynchronizationStep() {
-  if (typeof elements.filePreview.requestVideoFrameCallback === "function") {
+  if (shouldUseVideoFramePlaybackSynchronization()) {
     state.playbackSynchronizationRequestType = "video-frame";
     state.playbackSynchronizationRequestId = elements.filePreview.requestVideoFrameCallback(runPlaybackSynchronizationStep);
     return;
   }
   state.playbackSynchronizationRequestType = "animation-frame";
   state.playbackSynchronizationRequestId = requestAnimationFrame(runPlaybackSynchronizationStep);
+}
+
+function shouldUseVideoFramePlaybackSynchronization() {
+  return Boolean(
+    hasVideoPlaybackSynchronizationTrack() &&
+    typeof elements.filePreview.requestVideoFrameCallback === "function"
+  );
+}
+
+function hasVideoPlaybackSynchronizationTrack() {
+  return Boolean(
+    state.analysis &&
+    Array.isArray(state.analysis.tracks) &&
+    state.analysis.tracks.some((track) => track.handlerType === "vide")
+  );
 }
 
 function runPlaybackSynchronizationStep() {
