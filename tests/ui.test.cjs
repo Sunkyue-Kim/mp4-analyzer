@@ -135,10 +135,60 @@ test("summary codec track counts only include present codec groups", async () =>
   assert.deepEqual(JSON.parse(JSON.stringify(getVisibleSummaryCodecTrackCounts([{ codec: "raw " }]))), []);
 });
 
+test("analysis worker client falls back to direct core and preserves progress, scan, and cancel hooks", async () => {
+  const loader = await createSourceModuleLoader();
+  const { createAnalysisWorkerClient } = await loader.import("src/js/ui/analysis-worker-client.js");
+  const progressEvents = [];
+  let reader = null;
+  const Core = {
+    async analyzeFile(file, options) {
+      reader = {
+        cancelled: false,
+        cancel() {
+          this.cancelled = true;
+        }
+      };
+      options.onReader(reader);
+      options.onProgress("Parsing boxes", 50);
+      return {
+        file: { name: file.name, size: file.size, type: file.type },
+        reader,
+        topBoxes: [],
+        allBoxes: [],
+        tracks: [],
+        sampleRows: [{ sampleIndex: 1, frameType: "unknown" }],
+        warnings: []
+      };
+    },
+    async scanFrameTypes(analysis, options) {
+      options.onProgress("Scanning video samples", 100);
+      analysis.sampleRows[0].frameType = "I";
+    }
+  };
+  const client = createAnalysisWorkerClient({ Core });
+  const file = new File([new Uint8Array([1, 2, 3])], "tiny.mp4", { type: "video/mp4" });
+  const analysis = await client.analyzeFile(file, {
+    onProgress(label, percent) {
+      progressEvents.push([label, percent]);
+    }
+  });
+  const scannedAnalysis = await client.scanFrameTypes(analysis, {
+    onProgress(label, percent) {
+      progressEvents.push([label, percent]);
+    }
+  });
+
+  assert.equal(scannedAnalysis.sampleRows[0].frameType, "I");
+  assert.deepEqual(progressEvents, [["Parsing boxes", 50], ["Scanning video samples", 100]]);
+  client.cancel();
+  assert.equal(reader.cancelled, true);
+});
+
 test("source HTML has required controls, tabs, and no external runtime assets after build", () => {
   const rootDirectory = path.resolve(__dirname, "..");
   const sourceHtml = fs.readFileSync(path.join(rootDirectory, "src", "index.html"), "utf8");
   const sourceUi = fs.readFileSync(path.join(rootDirectory, "src", "js", "ui", "analyzer-ui.js"), "utf8");
+  const sourceWorker = fs.readFileSync(path.join(rootDirectory, "src", "js", "worker", "analyzer-worker.js"), "utf8");
   const builtHtml = fs.readFileSync(path.join(rootDirectory, "mp4-analyzer.html"), "utf8");
 
   for (const id of [
@@ -162,7 +212,12 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /requestAnimationFrame\(runPlaybackSynchronizationStep\)/);
   assert.match(sourceUi, /createRecyclerView/);
   assert.match(sourceUi, /frameTableRecycler\.setRows\(rows\)/);
+  assert.match(sourceUi, /createAnalysisWorkerClient/);
+  assert.match(sourceWorker, /self\.onmessage/);
+  assert.match(sourceWorker, /analysisStart/);
+  assert.match(sourceWorker, /sampleRows/);
   assert.doesNotMatch(builtHtml, /<script\s+src=|<link\s+rel="stylesheet"/i);
+  assert.match(builtHtml, /MP4AnalyzerWorkerSource/);
   assert.match(builtHtml, /window\.MP4AnalyzerCore/);
   assert.match(builtHtml, /window\.MP4AnalyzerDevTools/);
 });

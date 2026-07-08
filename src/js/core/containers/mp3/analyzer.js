@@ -26,6 +26,7 @@ async function analyzeMp3File(file, options) {
   const onProgress = options && options.onProgress ? options.onProgress : function () {};
   const warnings = [];
   const reader = new BlobRangeReader(file);
+  if (options && options.onReader) options.onReader(reader);
   const firstBytes = await reader.readRange(0n, BigInt(Math.min(file.size, 4096)));
   const id3 = readId3v2Header(firstBytes);
   let offset = id3 ? id3.size : 0;

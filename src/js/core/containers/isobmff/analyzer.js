@@ -18,6 +18,7 @@ async function analyzeIsoBmffFile(file, options) {
   const onProgress = options && options.onProgress ? options.onProgress : function () {};
   const warnings = [];
   const reader = new BlobRangeReader(file);
+  if (options && options.onReader) options.onReader(reader);
   const fileSizeBig = BigInt(file.size);
   const topBoxes = await parseBoxes(reader, 0n, fileSizeBig, "", 0, warnings, onProgress);
   onProgress("Building track model", 66);

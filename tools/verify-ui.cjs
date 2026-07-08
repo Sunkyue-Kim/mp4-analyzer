@@ -214,6 +214,9 @@ async function main() {
   if (!/renderDataGridTable/.test(sourceUi) || !/className:\s*"tracks-grid"/.test(sourceUi) || !/className:\s*"fragments-grid"/.test(sourceUi) || !/className:\s*"largest-samples-grid"/.test(sourceUi)) {
     throw new Error("Tracks, fragments, and largest samples must use the reusable data grid component.");
   }
+  if (!/createAnalysisWorkerClient/.test(sourceUi) || !/analysisWorkerClient\.analyzeFile/.test(sourceUi) || !/analysisWorkerClient\.scanFrameTypes/.test(sourceUi)) {
+    throw new Error("File analysis and frame scanning must be routed through the analysis worker client.");
+  }
   if (!/frameWrap\.addEventListener\("scroll"/.test(sourceUi) || /frameScroller\.addEventListener\("scroll"/.test(sourceUi)) {
     throw new Error("Frame table virtual scroll must listen on frameWrap, not frameScroller.");
   }

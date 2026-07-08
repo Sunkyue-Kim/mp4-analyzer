@@ -11,9 +11,11 @@ const outputPagesHtmlPath = path.join(rootDirectory, "index.html");
 async function build() {
   const templateHtml = await fs.readFile(path.join(sourceDirectory, "index.html"), "utf8");
   const normalCss = await buildCss({ minify: false });
-  const normalJs = await buildJavaScript({ minify: false });
+  const normalWorkerJs = await buildWorkerJavaScript({ minify: false });
+  const normalJs = await buildJavaScript({ minify: false, workerJs: normalWorkerJs });
   const minifiedCss = await buildCss({ minify: true });
-  const minifiedJs = await buildJavaScript({ minify: true });
+  const minifiedWorkerJs = await buildWorkerJavaScript({ minify: true });
+  const minifiedJs = await buildJavaScript({ minify: true, workerJs: minifiedWorkerJs });
 
   const normalHtml = inlineAssets({
     templateHtml,
@@ -58,7 +60,7 @@ async function buildCss({ minify }) {
   return result.code.trim();
 }
 
-async function buildJavaScript({ minify }) {
+async function buildJavaScript({ minify, workerJs }) {
   const entrySource = await fs.readFile(path.join(sourceDirectory, "app.js"), "utf8");
   const result = await esbuild.build({
     stdin: {
@@ -74,7 +76,30 @@ async function buildJavaScript({ minify }) {
     minify,
     target: ["chrome115", "edge115", "firefox115", "safari16"]
   });
+  return createInlineWorkerSourceScript(workerJs) + "\n" + result.outputFiles[0].text.trim();
+}
+
+async function buildWorkerJavaScript({ minify }) {
+  const entrySource = await fs.readFile(path.join(sourceDirectory, "js", "worker", "analyzer-worker.js"), "utf8");
+  const result = await esbuild.build({
+    stdin: {
+      contents: entrySource,
+      resolveDir: path.join(sourceDirectory, "js", "worker"),
+      sourcefile: "analyzer-worker.js",
+      loader: "js"
+    },
+    plugins: [localSourcePlugin()],
+    bundle: true,
+    write: false,
+    format: "iife",
+    minify,
+    target: ["chrome115", "edge115", "firefox115", "safari16"]
+  });
   return result.outputFiles[0].text.trim();
+}
+
+function createInlineWorkerSourceScript(workerJs) {
+  return `if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = ${JSON.stringify(workerJs)};`;
 }
 
 function localSourcePlugin() {

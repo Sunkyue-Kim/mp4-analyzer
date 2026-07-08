@@ -97,6 +97,7 @@ async function analyzeWebmFile(file, options) {
   const onProgress = options && options.onProgress ? options.onProgress : function () {};
   const warnings = [];
   const reader = new BlobRangeReader(file);
+  if (options && options.onReader) options.onReader(reader);
   onProgress("Parsing EBML elements", 5);
   const topBoxes = await parseEbmlElements(reader, 0n, BigInt(file.size), "", 0, warnings, onProgress);
   const context = buildWebmContext(topBoxes, warnings);

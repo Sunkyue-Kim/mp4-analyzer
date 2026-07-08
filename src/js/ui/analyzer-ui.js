@@ -23,6 +23,7 @@ import {
   t
 } from "../i18n/catalogs.js";
 import { SAMPLE_FILES } from "../samples/sample-manifest.js";
+import { createAnalysisWorkerClient } from "./analysis-worker-client.js";
 import { renderDataGridTable } from "./data-grid.js";
 import { createRecyclerView } from "./recycler-view.js";
 import { getVisibleSummaryCodecTrackCounts } from "./summary-model.js";
@@ -130,6 +131,8 @@ const frameGraphRecycler = createRecyclerView({
   renderRow: renderGraphRow
 });
 
+const analysisWorkerClient = createAnalysisWorkerClient({ Core });
+
 window.MP4AnalyzerDevTools = {
   getAnalysis: () => state.analysis,
   getFilteredRows: () => state.filteredRows,
@@ -210,7 +213,7 @@ for (const tabButton of document.querySelectorAll(".tab")) {
 }
 
 elements.cancelButton.addEventListener("click", () => {
-  if (state.analysis && state.analysis.reader) state.analysis.reader.cancel();
+  analysisWorkerClient.cancel();
   setProgress("Cancelling...", 0);
 });
 
@@ -613,7 +616,7 @@ async function startAnalysis(file, options = {}) {
   setBusy(true);
   resetView(file, options);
   try {
-    const analysis = await Core.analyzeFile(file, { onProgress: setProgress });
+    const analysis = await analysisWorkerClient.analyzeFile(file, { onProgress: setProgress });
     state.analysis = analysis;
     updateMediaPreviewMeta(file, analysis);
     renderAll();
@@ -636,7 +639,8 @@ async function scanCurrentAnalysis() {
   setBusy(true);
   elements.scanButton.disabled = true;
   try {
-    await Core.scanFrameTypes(state.analysis, { onProgress: setProgress });
+    const analysis = await analysisWorkerClient.scanFrameTypes(state.analysis, { onProgress: setProgress });
+    state.analysis = analysis;
     setProgress("Frame type scan complete", 100);
     renderFrames();
     renderTracks();

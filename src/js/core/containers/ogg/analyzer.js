@@ -15,6 +15,7 @@ async function analyzeOggOpusFile(file, options) {
   const onProgress = options && options.onProgress ? options.onProgress : function () {};
   const warnings = [];
   const reader = new BlobRangeReader(file);
+  if (options && options.onReader) options.onReader(reader);
   const topBoxes = [];
   const rows = [];
   let offset = 0;
