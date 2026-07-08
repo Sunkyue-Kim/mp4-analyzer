@@ -81,7 +81,7 @@ Validation samples live under `validation/generated/` and are also exposed by th
 
 Current coverage snapshot from `npm run test:coverage`:
 
-- Tests: 29 passed, 0 failed
-- All files: 92.22% line coverage, 66.97% branch coverage, 89.60% function coverage
-- Strong coverage areas: binary readers, HTTP range readers, bitstream helpers, formatting, codec registry, i18n, data grid/recycler helpers, ISO BMFF sample modeling, ISO BMFF rare box parsing, source-map build wiring, and bundled sample container integration
+- Tests: 32 passed, 0 failed
+- All files: 94.40% line coverage, 68.05% branch coverage, 92.90% function coverage
+- Strong coverage areas: binary readers, HTTP range readers, browser worker client message flow, remote URL loader fallback/progress handling, bitstream helpers, formatting, codec registry, i18n, data grid/recycler helpers, ISO BMFF sample modeling, ISO BMFF rare box parsing, source-map build wiring, and bundled sample container integration
 - Lower branch coverage remains mainly in browser-worker runtime branches and malformed/edge container branches such as oversized/invalid MP4 boxes, remote download fallback branches, MP3 ID3v1 edge metadata, and WebM lacing variants

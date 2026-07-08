@@ -185,6 +185,125 @@ test("analysis worker client falls back to direct core and preserves progress, s
   assert.equal(reader.cancelled, true);
 });
 
+test("analysis worker client handles browser worker batches, partial updates, completion, and cancel", async () => {
+  const workerInstances = [];
+  class FakeWorker {
+    constructor(url, options) {
+      this.url = url;
+      this.options = options;
+      this.messages = [];
+      this.onmessage = null;
+      this.onerror = null;
+      workerInstances.push(this);
+    }
+
+    postMessage(message) {
+      this.messages.push(message);
+    }
+
+    emit(message) {
+      this.onmessage({ data: message });
+    }
+  }
+
+  const loader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: {
+      Worker: FakeWorker,
+      window: {
+        MP4AnalyzerWorkerModuleUrl: "chunked/assets/analyzer-worker.mjs"
+      }
+    }
+  });
+  const { createAnalysisWorkerClient } = await loader.import("src/js/ui/analysis-worker-client.js");
+  const progressEvents = [];
+  const partialAnalyses = [];
+  const client = createAnalysisWorkerClient({ Core: null });
+  const file = new File([new Uint8Array([1, 2, 3])], "tiny.mp4", { type: "video/mp4" });
+  const analysisPromise = client.analyzeFile(file, {
+    onProgress(label, percent) {
+      progressEvents.push([label, percent]);
+    },
+    onPartialAnalysis(analysis) {
+      partialAnalyses.push(analysis.sampleRows.map((row) => row && row.sampleIndex));
+    }
+  });
+  const worker = workerInstances[0];
+
+  assert.equal(worker.url, "chunked/assets/analyzer-worker.mjs");
+  assert.equal(worker.options.type, "module");
+  assert.equal(worker.messages[0].type, "analyze");
+  assert.equal(worker.messages[0].requestId, 1);
+  assert.equal(worker.messages[0].file.name, "tiny.mp4");
+  client.cancel();
+  assert.equal(worker.messages[1].type, "cancel");
+  assert.equal(worker.messages[1].requestId, 1);
+
+  worker.emit({ type: "progress", requestId: 1, label: "Parsing boxes", percent: 45 });
+  worker.emit({ type: "analysisStart", requestId: 1, analysis: { file: { name: "tiny.mp4" } }, sampleRowCount: 3 });
+  worker.emit({ type: "sampleRows", requestId: 1, startIndex: 2, rows: [{ sampleIndex: 3 }] });
+  worker.emit({ type: "sampleRows", requestId: 1, startIndex: 0, rows: [{ sampleIndex: 1 }, { sampleIndex: 2 }] });
+  worker.emit({ type: "analysisComplete", requestId: 1, kind: "partial" });
+  worker.emit({ type: "analysisComplete", requestId: 1, kind: "done" });
+
+  const analysis = await analysisPromise;
+  assert.deepEqual(progressEvents, [["Parsing boxes", 45]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(partialAnalyses)), [[1, 2, 3]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(analysis.sampleRows.map((row) => row.sampleIndex))), [1, 2, 3]);
+});
+
+test("analysis worker client uses inline worker source and rejects worker errors", async () => {
+  const createdWorkerUrls = [];
+  const revokedWorkerUrls = [];
+  const workerInstances = [];
+  class FakeWorker {
+    constructor(url) {
+      this.url = url;
+      this.messages = [];
+      this.onmessage = null;
+      this.onerror = null;
+      workerInstances.push(this);
+    }
+
+    postMessage(message) {
+      this.messages.push(message);
+    }
+  }
+
+  const loader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: {
+      Blob,
+      Worker: FakeWorker,
+      URL: {
+        createObjectURL(blob) {
+          createdWorkerUrls.push(blob.type);
+          return "blob:worker-source";
+        },
+        revokeObjectURL(url) {
+          revokedWorkerUrls.push(url);
+        }
+      },
+      window: {
+        MP4AnalyzerWorkerSource: "self.onmessage = function () {};"
+      }
+    }
+  });
+  const { createAnalysisWorkerClient } = await loader.import("src/js/ui/analysis-worker-client.js");
+  const client = createAnalysisWorkerClient({ Core: null });
+  const promise = client.scanFrameTypes({}, {});
+  const worker = workerInstances[0];
+
+  assert.equal(worker.url, "blob:worker-source");
+  assert.deepEqual(createdWorkerUrls, ["text/javascript"]);
+  assert.deepEqual(revokedWorkerUrls, ["blob:worker-source"]);
+  assert.equal(worker.messages[0].type, "scanFrameTypes");
+  assert.equal(worker.messages[0].requestId, 1);
+
+  worker.onerror({ message: "boom" });
+  await assert.rejects(promise, /boom/);
+});
+
 test("remote loader chooses HTTP range streaming only when verified and falls back to full download", async () => {
   const calls = [];
   const makeHeaders = (values) => ({
@@ -251,6 +370,75 @@ test("remote loader chooses HTTP range streaming only when verified and falls ba
   assert.equal(downloadedFile.size, 3);
   assert.throws(() => remoteLoader.normalizeRemoteMediaUrl("file:///tmp/video.mp4"), /Only http/);
   assert.ok(calls.some((call) => call.range === "bytes=0-0"));
+});
+
+test("remote loader handles streamed downloads, filenames, aborts, and non-OK responses", async () => {
+  const progressEvents = [];
+  const makeHeaders = (values) => ({
+    get(name) {
+      return values[String(name).toLowerCase()] || "";
+    }
+  });
+  const loader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: {
+      fetch: async (url) => {
+        if (url.includes("abort")) {
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          throw error;
+        }
+        if (url.includes("missing")) {
+          return {
+            ok: false,
+            status: 404,
+            statusText: "Not Found",
+            headers: makeHeaders({})
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: makeHeaders({
+            "content-disposition": "attachment; filename*=UTF-8''clip%20one.mp4",
+            "content-length": "5",
+            "content-type": "video/mp4"
+          }),
+          body: {
+            getReader() {
+              const chunks = [new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])];
+              return {
+                async read() {
+                  const value = chunks.shift();
+                  return value ? { done: false, value } : { done: true };
+                }
+              };
+            }
+          }
+        };
+      }
+    }
+  });
+  const remoteLoader = await loader.import("src/js/ui/remote-loader.js");
+
+  assert.equal(remoteLoader.normalizeRemoteMediaUrl("./movie.mp4", "https://media.test/path/page.html"), "https://media.test/path/movie.mp4");
+  assert.equal(remoteLoader.parseContentRangeSize("bytes 0-99/12345"), 12345);
+  assert.equal(remoteLoader.parseContentRangeSize("bytes 0-99/*"), 0);
+  assert.equal(remoteLoader.inferRemoteFileName("https://media.test/fallback.mp4", "attachment; filename=\"plain.mp4\""), "plain.mp4");
+  assert.equal(remoteLoader.inferRemoteFileName("https://media.test/fallback.mp4", "attachment; filename*=UTF-8''clip%20one.mp4"), "clip one.mp4");
+
+  await assert.rejects(remoteLoader.probeRemoteMediaResource("https://media.test/abort.mp4"), /cancelled/);
+  await assert.rejects(remoteLoader.downloadRemoteMediaFile("https://media.test/missing.mp4"), /Download failed: 404 Not Found/);
+  const downloadedFile = await remoteLoader.downloadRemoteMediaFile("https://media.test/video.mp4", {}, {
+    onProgress(loadedBytes, totalSize) {
+      progressEvents.push([loadedBytes, totalSize]);
+    }
+  });
+
+  assert.equal(downloadedFile.name, "clip one.mp4");
+  assert.equal(downloadedFile.type, "video/mp4");
+  assert.equal(downloadedFile.size, 5);
+  assert.deepEqual(progressEvents, [[2, 5], [5, 5]]);
 });
 
 test("source HTML has required controls, tabs, and no external runtime assets after build", () => {
