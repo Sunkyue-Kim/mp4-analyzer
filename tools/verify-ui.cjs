@@ -459,6 +459,9 @@ async function main() {
   if (!/id="fragmentPlaybackSynchronizationToggle"/.test(sourceHtml) || !/id="fragmentsBody"/.test(sourceHtml)) {
     throw new Error("Fragments tab must expose playback synchronization controls and a render body.");
   }
+  if (!/id="frameInternalsTooltip"\s+class="frame-internals-tooltip"/.test(sourceHtml)) {
+    throw new Error("Selected-frame internals must provide a custom tooltip element.");
+  }
   if (!/id="openUrlButton"/.test(sourceHtml) || !/id="remoteUrlModal"/.test(sourceHtml) || !/id="remoteUrlInput"/.test(sourceHtml)) {
     throw new Error("Source HTML must expose the remote URL button and modal controls.");
   }
@@ -491,6 +494,15 @@ async function main() {
   }
   if (/metric-axis-label/.test(sourceUi)) {
     throw new Error("Metric chart must not render axis text inside the stretched SVG.");
+  }
+  if (!/renderFrameInternalsTooltipAttributes/.test(sourceUi) || !/handleFrameInternalsTooltipPointerOver/.test(sourceUi)) {
+    throw new Error("Frame internals block details must use the custom tooltip controller.");
+  }
+  if (!/data-inspection-tooltip=/.test(sourceUi)) {
+    throw new Error("Frame internals hover targets must carry structured custom tooltip data.");
+  }
+  if (/block-cell [^"']+["'][\s\S]{0,200}title=/.test(sourceUi) || /audio-band-row["'][\s\S]{0,200}title=/.test(sourceUi)) {
+    throw new Error("Frame internals must not fall back to OS title tooltips for block or band details.");
   }
   if (!/tree-row" data-path=/.test(sourceUi) && !/tree-row"[^>]*data-path=/.test(sourceUi)) {
     throw new Error("Box tree rows must carry a data-path for selection.");

@@ -608,7 +608,7 @@ test("source HTML has required controls, tabs, and no external runtime assets af
     "warningsBody",
     "frameGraphButton", "frameTableButton", "autoPlaybackSynchronizationToggle",
     "fragmentPlaybackSynchronizationToggle", "fragmentCountText", "fragmentsBody",
-    "frameInternalsPanel", "frameInternalsBody",
+    "frameInternalsPanel", "frameInternalsBody", "frameInternalsTooltip",
     "frameWrap", "frameHeader", "frameScroller", "graphScroller",
     "remoteUrlModal", "remoteUrlForm", "remoteUrlInput", "remoteUrlSubmitButton"
   ]) {
@@ -628,6 +628,11 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /createRecyclerView/);
   assert.match(sourceUi, /buildFrameInternalsModel/);
   assert.match(sourceUi, /renderFrameInternals/);
+  assert.match(sourceUi, /renderFrameInternalsTooltipAttributes/);
+  assert.match(sourceUi, /handleFrameInternalsTooltipPointerOver/);
+  assert.match(sourceUi, /data-inspection-tooltip/);
+  assert.doesNotMatch(sourceUi, /block-cell [^"']+["'][\s\S]{0,200}title=/);
+  assert.doesNotMatch(sourceUi, /audio-band-row["'][\s\S]{0,200}title=/);
   assert.match(sourceUi, /createDataGridLayout/);
   assert.match(sourceUi, /renderDataGridCells/);
   assert.match(sourceUi, /frameTableRecycler\.setRows\(rows\)/);

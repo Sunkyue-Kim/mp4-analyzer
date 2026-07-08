@@ -74,7 +74,8 @@ const state = {
   playbackSynchronizationRequestId: 0,
   playbackSynchronizationRequestType: "",
   boxTreeActivationCount: 0,
-  lastBoxTreeActivation: null
+  lastBoxTreeActivation: null,
+  frameInternalsTooltipTarget: null
 };
 
 const elements = {
@@ -126,6 +127,7 @@ const elements = {
   frameTableView: document.getElementById("frameTableView"),
   frameInternalsPanel: document.getElementById("frameInternalsPanel"),
   frameInternalsBody: document.getElementById("frameInternalsBody"),
+  frameInternalsTooltip: document.getElementById("frameInternalsTooltip"),
   frameWrap: document.getElementById("frameWrap"),
   frameHeader: document.getElementById("frameHeader"),
   frameScroller: document.getElementById("frameScroller"),
@@ -283,6 +285,7 @@ elements.remoteUrlModal.addEventListener("click", (event) => {
 });
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elements.remoteUrlModal.hidden) closeRemoteUrlModal();
+  if (event.key === "Escape") hideFrameInternalsTooltip();
 });
 
 window.addEventListener("dragenter", handleWindowDragEnter, true);
@@ -290,6 +293,8 @@ window.addEventListener("dragover", handleWindowDragOver, true);
 window.addEventListener("dragleave", handleWindowDragLeave, true);
 window.addEventListener("dragend", hideDropOverlay, true);
 window.addEventListener("drop", handleWindowDrop, true);
+window.addEventListener("resize", hideFrameInternalsTooltip);
+window.addEventListener("scroll", hideFrameInternalsTooltip, true);
 
 for (const tabButton of document.querySelectorAll(".tab")) {
   tabButton.addEventListener("click", () => setActiveTab(tabButton.dataset.tab));
@@ -316,6 +321,12 @@ elements.exportJsonButton.addEventListener("click", exportJson);
 elements.exportCsvButton.addEventListener("click", exportCsv);
 elements.frameWrap.addEventListener("scroll", scheduleFrameRender);
 elements.graphScroller.addEventListener("scroll", scheduleFrameRender);
+elements.frameInternalsBody.addEventListener("pointerover", handleFrameInternalsTooltipPointerOver);
+elements.frameInternalsBody.addEventListener("pointermove", handleFrameInternalsTooltipPointerMove);
+elements.frameInternalsBody.addEventListener("pointerout", handleFrameInternalsTooltipPointerOut);
+elements.frameInternalsBody.addEventListener("focusin", handleFrameInternalsTooltipFocusIn);
+elements.frameInternalsBody.addEventListener("focusout", hideFrameInternalsTooltip);
+elements.frameInternalsBody.addEventListener("scroll", hideFrameInternalsTooltip);
 elements.frameSpacer.addEventListener("click", handleFrameRowPointerActivation);
 elements.graphSpacer.addEventListener("click", handleFrameRowPointerActivation);
 elements.metricsBody.addEventListener("click", handleFrameRowPointerActivation);
@@ -1723,6 +1734,7 @@ function renderFrames() {
 
 function renderFrameInternals() {
   if (!elements.frameInternalsBody) return;
+  hideFrameInternalsTooltip();
   const model = buildSelectedFrameInternalsModel();
   if (model.kind === "empty") {
     elements.frameInternalsBody.innerHTML = emptyHtml("frameInternals.empty");
@@ -1773,13 +1785,20 @@ function renderVideoFrameInternals(model) {
 }
 
 function renderVideoBlockCell(cell, model, frameClass) {
-  const title = [
-    model.unitName + " x " + (cell.unitColumnStart + 1) + "-" + cell.unitColumnEnd + ", y " + (cell.unitRowStart + 1) + "-" + cell.unitRowEnd,
-    "pixels " + cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom,
-    "estimated " + formatBytes(cell.estimatedBytes),
-    cell.nominalUnits + " nominal units"
-  ].join(" | ");
-  return '<div class="block-cell ' + frameClass + '" title="' + escapeHtml(title) + '" style="--cell-alpha:' + cell.intensity.toFixed(3) + '"></div>';
+  const title = model.unitName + " x " + (cell.unitColumnStart + 1) + "-" + cell.unitColumnEnd + ", y " + (cell.unitRowStart + 1) + "-" + cell.unitRowEnd;
+  const tooltipRows = [
+    [t("frameInternals.tooltip.pixelRange"), cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom],
+    [t("frameInternals.tooltip.estimatedBytes"), formatBytes(cell.estimatedBytes)],
+    [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
+    [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
+  ];
+  return '<div class="block-cell ' + frameClass + '"' +
+    renderFrameInternalsTooltipAttributes({
+      title,
+      rows: tooltipRows,
+      note: t("frameInternals.videoEstimateNote")
+    }) +
+    ' style="--cell-alpha:' + cell.intensity.toFixed(3) + '"></div>';
 }
 
 function renderAudioFrameInternals(model) {
@@ -1806,12 +1825,146 @@ function renderAudioFrameInternals(model) {
 
 function renderAudioBandRow(band) {
   const widthPercent = clamp(band.ratio * 100, band.active ? 2 : 0.8, 100);
-  const title = band.label + " " + band.range + " | estimated " + formatBytes(band.estimatedBytes);
-  return '<div class="audio-band-row" title="' + escapeHtml(title) + '">' +
+  const tooltipRows = [
+    [t("frameInternals.tooltip.frequencyRange"), band.range],
+    [t("frameInternals.tooltip.estimatedBytes"), formatBytes(band.estimatedBytes)],
+    [t("frameInternals.tooltip.relativeShare"), formatMetricNumber(band.ratio * 100, 1) + "%"],
+    [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
+  ];
+  return '<div class="audio-band-row"' +
+    renderFrameInternalsTooltipAttributes({
+      title: band.label,
+      rows: tooltipRows,
+      note: t("frameInternals.audioEstimateNote")
+    }) +
+    '>' +
     '<div class="audio-band-label">' + escapeHtml(band.label) + '<br><small>' + escapeHtml(band.range) + '</small></div>' +
     '<div class="audio-band-bar"><span class="audio-band-fill" style="width:' + widthPercent.toFixed(3) + '%;--band-alpha:' + band.intensity.toFixed(3) + '"></span></div>' +
     '<div class="audio-band-size">' + escapeHtml(formatBytes(band.estimatedBytes)) + '</div>' +
     '</div>';
+}
+
+function renderFrameInternalsTooltipAttributes(payload) {
+  const rows = Array.isArray(payload.rows)
+    ? payload.rows.filter((row) => row && row[0] !== undefined && row[1] !== undefined)
+    : [];
+  const normalizedPayload = {
+    title: String(payload.title || ""),
+    rows: rows.map(([label, value]) => [String(label), String(value)]),
+    note: String(payload.note || "")
+  };
+  const accessibleLabel = [
+    normalizedPayload.title,
+    ...normalizedPayload.rows.map(([label, value]) => label + ": " + value),
+    normalizedPayload.note
+  ].filter(Boolean).join(". ");
+  return ' data-inspection-tooltip="' + escapeHtml(JSON.stringify(normalizedPayload)) + '"' +
+    ' aria-label="' + escapeHtml(accessibleLabel) + '"';
+}
+
+function handleFrameInternalsTooltipPointerOver(event) {
+  const target = getFrameInternalsTooltipTarget(event.target);
+  if (!target) return;
+  showFrameInternalsTooltip(target, event.clientX, event.clientY);
+}
+
+function handleFrameInternalsTooltipPointerMove(event) {
+  const target = getFrameInternalsTooltipTarget(event.target);
+  if (!target) {
+    hideFrameInternalsTooltip();
+    return;
+  }
+  if (target !== state.frameInternalsTooltipTarget) {
+    showFrameInternalsTooltip(target, event.clientX, event.clientY);
+    return;
+  }
+  positionFrameInternalsTooltip(event.clientX, event.clientY, { anchorMode: "pointer" });
+}
+
+function handleFrameInternalsTooltipPointerOut(event) {
+  const currentTarget = state.frameInternalsTooltipTarget;
+  if (!currentTarget) return;
+  const relatedTarget = event.relatedTarget;
+  if (relatedTarget && (relatedTarget === currentTarget || currentTarget.contains(relatedTarget))) return;
+  if (relatedTarget && getFrameInternalsTooltipTarget(relatedTarget) === currentTarget) return;
+  hideFrameInternalsTooltip();
+}
+
+function handleFrameInternalsTooltipFocusIn(event) {
+  const target = getFrameInternalsTooltipTarget(event.target);
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  showFrameInternalsTooltip(target, rect.left + rect.width / 2, rect.bottom, { anchorMode: "center" });
+}
+
+function getFrameInternalsTooltipTarget(eventTarget) {
+  if (!eventTarget || !elements.frameInternalsBody || typeof eventTarget.closest !== "function") return null;
+  const target = eventTarget.closest("[data-inspection-tooltip]");
+  if (!target || !elements.frameInternalsBody.contains(target)) return null;
+  return target;
+}
+
+function showFrameInternalsTooltip(target, clientX, clientY, options = {}) {
+  if (!elements.frameInternalsTooltip) return;
+  const payload = readFrameInternalsTooltipPayload(target);
+  if (!payload) {
+    hideFrameInternalsTooltip();
+    return;
+  }
+  state.frameInternalsTooltipTarget = target;
+  elements.frameInternalsTooltip.innerHTML = renderFrameInternalsTooltip(payload);
+  elements.frameInternalsTooltip.hidden = false;
+  positionFrameInternalsTooltip(clientX, clientY, options);
+}
+
+function hideFrameInternalsTooltip() {
+  state.frameInternalsTooltipTarget = null;
+  if (!elements.frameInternalsTooltip) return;
+  elements.frameInternalsTooltip.hidden = true;
+  elements.frameInternalsTooltip.innerHTML = "";
+}
+
+function readFrameInternalsTooltipPayload(target) {
+  try {
+    const payload = JSON.parse(target.dataset.inspectionTooltip || "{}");
+    if (!payload || !payload.title) return null;
+    return {
+      title: String(payload.title || ""),
+      rows: Array.isArray(payload.rows) ? payload.rows : [],
+      note: String(payload.note || "")
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function renderFrameInternalsTooltip(payload) {
+  const rows = payload.rows.map((row) => {
+    const label = row && row[0] !== undefined ? String(row[0]) : "";
+    const value = row && row[1] !== undefined ? String(row[1]) : "";
+    if (!label || !value) return "";
+    return '<div class="tooltip-row"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + '</strong></div>';
+  }).join("");
+  return '<div class="tooltip-title">' + escapeHtml(payload.title) + '</div>' +
+    '<div class="tooltip-rows">' + rows + '</div>' +
+    (payload.note ? '<div class="tooltip-note">' + escapeHtml(payload.note) + '</div>' : "");
+}
+
+function positionFrameInternalsTooltip(clientX, clientY, options = {}) {
+  if (!elements.frameInternalsTooltip || elements.frameInternalsTooltip.hidden) return;
+  const gap = options.anchorMode === "center" ? 10 : 14;
+  const viewportPadding = 10;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 768;
+  const tooltipRect = elements.frameInternalsTooltip.getBoundingClientRect();
+  let left = options.anchorMode === "center" ? clientX - tooltipRect.width / 2 : clientX + gap;
+  let top = clientY + gap;
+  if (left + tooltipRect.width + viewportPadding > viewportWidth) left = viewportWidth - tooltipRect.width - viewportPadding;
+  if (left < viewportPadding) left = viewportPadding;
+  if (top + tooltipRect.height + viewportPadding > viewportHeight) top = clientY - tooltipRect.height - gap;
+  if (top < viewportPadding) top = viewportPadding;
+  elements.frameInternalsTooltip.style.left = left.toFixed(1) + "px";
+  elements.frameInternalsTooltip.style.top = top.toFixed(1) + "px";
 }
 
 function renderFrameInternalsStats(stats) {
