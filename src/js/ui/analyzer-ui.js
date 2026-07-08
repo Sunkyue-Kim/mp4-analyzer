@@ -49,6 +49,7 @@ const state = {
 const elements = {
   fileInput: document.getElementById("fileInput"),
   languageSelect: document.getElementById("languageSelect"),
+  sampleField: document.getElementById("sampleField"),
   sampleSelect: document.getElementById("sampleSelect"),
   openButton: document.getElementById("openButton"),
   scanButton: document.getElementById("scanButton"),
@@ -106,7 +107,8 @@ window.MP4AnalyzerDevTools = {
     return buildTrackMetrics(track, rows, getMetricsWindowSize()).summary;
   },
   runSmokeTests: () => Core.runParserSelfTests(),
-  getSamples: () => SAMPLE_FILES.slice(),
+  canUseSamples: () => canUseSampleCatalog(),
+  getSamples: () => canUseSampleCatalog() ? SAMPLE_FILES.slice() : [],
   loadSample: (sampleId) => loadSampleById(sampleId),
   analyzeFile: (file) => startAnalysis(file),
   summarize: () => {
@@ -132,7 +134,7 @@ window.MP4AnalyzerDevTools = {
 populateSampleSelect();
 elements.languageSelect.addEventListener("change", () => setLanguage(elements.languageSelect.value));
 elements.sampleSelect.addEventListener("change", () => {
-  if (elements.sampleSelect.value) loadSampleById(elements.sampleSelect.value);
+  if (canUseSampleCatalog() && elements.sampleSelect.value) loadSampleById(elements.sampleSelect.value);
 });
 elements.openButton.addEventListener("click", () => elements.fileInput.click());
 elements.fileInput.addEventListener("change", () => {
@@ -240,6 +242,18 @@ function emptyHtml(key, values) {
 
 function populateSampleSelect() {
   if (!elements.sampleSelect) return;
+  const canUseSamples = canUseSampleCatalog();
+  if (elements.sampleField) {
+    elements.sampleField.hidden = !canUseSamples;
+    elements.sampleField.style.display = canUseSamples ? "" : "none";
+    elements.sampleField.setAttribute("aria-hidden", canUseSamples ? "false" : "true");
+  }
+  elements.sampleSelect.disabled = !canUseSamples;
+  if (!canUseSamples) {
+    elements.sampleSelect.innerHTML = "";
+    elements.sampleSelect.value = "";
+    return;
+  }
   const selectedSampleId = elements.sampleSelect.value;
   const options = [
     '<option value="">' + escapeHtml(t("option.samplePlaceholder")) + '</option>'
@@ -255,14 +269,21 @@ function populateSampleSelect() {
   elements.sampleSelect.innerHTML = options.join("");
 }
 
+function canUseSampleCatalog() {
+  if (typeof window === "undefined" || !window.location) return false;
+  return window.location.protocol === "http:" || window.location.protocol === "https:";
+}
+
 function getSampleLabel(sample) {
   return sample.labels[getLanguage()] || sample.labels.en || sample.fileName;
 }
 
 async function loadSampleById(sampleId) {
+  if (!canUseSampleCatalog()) return null;
   const sample = SAMPLE_FILES.find((candidate) => candidate.id === sampleId);
-  if (!sample) return;
+  if (!sample) return null;
   await loadSampleFile(sample);
+  return sample;
 }
 
 async function loadSampleFile(sample) {
@@ -448,7 +469,7 @@ async function scanCurrentAnalysis() {
 function setBusy(isBusy) {
   elements.cancelButton.disabled = !isBusy;
   elements.openButton.disabled = isBusy;
-  elements.sampleSelect.disabled = isBusy;
+  elements.sampleSelect.disabled = isBusy || !canUseSampleCatalog();
 }
 
 function resetView(file, options = {}) {
@@ -456,7 +477,7 @@ function resetView(file, options = {}) {
   state.selectedBox = null;
   state.selectedFrameKey = "";
   state.transientWarnings = [];
-  if (!options.keepSampleSelection) elements.sampleSelect.value = "";
+  if (!options.keepSampleSelection && elements.sampleSelect) elements.sampleSelect.value = "";
   setFilePreview(file);
   elements.boxTree.innerHTML = "";
   elements.summaryPanel.innerHTML = emptyHtml("empty.parsingStructure");

@@ -37,6 +37,9 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+}
 body {
   margin: 0;
   min-height: 100vh;
@@ -1192,9 +1195,9 @@ button:disabled {
             <option value="ko">한국어</option>
           </select>
         </label>
-        <label class="sample-field">
+        <label id="sampleField" class="sample-field" hidden style="display: none;" aria-hidden="true">
           <span data-i18n="field.sample">Sample</span>
-          <select id="sampleSelect" aria-label="Sample files" data-i18n-aria-label="field.sample">
+          <select id="sampleSelect" aria-label="Sample files" data-i18n-aria-label="field.sample" disabled>
             <option value="" data-i18n="option.samplePlaceholder">Sample files...</option>
           </select>
         </label>
@@ -3648,6 +3651,7 @@ button:disabled {
     const elements = {
       fileInput: document.getElementById("fileInput"),
       languageSelect: document.getElementById("languageSelect"),
+      sampleField: document.getElementById("sampleField"),
       sampleSelect: document.getElementById("sampleSelect"),
       openButton: document.getElementById("openButton"),
       scanButton: document.getElementById("scanButton"),
@@ -3704,7 +3708,8 @@ button:disabled {
         return buildTrackMetrics(track, rows, getMetricsWindowSize()).summary;
       },
       runSmokeTests: () => Core2.runParserSelfTests(),
-      getSamples: () => SAMPLE_FILES.slice(),
+      canUseSamples: () => canUseSampleCatalog(),
+      getSamples: () => canUseSampleCatalog() ? SAMPLE_FILES.slice() : [],
       loadSample: (sampleId) => loadSampleById(sampleId),
       analyzeFile: (file) => startAnalysis(file),
       summarize: () => {
@@ -3729,7 +3734,7 @@ button:disabled {
     populateSampleSelect();
     elements.languageSelect.addEventListener("change", () => setLanguage2(elements.languageSelect.value));
     elements.sampleSelect.addEventListener("change", () => {
-      if (elements.sampleSelect.value) loadSampleById(elements.sampleSelect.value);
+      if (canUseSampleCatalog() && elements.sampleSelect.value) loadSampleById(elements.sampleSelect.value);
     });
     elements.openButton.addEventListener("click", () => elements.fileInput.click());
     elements.fileInput.addEventListener("change", () => {
@@ -3826,6 +3831,18 @@ button:disabled {
     }
     function populateSampleSelect() {
       if (!elements.sampleSelect) return;
+      const canUseSamples = canUseSampleCatalog();
+      if (elements.sampleField) {
+        elements.sampleField.hidden = !canUseSamples;
+        elements.sampleField.style.display = canUseSamples ? "" : "none";
+        elements.sampleField.setAttribute("aria-hidden", canUseSamples ? "false" : "true");
+      }
+      elements.sampleSelect.disabled = !canUseSamples;
+      if (!canUseSamples) {
+        elements.sampleSelect.innerHTML = "";
+        elements.sampleSelect.value = "";
+        return;
+      }
       const selectedSampleId = elements.sampleSelect.value;
       const options = [
         '<option value="">' + escapeHtml(t("option.samplePlaceholder")) + "</option>"
@@ -3838,13 +3855,19 @@ button:disabled {
       }
       elements.sampleSelect.innerHTML = options.join("");
     }
+    function canUseSampleCatalog() {
+      if (typeof window === "undefined" || !window.location) return false;
+      return window.location.protocol === "http:" || window.location.protocol === "https:";
+    }
     function getSampleLabel(sample) {
       return sample.labels[getLanguage()] || sample.labels.en || sample.fileName;
     }
     async function loadSampleById(sampleId) {
+      if (!canUseSampleCatalog()) return null;
       const sample = SAMPLE_FILES.find((candidate) => candidate.id === sampleId);
-      if (!sample) return;
+      if (!sample) return null;
       await loadSampleFile(sample);
+      return sample;
     }
     async function loadSampleFile(sample) {
       const label = getSampleLabel(sample);
@@ -4007,14 +4030,14 @@ button:disabled {
     function setBusy(isBusy) {
       elements.cancelButton.disabled = !isBusy;
       elements.openButton.disabled = isBusy;
-      elements.sampleSelect.disabled = isBusy;
+      elements.sampleSelect.disabled = isBusy || !canUseSampleCatalog();
     }
     function resetView(file, options = {}) {
       state.analysis = null;
       state.selectedBox = null;
       state.selectedFrameKey = "";
       state.transientWarnings = [];
-      if (!options.keepSampleSelection) elements.sampleSelect.value = "";
+      if (!options.keepSampleSelection && elements.sampleSelect) elements.sampleSelect.value = "";
       setFilePreview(file);
       elements.boxTree.innerHTML = "";
       elements.summaryPanel.innerHTML = emptyHtml("empty.parsingStructure");

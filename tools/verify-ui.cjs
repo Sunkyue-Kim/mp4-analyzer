@@ -3,6 +3,7 @@ const path = require("node:path");
 
 const rootDirectory = path.resolve(__dirname, "..");
 const htmlPath = path.join(rootDirectory, "mp4-analyzer.html");
+const sourceHtmlPath = path.join(rootDirectory, "src", "index.html");
 const samplePath = path.join(rootDirectory, "validation", "generated", "avc_fragmented.mp4");
 
 class FakeElement {
@@ -56,9 +57,9 @@ function createFakeDocument() {
   };
 }
 
-async function main() {
-  const fakeDocument = createFakeDocument();
-  const fakeWindow = {
+function createFakeWindow(protocol) {
+  return {
+    location: { protocol },
     addEventListener() {},
     clearTimeout,
     setTimeout,
@@ -68,6 +69,11 @@ async function main() {
     },
     cancelAnimationFrame() {}
   };
+}
+
+function loadAnalyzerIntoFakeDom(protocol) {
+  const fakeDocument = createFakeDocument();
+  const fakeWindow = createFakeWindow(protocol);
 
   global.document = fakeDocument;
   global.window = fakeWindow;
@@ -82,6 +88,37 @@ async function main() {
   const scriptMatch = html.match(/<script>([\s\S]*)<\/script>/i);
   if (!scriptMatch) throw new Error("mp4-analyzer.html has no inline script.");
   eval(scriptMatch[1]);
+
+  return { fakeDocument, fakeWindow };
+}
+
+async function main() {
+  const sourceHtml = fs.readFileSync(sourceHtmlPath, "utf8");
+  const sourceSampleFieldMatch = sourceHtml.match(/<label[^>]+id="sampleField"[^>]*>/);
+  if (!sourceSampleFieldMatch || !sourceSampleFieldMatch[0].includes("hidden") || !sourceSampleFieldMatch[0].includes("display: none")) {
+    throw new Error("Source HTML sample selector must be hidden by default for file:// src/index.html.");
+  }
+
+  const fileModeDom = loadAnalyzerIntoFakeDom("file:");
+  const fileModeSampleField = fileModeDom.fakeDocument.getElementById("sampleField");
+  if (!fileModeSampleField.hidden) {
+    throw new Error("Sample selector should be hidden when loaded from file://.");
+  }
+  if (fileModeSampleField.style.display !== "none") {
+    throw new Error("Sample selector should use display:none when loaded from file://.");
+  }
+  if (window.MP4AnalyzerDevTools.getSamples().length !== 0) {
+    throw new Error("Dev tools sample catalog should be empty when loaded from file://.");
+  }
+
+  const { fakeDocument } = loadAnalyzerIntoFakeDom("https:");
+  const sampleField = fakeDocument.getElementById("sampleField");
+  if (sampleField.hidden) {
+    throw new Error("Sample selector should be visible when loaded from http/https.");
+  }
+  if (sampleField.style.display === "none") {
+    throw new Error("Sample selector should not use display:none when loaded from http/https.");
+  }
 
   if (!window.MP4AnalyzerDevTools || typeof window.MP4AnalyzerDevTools.analyzeFile !== "function") {
     throw new Error("MP4AnalyzerDevTools.analyzeFile is not exposed.");
