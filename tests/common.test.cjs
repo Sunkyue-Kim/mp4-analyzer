@@ -1,6 +1,19 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 const { createSourceModuleLoader } = require("./helpers/source-module-loader.cjs");
+
+const rootDirectory = path.resolve(__dirname, "..");
+
+function listJavaScriptFiles(directory) {
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const absolutePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return listJavaScriptFiles(absolutePath);
+    return entry.isFile() && entry.name.endsWith(".js") ? [absolutePath] : [];
+  });
+}
 
 test("binary helpers read big-endian numbers, strings, and safe JSON values", async () => {
   const loader = await createSourceModuleLoader();
@@ -68,4 +81,18 @@ test("formatting helpers produce stable display units", async () => {
   assert.equal(formatting.formatPreviewBitrate(11_234_567), "11.23 Mbps");
   assert.equal(formatting.formatMetricNumber(1.23456, 2), "1.23");
   assert.equal(formatting.formatTime(1500, 1000), "1.500000s");
+});
+
+test("core source modules link without unresolved static imports", async () => {
+  const loader = await createSourceModuleLoader();
+  const coreDirectory = path.join(rootDirectory, "src", "js", "core");
+  const relativePaths = listJavaScriptFiles(coreDirectory)
+    .map((absolutePath) => path.relative(rootDirectory, absolutePath).replace(/\\/g, "/"))
+    .sort();
+
+  for (const relativePath of relativePaths) {
+    await loader.import(relativePath);
+  }
+
+  assert.ok(relativePaths.length > 10);
 });

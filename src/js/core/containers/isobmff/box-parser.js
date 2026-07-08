@@ -32,7 +32,8 @@ async function parseBoxes(reader, startBig, endBig, parentPath, depth, warnings,
     if (headerProbe.byteLength < 8) break;
     const cursor = new ByteCursor(headerProbe);
     const size32 = cursor.uint32(0);
-    const type = cursor.string(4, 4);
+    const decodedType = decodeBoxType(cursor, 4, parentPath);
+    const type = decodedType.type;
     let headerSize = 8;
     let boxSizeBig = BigInt(size32);
     if (size32 === 1) {
@@ -69,8 +70,10 @@ async function parseBoxes(reader, startBig, endBig, parentPath, depth, warnings,
       fields: {},
       warnings: nodeWarnings
     };
+    if (decodedType.rawType) node.fields.rawType = decodedType.rawType;
+    if (decodedType.metadataKeyIndex !== undefined) node.fields.metadataKeyIndex = decodedType.metadataKeyIndex;
     await parseKnownBoxFields(reader, node);
-    const containerSkip = FULLBOX_CONTAINER_OFFSETS.get(type) || 0;
+    const containerSkip = getContainerPayloadSkip(type, headerSize, headerProbe);
     const childStart = offset + BigInt(headerSize + containerSkip);
     if ((CONTAINER_BOXES.has(type) || FULLBOX_CONTAINER_OFFSETS.has(type)) && depth < 24 && childStart < boxEnd) {
       node.children = await parseBoxes(reader, childStart, boxEnd, path, depth + 1, warnings, progress);
@@ -81,6 +84,55 @@ async function parseBoxes(reader, startBig, endBig, parentPath, depth, warnings,
     offset = offset + boxSizeBig;
   }
   return nodes;
+}
+
+function decodeBoxType(cursor, offset, parentPath) {
+  const bytes = cursor.bytesAt(offset, 4);
+  const rawType = Array.from(bytes).map(hexByte).join("");
+  if (isMetadataItemListPath(parentPath) && !isDisplayableBoxType(bytes)) {
+    return {
+      type: "metadataItem",
+      rawType: "0x" + rawType,
+      metadataKeyIndex: cursor.uint32(offset)
+    };
+  }
+  if (!isDisplayableBoxType(bytes)) {
+    return { type: "0x" + rawType, rawType: "0x" + rawType };
+  }
+  return { type: fourCcFromBytes(bytes, 0) };
+}
+
+function isMetadataItemListPath(path) {
+  return /\/ilst\[\d+\]$/.test(path || "") || /^ilst\[\d+\]$/.test(path || "");
+}
+
+function isDisplayableBoxType(bytes) {
+  for (const byte of bytes) {
+    if (byte === 0xa9) continue;
+    if (byte < 0x20 || byte > 0x7e) return false;
+  }
+  return true;
+}
+
+function getContainerPayloadSkip(type, headerSize, headerProbe) {
+  const defaultSkip = FULLBOX_CONTAINER_OFFSETS.get(type) || 0;
+  if (type !== "meta" || defaultSkip === 0 || headerProbe.byteLength < headerSize + 8) return defaultSkip;
+  const cursor = new ByteCursor(headerProbe);
+  const possibleChildSize = cursor.uint32(headerSize);
+  const possibleChildType = cursor.string(headerSize + 4, 4);
+  if ((possibleChildSize === 1 || possibleChildSize >= 8) && looksLikeBoxType(possibleChildType)) {
+    return 0;
+  }
+  return defaultSkip;
+}
+
+function looksLikeBoxType(type) {
+  if (!type || type.length !== 4) return false;
+  for (const character of type) {
+    const code = character.charCodeAt(0);
+    if (code < 0x20 || code > 0x7e) return false;
+  }
+  return true;
 }
 
 async function parseKnownBoxFields(reader, node) {

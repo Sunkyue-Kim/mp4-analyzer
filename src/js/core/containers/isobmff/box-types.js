@@ -489,13 +489,45 @@ export const BOX_TYPE_INFO = {
     name: "Metadata Box",
     description: "Container for timed or file-level metadata."
   },
+  keys: {
+    name: "Metadata Keys Box",
+    description: "Metadata key table used by mdta-style ilst entries."
+  },
   ilst: {
     name: "Item List Box",
     description: "QuickTime/iTunes metadata item list."
   },
+  metadataItem: {
+    name: "Indexed Metadata Item Box",
+    description: "Numeric metadata item entry in an ilst box, usually referencing a key from the keys box."
+  },
   "©too": {
     name: "Encoding Tool Metadata Item",
     description: "QuickTime/iTunes metadata item that usually stores the encoder or muxing tool name."
+  },
+  SDLN: {
+    name: "Sequence Playback Metadata Box",
+    description: "Vendor-specific user-data atom observed in Android-recorded MP4/MOV files, often carrying payload such as SEQ_PLAY."
+  },
+  smrd: {
+    name: "Samsung Recording Metadata Box",
+    description: "Samsung/Android vendor-specific user-data atom observed with payload such as TRUEBLUE."
+  },
+  smta: {
+    name: "Samsung Metadata Atom",
+    description: "Samsung/Android vendor-specific metadata atom that may carry nested maker, model, or capture metadata."
+  },
+  auth: {
+    name: "Author Metadata Atom",
+    description: "QuickTime-style user-data atom carrying author, device, or creator text metadata."
+  },
+  "©xyz": {
+    name: "Location Metadata Item",
+    description: "QuickTime location metadata item, commonly storing ISO 6709-style latitude, longitude, and altitude text."
+  },
+  cami: {
+    name: "Camera Information Metadata Box",
+    description: "Vendor-specific camera information atom observed in Android/Samsung camera files."
   },
   udta: {
     name: "User Data Box",

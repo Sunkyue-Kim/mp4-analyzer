@@ -8,6 +8,8 @@ const rootDirectory = path.resolve(__dirname, "..");
 const samplesDirectory = path.join(rootDirectory, "validation", "generated");
 
 const sampleExpectations = [
+  ["1000024017.mp4", "video/mp4", "isobmff", 2, 1752, ["I", "P", "AAC"]],
+  ["20260612_091058.mp4", "video/mp4", "isobmff", 2, 1752, ["I", "P", "B", "AAC"]],
   ["avc_bframes.mp4", "video/mp4", "isobmff", 1, 120, ["I", "P", "B"]],
   ["avc_fragmented.mp4", "video/mp4", "isobmff", 1, 120, ["I", "P", "B"]],
   ["audio_mp3.mp3", "audio/mpeg", "mp3", 1, 78, ["MP3"]],
