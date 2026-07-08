@@ -120,12 +120,24 @@ test("formatting helpers produce stable display units", async () => {
   const loader = await createSourceModuleLoader();
   const formatting = await loader.import("src/js/core/common/formatting.js");
 
+  assert.equal(formatting.clamp(-5, 0, 10), 0);
   assert.equal(formatting.clamp(15, 0, 10), 10);
+  assert.equal(formatting.formatBytes("not-a-number"), "not-a-number");
+  assert.equal(formatting.formatBytes(1024 ** 4), "1.00 TB");
+  assert.equal(formatting.formatBitsPerSecond("not-a-number"), "n/a");
+  assert.equal(formatting.formatBitsPerSecond(999), "999 bps");
+  assert.equal(formatting.formatBitsPerSecond(1_500_000_000), "1.50 Gbps");
   assert.equal(formatting.formatBytes(1536), "1.50 KB");
   assert.equal(formatting.formatBitsPerSecond(1_500_000), "1.50 Mbps");
+  assert.equal(formatting.formatPreviewBitrate(0), "");
+  assert.equal(formatting.formatPreviewBitrate(Number.NaN), "");
+  assert.equal(formatting.formatPreviewBitrate(1200), "1.200 kbps");
   assert.equal(formatting.formatPreviewBitrate(9_876_543), "9877 kbps");
   assert.equal(formatting.formatPreviewBitrate(11_234_567), "11.23 Mbps");
+  assert.equal(formatting.formatMetricNumber(Number.NaN, 2), "n/a");
   assert.equal(formatting.formatMetricNumber(1.23456, 2), "1.23");
+  assert.equal(formatting.formatTime(1500, 0), "1500");
+  assert.equal(formatting.formatTime("bad", 1000), "bad");
   assert.equal(formatting.formatTime(1500, 1000), "1.500000s");
 });
 

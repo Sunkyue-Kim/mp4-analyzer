@@ -121,6 +121,78 @@ test("recycler view keeps rendered rows bounded to the visible window", async ()
   assert.ok(scrollElement.scrollTop > 150000);
 });
 
+test("recycler view handles empty rows, offsets, fallback heights, and scheduled rerenders", async () => {
+  const animationCallbacks = new Map();
+  const cancelledAnimationFrameIds = [];
+  let nextAnimationFrameId = 1;
+  const loader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: {
+      requestAnimationFrame(callback) {
+        const animationFrameId = nextAnimationFrameId;
+        nextAnimationFrameId += 1;
+        animationCallbacks.set(animationFrameId, callback);
+        return animationFrameId;
+      },
+      cancelAnimationFrame(animationFrameId) {
+        cancelledAnimationFrameIds.push(animationFrameId);
+        animationCallbacks.delete(animationFrameId);
+      }
+    }
+  });
+  const { calculateRecyclerWindow, createRecyclerView } = await loader.import("src/js/ui/recycler-view.js");
+
+  assert.deepEqual(JSON.parse(JSON.stringify(calculateRecyclerWindow({
+    rowCount: -1,
+    rowHeight: 0,
+    scrollTop: -10,
+    viewportHeight: 0,
+    overscan: -2
+  }))), {
+    first: 0,
+    last: 0,
+    count: 0,
+    totalHeight: 1
+  });
+
+  const scrollElement = { scrollTop: 50, clientHeight: 90, scrollHeight: 0 };
+  const spacerElement = { style: {}, innerHTML: "" };
+  const renderedRows = [];
+  const recycler = createRecyclerView({
+    scrollElement,
+    spacerElement,
+    rowHeight: 20,
+    overscan: 1,
+    scrollTopOffset: 10,
+    viewportHeightOffset: 10,
+    renderRow(row, rowIndex) {
+      renderedRows.push([row, rowIndex]);
+      return '<div>' + row + '</div>';
+    }
+  });
+
+  recycler.setRows(null);
+  assert.equal(spacerElement.style.height, "1px");
+  recycler.scrollRowIntoCenter(10);
+  assert.equal(scrollElement.scrollTop, 50);
+
+  recycler.setRows(["a", "b", "c", "d", "e"]);
+  assert.equal(spacerElement.style.height, "100px");
+  assert.deepEqual(JSON.parse(JSON.stringify(recycler.getVisibleRange())), {
+    first: 1,
+    last: 5,
+    count: 4,
+    totalHeight: 100
+  });
+  recycler.scheduleRender();
+  recycler.scheduleRender();
+  assert.deepEqual(cancelledAnimationFrameIds, [1]);
+  animationCallbacks.get(2)();
+  assert.deepEqual(JSON.parse(JSON.stringify(renderedRows)), [["b", 1], ["c", 2], ["d", 3], ["e", 4]]);
+  recycler.scrollRowIntoCenter(4);
+  assert.equal(scrollElement.scrollTop, 20);
+});
+
 test("summary codec track counts only include present codec groups", async () => {
   const loader = await createSourceModuleLoader();
   const { getVisibleSummaryCodecTrackCounts } = await loader.import("src/js/ui/summary-model.js");
@@ -443,6 +515,80 @@ test("remote loader handles streamed downloads, filenames, aborts, and non-OK re
   assert.equal(downloadedFile.type, "video/mp4");
   assert.equal(downloadedFile.size, 5);
   assert.deepEqual(progressEvents, [[2, 5], [5, 5]]);
+});
+
+test("remote loader uses range metadata when HEAD is weak and falls back to blob downloads without streams", async () => {
+  const calls = [];
+  const makeHeaders = (values) => ({
+    get(name) {
+      return values[String(name).toLowerCase()] || "";
+    }
+  });
+  const loader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: {
+      fetch: async (url, options = {}) => {
+        const method = options.method || "GET";
+        const range = options.headers && options.headers.Range || "";
+        calls.push({ url, method, range });
+        if (url.includes("range-abort") && range) {
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          throw error;
+        }
+        if (method === "HEAD") {
+          return {
+            ok: false,
+            status: 405,
+            statusText: "Method Not Allowed",
+            headers: makeHeaders({})
+          };
+        }
+        if (range) {
+          return {
+            status: 206,
+            headers: makeHeaders({
+              "content-range": "bytes 0-0/1234",
+              "content-type": "video/webm"
+            }),
+            async arrayBuffer() {
+              return new Uint8Array([0]).buffer;
+            }
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: makeHeaders({
+            "content-length": "4",
+            "content-type": "audio/mpeg"
+          }),
+          async blob() {
+            return new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/mpeg" });
+          }
+        };
+      }
+    }
+  });
+  const remoteLoader = await loader.import("src/js/ui/remote-loader.js");
+
+  const streamingPlan = await remoteLoader.probeRemoteMediaResource("https://media.test/folder/movie.webm");
+  assert.equal(streamingPlan.canStream, true);
+  assert.equal(streamingPlan.resource.size, 1234);
+  assert.equal(streamingPlan.resource.type, "video/webm");
+  assert.equal(streamingPlan.resource.name, "movie.webm");
+
+  await assert.rejects(remoteLoader.probeRemoteMediaResource("https://media.test/range-abort.webm"), /cancelled/);
+  const progressEvents = [];
+  const downloadedFile = await remoteLoader.downloadRemoteMediaFile("https://media.test/no-stream.mp3", {}, {
+    onProgress(loadedBytes, totalSize) {
+      progressEvents.push([loadedBytes, totalSize]);
+    }
+  });
+  assert.equal(downloadedFile.name, "no-stream.mp3");
+  assert.equal(downloadedFile.type, "audio/mpeg");
+  assert.deepEqual(progressEvents, [[4, 4]]);
+  assert.ok(calls.some((call) => call.method === "HEAD" && call.url.endsWith("movie.webm")));
 });
 
 test("source HTML has required controls, tabs, and no external runtime assets after build", () => {

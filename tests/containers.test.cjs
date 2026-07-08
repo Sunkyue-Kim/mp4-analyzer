@@ -92,6 +92,32 @@ test("container registry rejects unsupported files and auto-scan boundary is con
   }), true);
 });
 
+test("MP3 container detection accepts ID3, declared MP3 frames, and verified raw frame pairs", async () => {
+  const loader = await createSourceModuleLoader();
+  const { mp3Container } = await loader.import("src/js/core/containers/mp3/analyzer.js");
+  const id3File = new File([new Uint8Array([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])], "tagged.bin");
+  const declaredFrameFile = new File([makeMp3HeaderBytes()], "single.mp3", { type: "audio/mpeg" });
+  const rawFramePairBytes = new Uint8Array(64);
+  const shortHeader = makeMp3HeaderBytes({
+    versionBits: 3,
+    layerBits: 3,
+    bitrateIndex: 1,
+    samplingRateIndex: 0,
+    padding: 1
+  });
+  rawFramePairBytes.set(shortHeader, 0);
+  rawFramePairBytes.set(shortHeader, 38);
+  const rawFramePairFile = new File([rawFramePairBytes], "raw.bin");
+  const incompleteRawFrameFile = new File([makeMp3HeaderBytes()], "raw.bin");
+  const unsupportedFile = new File([new Uint8Array([0x00, 0x01, 0x02, 0x03])], "raw.bin");
+
+  assert.equal(await mp3Container.canAnalyze(id3File), true);
+  assert.equal(await mp3Container.canAnalyze(declaredFrameFile), true);
+  assert.equal(await mp3Container.canAnalyze(rawFramePairFile), true);
+  assert.equal(await mp3Container.canAnalyze(incompleteRawFrameFile), false);
+  assert.equal(await mp3Container.canAnalyze(unsupportedFile), false);
+});
+
 test("remote ISO BMFF analysis starts with small exact range probes before large cached reads", async () => {
   const fileSize = 5 * 1024 * 1024;
   const bytes = new Uint8Array(fileSize);
@@ -152,4 +178,27 @@ function writeAscii(bytes, offset, value) {
   for (let index = 0; index < value.length; index += 1) {
     bytes[offset + index] = value.charCodeAt(index);
   }
+}
+
+function makeMp3HeaderBytes(options = {}) {
+  const versionBits = options.versionBits === undefined ? 3 : options.versionBits;
+  const layerBits = options.layerBits === undefined ? 1 : options.layerBits;
+  const bitrateIndex = options.bitrateIndex === undefined ? 9 : options.bitrateIndex;
+  const samplingRateIndex = options.samplingRateIndex === undefined ? 0 : options.samplingRateIndex;
+  const padding = options.padding || 0;
+  const header = (
+    0xffe00000 |
+    (versionBits << 19) |
+    (layerBits << 17) |
+    (1 << 16) |
+    (bitrateIndex << 12) |
+    (samplingRateIndex << 10) |
+    (padding << 9)
+  ) >>> 0;
+  return new Uint8Array([
+    (header >>> 24) & 0xff,
+    (header >>> 16) & 0xff,
+    (header >>> 8) & 0xff,
+    header & 0xff
+  ]);
 }

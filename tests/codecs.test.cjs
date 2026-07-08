@@ -24,6 +24,42 @@ test("AAC esds and AudioSpecificConfig parsing exposes codec metadata", async ()
   assert.equal(parseEsds(new Uint8Array([0, 0])).error, "esds too short");
 });
 
+test("AAC AudioSpecificConfig covers explicit rates, extension object types, and descriptor edges", async () => {
+  const loader = await createSourceModuleLoader();
+  const { parseAudioSpecificConfig, parseEsds } = await loader.import("src/js/core/codecs/audio/aac.js");
+
+  const escapedObjectType = parseAudioSpecificConfig(packBits(
+    "11111" +
+    "000010" +
+    "1111" +
+    "000000001011101110000000" +
+    "1000"
+  ));
+  assert.equal(escapedObjectType.audioObjectType, 34);
+  assert.equal(escapedObjectType.audioObjectTypeName, "Audio object type 34");
+  assert.equal(escapedObjectType.samplingFrequency, 48000);
+  assert.equal(escapedObjectType.channelDescription, "8 channels");
+
+  const sbrConfig = parseAudioSpecificConfig(packBits(
+    "00101" +
+    "0100" +
+    "0010" +
+    "0011" +
+    "00010"
+  ));
+  assert.equal(sbrConfig.audioObjectType, 2);
+  assert.equal(sbrConfig.extensionAudioObjectType, 5);
+  assert.equal(sbrConfig.extensionSamplingFrequency, 48000);
+
+  const esdsWithoutDecoderSpecificInfo = parseEsds(new Uint8Array([
+    0x00, 0x00, 0x00, 0x00,
+    0x03, 0x0f, 0x00, 0x01, 0xe0, 0x00, 0x00, 0x00,
+    0x04, 0x02, 0x40, 0x15
+  ]));
+  assert.equal(esdsWithoutDecoderSpecificInfo.objectTypeIndication, null);
+  assert.equal(esdsWithoutDecoderSpecificInfo.audioConfig, null);
+});
+
 test("MP3 and Opus parsers reject invalid bytes and describe valid packets", async () => {
   const loader = await createSourceModuleLoader();
   const mp3 = await loader.import("src/js/core/codecs/audio/mp3.js");
@@ -49,6 +85,51 @@ test("MP3 and Opus parsers reject invalid bytes and describe valid packets", asy
   assert.equal(opusHead.inputSampleRate, 48000);
   assert.equal(opus.parseOpusHead(new Uint8Array([1, 2, 3])), null);
   assert.equal(opus.parseOpusPacket(new Uint8Array([0x78])).durationSamples, 960);
+});
+
+test("MP3 and Opus parsers cover layer, channel, lacing-count, and invalid-header branches", async () => {
+  const loader = await createSourceModuleLoader();
+  const mp3 = await loader.import("src/js/core/codecs/audio/mp3.js");
+  const opus = await loader.import("src/js/core/codecs/audio/opus.js");
+
+  assert.equal(mp3.parseMp3FrameHeader(new Uint8Array([0xff, 0xfb, 0x90]), 0), null);
+  assert.equal(mp3.parseMp3FrameHeader(makeMp3HeaderBytes({ versionBits: 1, layerBits: 1 }), 0), null);
+  const layerOneHeader = mp3.parseMp3FrameHeader(makeMp3HeaderBytes({
+    versionBits: 3,
+    layerBits: 3,
+    bitrateIndex: 1,
+    samplingRateIndex: 0,
+    padding: 1,
+    channelMode: 3
+  }), 0);
+  assert.equal(layerOneHeader.layer, "Layer I");
+  assert.equal(layerOneHeader.samplesPerFrame, 384);
+  assert.equal(layerOneHeader.channelCount, 1);
+  assert.equal(layerOneHeader.padding, true);
+
+  const mpegTwoLayerThreeHeader = mp3.parseMp3FrameHeader(makeMp3HeaderBytes({
+    versionBits: 2,
+    layerBits: 1,
+    bitrateIndex: 1,
+    samplingRateIndex: 0
+  }), 0);
+  assert.equal(mpegTwoLayerThreeHeader.version, "MPEG-2");
+  assert.equal(mpegTwoLayerThreeHeader.layer, "Layer III");
+  assert.equal(mpegTwoLayerThreeHeader.samplesPerFrame, 576);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(opus.parseOpusPacket(new Uint8Array([])))), {
+    codecString: "opus",
+    frameType: "Opus",
+    frameCount: 0,
+    durationSamples: 0,
+    durationMs: 0
+  });
+  assert.equal(opus.parseOpusPacket(new Uint8Array([0x03])).frameCount, 0);
+  const multiFramePacket = opus.parseOpusPacket(new Uint8Array([0xff, 0x83]));
+  assert.equal(multiFramePacket.mode, "CELT");
+  assert.equal(multiFramePacket.bandwidth, "FB");
+  assert.equal(multiFramePacket.frameCount, 3);
+  assert.equal(multiFramePacket.stereo, true);
 });
 
 test("AVC and HEVC parsers expose config and classify synthetic sample payloads", async () => {
@@ -98,3 +179,36 @@ test("codec registry provides interchangeable descriptors and scanners", async (
   assert.equal(scanner.codec, "AVC / H.264");
   assert.equal((await scanner.parse(new Uint8Array([0x00, 0x00, 0x00, 0x02, 0x65, 0xb0]))).frameType, "I");
 });
+
+function packBits(bits) {
+  const bytes = new Uint8Array(Math.ceil(bits.length / 8));
+  for (let bitIndex = 0; bitIndex < bits.length; bitIndex += 1) {
+    if (bits[bitIndex] === "1") bytes[Math.floor(bitIndex / 8)] |= 1 << (7 - (bitIndex % 8));
+  }
+  return bytes;
+}
+
+function makeMp3HeaderBytes(options = {}) {
+  const versionBits = options.versionBits === undefined ? 3 : options.versionBits;
+  const layerBits = options.layerBits === undefined ? 1 : options.layerBits;
+  const bitrateIndex = options.bitrateIndex === undefined ? 9 : options.bitrateIndex;
+  const samplingRateIndex = options.samplingRateIndex === undefined ? 0 : options.samplingRateIndex;
+  const padding = options.padding || 0;
+  const channelMode = options.channelMode === undefined ? 0 : options.channelMode;
+  const header = (
+    0xffe00000 |
+    (versionBits << 19) |
+    (layerBits << 17) |
+    (1 << 16) |
+    (bitrateIndex << 12) |
+    (samplingRateIndex << 10) |
+    (padding << 9) |
+    (channelMode << 6)
+  ) >>> 0;
+  return new Uint8Array([
+    (header >>> 24) & 0xff,
+    (header >>> 16) & 0xff,
+    (header >>> 8) & 0xff,
+    header & 0xff
+  ]);
+}
