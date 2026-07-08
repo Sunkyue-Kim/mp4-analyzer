@@ -1,119 +1,170 @@
 # Standalone Web Media Analyzer
 
-Single-file browser media analyzer for MP4/fMP4/MOV, WebM, MP3, and Ogg Opus files.
+Client-side media container analyzer for MP4/fMP4/MOV, WebM, MP3, and Ogg Opus files.
 
-The app is designed as a local-first inspection tool: files are opened with standard browser APIs, parsed in chunks, and never uploaded to a server.
+Live app: https://sunkyue-kim.github.io/standalone-web-media-analyzer/
 
-GitHub Pages: https://sunkyue-kim.github.io/standalone-web-media-analyzer/
+This project is a local-first inspection tool. It opens files with standard browser APIs, parses metadata and sample structures in chunks, and does not upload local files to a server. It is useful when you need to inspect a media file quickly without installing FFmpeg, Bento4, MP4Box, MediaInfo, or a desktop hex viewer.
+
+## At A Glance
+
+| Area | Supported |
+| --- | --- |
+| Local files | Drag and drop anywhere in the window, or use the open-file button |
+| Hosted samples | Available from GitHub Pages when the app is served over HTTP/HTTPS |
+| Remote URLs | Supported when CORS and range-read requirements are satisfied |
+| Containers | ISO BMFF MP4/fMP4/MOV, WebM/Matroska, MP3, Ogg Opus |
+| Video codecs | AVC/H.264, HEVC/H.265, VP9 metadata, ProRes metadata, unknown-codec fallback |
+| Audio codecs | AAC, MP3, Opus, unknown-codec fallback |
+| Views | Summary, boxes/elements, tracks, frames, metrics, fragments, warnings |
+| Exports | JSON and CSV |
+| Languages | English and Korean |
+| Output builds | Single-file HTML and chunked lazy-load HTML |
+
+## What It Shows
+
+- Container structure: ISO BMFF box trees, WebM EBML elements, MP3 headers, Ogg pages, offsets, sizes, parsed fields, and warnings
+- Track summaries: codec, handler/type, duration, timescale, dimensions, sample counts, audio configuration, and codec configuration
+- Sample/frame rows: index, track, type, offset, size, DTS, PTS, duration, sync/keyframe state, NAL types, chunks, and fragments where available
+- Visual analysis: frame-size graph, bitrate moving average, FPS moving average, largest samples, and fragment timing
+- Playback-assisted navigation: selecting frame/fragment rows can seek the preview player when browser playback supports the file
+- Large tables: recycler-style grids keep DOM size bounded for high sample counts
+- Background analysis: file parsing and frame scanning are designed to run outside the main UI flow where practical
+
+## What It Is Not
+
+This is not a transcoder, decoder, repair tool, or compliance validator.
+
+- It does not decode video frames into pixels or audio frames into PCM samples.
+- It does not rewrite, transmux, optimize, or repair media files.
+- It does not implement DASH/HLS manifest loading.
+- It does not bypass DRM, encrypted media, browser CORS policy, or server range-request policy.
+- It does not guarantee full recovery from malformed or truncated files.
 
 ## Use
 
-Open `index.html` or the GitHub Pages URL, then drop a media file anywhere in the window or use the open-file button.
+Open `index.html` locally or use the GitHub Pages URL.
 
-The hosted build can also load bundled validation samples from `validation/generated/`. When the app is opened directly with `file://`, the sample selector is hidden because browsers generally block relative sample loading from local files.
+For local files:
 
-Remote URL loading uses a traffic-conscious policy: files up to 4 MB are downloaded once and shared between analysis and playback through a Blob URL. Larger files use HTTP range reads for analysis when CORS allows it, while preview preload is deferred so the browser does not automatically fetch the same media a second time.
+1. Drop a media file anywhere in the window, or click `Open file`.
+2. Inspect the summary, structure, tracks, frames, metrics, fragments, and warnings tabs.
+3. Use frame/fragment rows to seek the preview player when playback is available.
+4. Export JSON or CSV when you need a durable analysis artifact.
 
-## Features
+For hosted validation samples:
 
-- MP4, fragmented MP4, and MOV-style ISO BMFF box trees, sample tables, chunks, fragments, and warnings
-- AVC/H.264 and HEVC/H.265 video frame scanning from sample payloads, including I/P/B-style frame type classification where the codec bitstream exposes it
-- AAC, MP3, Opus, ProRes, VP9, and unknown-codec metadata handling through a pluggable codec descriptor registry
-- WebM/Matroska EBML structure parsing, track summaries, clusters, blocks, keyframe flags, and per-block sample rows
-- MP3 ID3 detection plus MPEG audio frame scanning
-- Ogg Opus page/lacing parsing with packet-level rows and Opus identification metadata
-- Frame table, vertical frame-size graph, bitrate/FPS/sample metrics, fragments, box details, and warning views
-- English/Korean UI with a centralized i18n catalog
-- JSON and CSV export for analysis results
+- The sample selector is shown only when the app is served through HTTP/HTTPS and bundled samples can be fetched.
+- The selector is hidden for direct `file://` usage because browsers generally block relative sample loading from local files.
 
-## Limitations
+For remote URLs:
 
-This is a browser-side parser and inspector, not a transcoder, decoder, or playback engine. It reads container metadata, sample tables, selected payload ranges, and codec headers where practical, but it does not decode audio/video frames into pixels or PCM samples.
+- Use `Load URL` from the app toolbar.
+- Files up to 4 MB are downloaded once and reused through a Blob URL for both analysis and playback.
+- Larger files use script-driven HTTP range reads for analysis when the server and CORS policy allow it.
+- The preview player defers native media loading for large remote URLs so opening a URL does not immediately duplicate the analyzer traffic.
 
-Remote URL loading has unavoidable browser constraints:
+## Supported Formats
+
+| Format | Structure | Samples/Packets | Frame Type | Notes |
+| --- | --- | --- | --- | --- |
+| MP4/MOV | Box tree and parsed sample tables | Yes | AVC/HEVC when slice headers are available | Includes `ftyp`, `moov`, `trak`, `stbl`, `mdat`, `uuid`, and many common media boxes |
+| fMP4 | `moov`/`mvex`, `moof`/`traf`/`trun`, fragment timing | Yes | AVC/HEVC when slice headers are available | Expects init data and fragments in the same analyzed resource |
+| WebM | EBML hierarchy, tracks, clusters, blocks | Yes | Keyframe metadata | VP9 bitstream decoding is not implemented |
+| MP3 | ID3 detection and MPEG audio frame scanning | Yes | Not applicable | Audio metadata and frame rows only |
+| Ogg Opus | Ogg pages, lacing, Opus identification | Packet-level rows | Not applicable | Opus packets are parsed structurally, not decoded |
+
+## Privacy And Network Model
+
+Local files stay local. The browser grants the page a `File`/`Blob` handle, and the app reads only the ranges it needs with `slice()` and `arrayBuffer()`.
+
+Remote URLs are different because the app must fetch bytes from the remote server:
 
 - Remote media requires browser CORS permission. If CORS blocks `HEAD`, `GET`, or `Range` requests, the app cannot analyze that URL.
-- HTTP range analysis needs a server that returns `206 Partial Content` for `Range` requests. A reliable file size should come from `Content-Length` or `Content-Range`; cross-origin servers may need to expose `Content-Range`.
-- Files up to 4 MB are downloaded once and reused through a Blob URL for both analysis and playback.
-- Files larger than 4 MB are analyzed with script-driven range requests when possible. The preview player uses `preload="none"` so it does not automatically fetch the same media during analysis.
-- If the user later plays or seeks a large remote preview, the browser's native media element may issue its own network requests. JavaScript cannot reuse the browser media element's private fetch buffer, and the native media element cannot consume this app's range-read cache.
-- `Response.blob()` is only available after a full download completes. Partial response chunks cannot be turned into a normal Blob-backed `<video>` source before the full resource is loaded.
-- MediaSource-based reuse is not implemented. It would require a separate segmenting/playback pipeline and would not cover all supported inputs uniformly, especially regular MP4/MOV/MP3 files.
-
-Container support is intentionally scoped:
-
-- Supported containers are MP4/fMP4/MOV-style ISO BMFF, WebM/Matroska, MP3, and Ogg Opus.
-- DASH/HLS manifests, remote segment playlists, external MP4 data references, encrypted/DRM media, and robust malformed-file recovery are outside the current scope.
-- fMP4 support expects init data and `moof`/`mdat` fragments in the analyzed file or URL resource.
-- Box/element fields are parsed best-effort. Vendor/private boxes may only show type, size, offsets, raw identifiers, and warnings until explicit mappings are added.
-
-Codec and frame-type support is also scoped:
-
-- AVC/H.264 and HEVC/H.265 frame type labels are inferred from parsed video slice headers where the sample payload exposes enough bitstream data.
-- VP9/WebM keyframe status is based on WebM block/keyframe metadata, not a full VP9 bitstream decoder.
-- ProRes and unknown video codecs show container/sample metadata but do not expose I/P/B frame classification.
-- AAC, MP3, and Opus are parsed for stream configuration and packet/frame rows, but audio is not decoded.
-
-Large-file behavior is optimized for responsiveness, not full forensic recovery:
-
+- Range analysis needs a server that returns `206 Partial Content`. Reliable size detection depends on `Content-Length` or `Content-Range`; cross-origin servers may need to expose `Content-Range`.
 - Header and metadata probes use a 4 KB small-range cache to avoid both tiny per-box requests and early 4 MB downloads.
-- Larger sample/payload reads use a 4 MB range cache with a 64 MB LRU cap.
-- Frame-type scanning still needs to read video sample payload bytes, so very large files or very high sample counts can take time even though the UI renders rows with a recycler view.
+- Larger sample and payload reads use a 4 MB range cache with a 64 MB LRU cap.
+- For remote files over 4 MB, the analyzer and native media player cannot share the browser media element's private network buffer.
+- If the user later plays or seeks a large remote preview, the browser may issue its own media requests.
+- `Response.blob()` is only available after a full download completes. Partial response chunks cannot become a normal Blob-backed `<video>` source before the full resource is loaded.
+- MediaSource-based reuse is not implemented because it would require a separate segmenting and playback pipeline and would not cover all supported inputs uniformly.
 
-## Build
+## Architecture
+
+The source is split so new containers and codecs can be added without coupling everything to MP4-specific code.
+
+```text
+src/
+  app.js                         build entry
+  index.html                     source HTML shell
+  js/
+    main.js                      browser bootstrap
+    core/
+      analyzer-core.js           public analyzer facade
+      common/                    binary readers, bitstream helpers, formatting
+      containers/                pluggable container analyzers
+        isobmff/                 MP4/fMP4/MOV parser
+        webm/                    WebM/Matroska parser
+        mp3/                     MP3 parser
+        ogg/                     Ogg/Opus parser
+      codecs/
+        registry.js              codec descriptor registry
+        audio/                   AAC, MP3, Opus
+        video/                   AVC, HEVC
+    i18n/                        English/Korean catalogs and descriptions
+    samples/                     hosted sample manifest
+    ui/                          rendering, data grids, filters, playback, exports
+    worker/                      analyzer worker entry and protocol
+tests/                           node:test coverage for core, containers, UI helpers
+tools/                           build, verification, and sample-check scripts
+validation/generated/            generated validation media used by tests and Pages samples
+```
+
+Design boundaries:
+
+- Container analyzers produce normalized tracks, samples, fragments, warnings, and structure nodes.
+- Codec modules expose interchangeable parser/scanner functions through a registry.
+- UI code consumes normalized analysis models rather than container-specific internals where possible.
+- Heavy parsing and sample scanning should stay out of direct DOM rendering paths.
+- Final deployable artifacts remain static files that can be hosted on GitHub Pages.
+
+## Build Outputs
 
 ```powershell
 npm install
 npm run build
 ```
 
-Single-file outputs:
+| Output | Purpose |
+| --- | --- |
+| `mp4-analyzer.html` | Readable single-file HTML for inspection and debugging |
+| `index.html` | Minified single-file HTML and GitHub Pages entry point, with inline JavaScript source maps |
+| `chunked/index.html` | Minified shell for the chunked lazy-load build |
+| `chunked/assets/` | Minified ESM chunks, worker bundle, CSS, and JavaScript source maps |
 
-- `mp4-analyzer.html`: readable single-file HTML for inspection
-- `index.html`: minified single-file HTML and GitHub Pages entry point, with inline JavaScript source maps
+Build scripts:
 
-The build also emits a chunked lazy-load variant:
+```powershell
+npm run build          # single-file and chunked builds
+npm run build:single   # only mp4-analyzer.html and index.html
+npm run build:chunked  # only chunked/index.html and chunked/assets/
+```
 
-- `chunked/index.html`: minified HTML shell that loads ESM chunks from `chunked/assets/`
-- `chunked/assets/`: minified app, worker, shared chunks, JavaScript source maps, and CSS
-
-Use `npm run build:single` for only the single-file outputs, or `npm run build:chunked` for only the chunked lazy-load output. The default `npm run build` creates both.
-
-In the chunked build, the initial app chunk only handles the lightweight shell: language, file open/drop, sample selection, and tab switching before analysis starts. The full analyzer runtime is lazy-loaded when a file or hosted sample is opened. Container analyzers and codec implementations are also loaded through dynamic imports, so opening an MP4 does not load WebM/Ogg/MP3 analyzers, and parsing/scanning an AVC file does not load the HEVC codec chunk.
-
-## Source Layout
-
-- `src/app.js`: build entry
-- `src/js/main.js`: browser bootstrap
-- `src/js/core/analyzer-core.js`: public API facade and container orchestration
-- `src/js/core/common/`: binary readers, bitstream helpers, formatting, and shared constants
-- `src/js/core/containers/`: pluggable container analyzers
-- `src/js/core/containers/isobmff/`: MP4/fMP4/MOV parser, box tree, tracks, samples, fragments
-- `src/js/core/containers/webm/`: WebM/Matroska EBML parser and block/sample extraction
-- `src/js/core/containers/mp3/`: MP3 ID3 and MPEG audio frame parser
-- `src/js/core/containers/ogg/`: Ogg page parser and Opus packet extraction
-- `src/js/core/codecs/registry.js`: interchangeable codec descriptor registry
-- `src/js/core/codecs/audio/`: audio codec parsers such as AAC, MP3, and Opus
-- `src/js/core/codecs/video/`: video codec parsers such as AVC and HEVC
-- `src/js/i18n/catalogs.js`: English/Korean UI strings and box descriptions
-- `src/js/samples/sample-manifest.js`: static sample file manifest for HTTP/HTTPS builds
-- `src/js/ui/analyzer-ui.js`: DOM state, rendering, filters, exports, media preview, and sample loading
-- `src/js/ui/ui-helpers.js`: testable UI helper logic shared by rendering and tests
-- `tests/`: Node `node:test` suites for common utilities, codecs, ISO BMFF sample models, container integration, i18n, and UI helpers/static structure
+The chunked build keeps the first app load small. It loads the analyzer runtime after a file or sample is opened, then dynamically imports only the needed container and codec modules. For example, opening an MP4 does not load WebM/Ogg/MP3 analyzers, and scanning an AVC file does not load the HEVC scanner.
 
 ## Test And Validation
 
 ```powershell
-npm run build
 npm test
 npm run test:coverage
 npm run verify:samples
 npm run verify:ui
+npm run verify
 ```
 
 `npm run verify` runs the full local verification chain: build, unit/integration tests, sample verification, and UI smoke verification.
 
-Validation samples live under `validation/generated/` and are also exposed by the GitHub Pages build when available.
+Validation samples live under `validation/generated/` and are exposed by the GitHub Pages build when available. They intentionally remain ordinary repository files because GitHub Pages does not serve Git LFS files as normal static sample assets.
 
 Current coverage snapshot from `npm run test:coverage`:
 
@@ -121,3 +172,32 @@ Current coverage snapshot from `npm run test:coverage`:
 - All files: 94.50% line coverage, 69.71% branch coverage, 93.02% function coverage
 - Strong coverage areas: binary readers, HTTP range readers, browser worker client message flow, remote URL loader fallback/progress handling, bitstream helpers, formatting, codec registry, i18n, data grid/recycler helpers, ISO BMFF sample modeling, ISO BMFF rare box parsing, source-map build wiring, and bundled sample container integration
 - Lower branch coverage remains mainly in browser-worker runtime branches and malformed/edge container branches such as oversized/invalid MP4 boxes, remote download fallback branches, MP3 ID3v1 edge metadata, and WebM lacing variants
+
+## Export Model
+
+JSON export is intended to be stable enough for debugging and regression comparison, but not a formal public API yet. The core records are:
+
+- `BoxNode` / structure node: `type`, `path`, `offset`, `size`, `headerSize`, `children`, `fields`, `warnings`
+- `TrackSummary`: `trackId`, `handlerType`, `codec`, `timescale`, `duration`, dimensions/audio settings, sample count, codec configuration
+- `SampleRow`: `trackId`, `sampleIndex`, `offset`, `size`, `dts`, `pts`, `duration`, `isSync`, `frameType`, `nalTypes`, `chunkIndex`, `fragmentIndex`, `warnings`
+- Fragment rows: fragment index, file offsets, sample range, byte range, start/end time, and warnings
+
+Large integer offsets and sizes are kept safe for UI/export by preferring string representations when a number may exceed JavaScript's safe integer range.
+
+## Development Notes
+
+- Keep source changes in `src/`; root HTML files are build outputs.
+- Keep manual app behavior in the browser APIs available to static pages: `File`, `Blob.slice()`, `ArrayBuffer`, `DataView`, `fetch`, `Worker`, and standard DOM APIs.
+- Keep new format support pluggable: add a container analyzer under `src/js/core/containers/` or a codec module under `src/js/core/codecs/audio/` or `src/js/core/codecs/video/`.
+- Keep rendering reusable through shared UI helpers and data-grid components so tabs do not diverge in layout behavior.
+- Keep large-file behavior range-based and cancellable.
+- Add validation samples and tests when fixing parser regressions.
+- Rebuild after source changes so `mp4-analyzer.html`, `index.html`, and `chunked/` stay aligned.
+
+## Related Projects
+
+This project is intentionally smaller and more specialized than mature media tools:
+
+- MP4Box.js demonstrates progressive MP4 parsing, sample extraction, and browser demos for file inspection.
+- mediainfo.js demonstrates browser-compatible media metadata extraction through WebAssembly.
+- CyberChef is a useful reference for clear client-side privacy messaging and local/offline browser-tool positioning.
