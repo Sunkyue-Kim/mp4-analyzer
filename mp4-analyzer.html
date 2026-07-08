@@ -490,7 +490,7 @@ button:disabled {
 }
 .frames-panel.active {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   padding: 0;
   overflow: hidden;
@@ -1172,6 +1172,169 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.frame-internals-panel {
+  min-width: 0;
+  max-height: 300px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  overflow: hidden;
+}
+.frame-internals-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+}
+.frame-internals-head h2 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.frame-internals-head span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.frame-internals-body {
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px;
+}
+.frame-internals-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.34fr) minmax(320px, 0.66fr);
+  gap: 12px;
+  min-width: 0;
+}
+.frame-internals-summary {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+.frame-internals-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.frame-internals-title-row strong {
+  font-size: 14px;
+}
+.frame-internals-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.frame-internals-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.frame-internals-stat {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+  background: #f8fafc;
+}
+.frame-internals-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+.frame-internals-stat strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.block-heatmap-wrap {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px;
+  background: #fdfefe;
+}
+.block-heatmap {
+  display: grid;
+  grid-template-columns: repeat(var(--block-columns), minmax(4px, 1fr));
+  gap: 1px;
+  width: 100%;
+  aspect-ratio: var(--frame-aspect-ratio, 16 / 9);
+  max-height: 220px;
+  background: #d7e2ea;
+  border: 1px solid #cdd8e3;
+  overflow: hidden;
+}
+.block-cell {
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(31, 122, 140, var(--cell-alpha));
+  cursor: help;
+}
+.block-cell.i {
+  background: rgba(15, 159, 95, var(--cell-alpha));
+}
+.block-cell.p {
+  background: rgba(22, 149, 154, var(--cell-alpha));
+}
+.block-cell.b {
+  background: rgba(122, 90, 248, var(--cell-alpha));
+}
+.block-cell.warn {
+  background: rgba(181, 71, 8, var(--cell-alpha));
+}
+.block-cell.err {
+  background: rgba(217, 45, 32, var(--cell-alpha));
+}
+.audio-band-plot {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.audio-band-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr) 78px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+}
+.audio-band-label {
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audio-band-bar {
+  min-width: 0;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #eef2f7;
+  overflow: hidden;
+}
+.audio-band-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: rgba(31, 122, 140, var(--band-alpha));
+}
+.audio-band-size {
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .pill {
   display: inline-flex;
   align-items: center;
@@ -1230,6 +1393,10 @@ button:disabled {
   padding: 22px;
   color: var(--muted);
   text-align: center;
+}
+.empty.compact {
+  padding: 14px;
+  font-size: 12px;
 }
 .split-note {
   color: var(--muted);
@@ -1423,7 +1590,7 @@ button:disabled {
     overflow: visible;
   }
   .frames-panel.active {
-    grid-template-rows: auto minmax(320px, auto);
+    grid-template-rows: auto minmax(320px, auto) auto;
   }
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1543,6 +1710,26 @@ button:disabled {
   .graph-wrap {
     height: clamp(320px, 58dvh, 520px);
     min-height: 320px;
+  }
+  .frame-internals-panel {
+    max-height: none;
+  }
+  .frame-internals-body {
+    max-height: none;
+    padding: 10px;
+  }
+  .frame-internals-layout {
+    grid-template-columns: 1fr;
+  }
+  .frame-internals-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .block-heatmap {
+    max-height: 260px;
+  }
+  .audio-band-row {
+    grid-template-columns: 74px minmax(0, 1fr) 68px;
+    gap: 6px;
   }
   .frame-header,
   .frame-row {
@@ -1733,6 +1920,15 @@ button:disabled {
                 </div>
               </div>
             </div>
+            <section id="frameInternalsPanel" class="frame-internals-panel" aria-live="polite">
+              <div class="frame-internals-head">
+                <h2 data-i18n="frameInternals.title">Selected frame internals</h2>
+                <span data-i18n="frameInternals.badge">nominal view</span>
+              </div>
+              <div id="frameInternalsBody" class="frame-internals-body">
+                <div class="empty compact" data-i18n="frameInternals.empty">Select a frame row to inspect nominal block or audio band structure.</div>
+              </div>
+            </section>
           </div>
           <div id="metricsPanel" class="panel metrics-panel">
             <div class="metrics-controls">
@@ -5530,6 +5726,235 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     }
   });
 
+  // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\core\codecs\frame-internals.js
+  function buildFrameInternalsModel(row, track) {
+    if (!row || !track) {
+      return {
+        kind: "empty",
+        title: "No frame selected",
+        note: "Select a frame row to inspect its nominal internal structure."
+      };
+    }
+    if (track.handlerType === "vide") return buildVideoInternalsModel(row, track);
+    if (track.handlerType === "soun") return buildAudioInternalsModel(row, track);
+    return {
+      kind: "unsupported",
+      title: "Internal structure unavailable",
+      note: "This track type does not expose a supported nominal frame structure."
+    };
+  }
+  function buildVideoInternalsModel(row, track) {
+    const descriptor = VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
+    const width = Math.max(0, Math.round(Number(track.width) || 0));
+    const height = Math.max(0, Math.round(Number(track.height) || 0));
+    if (!descriptor || !width || !height) {
+      return {
+        kind: "unsupported",
+        title: "Video block view unavailable",
+        note: "This video codec or track size is not mapped to a nominal coding-unit grid yet.",
+        codec: track.codec
+      };
+    }
+    const nominalColumns = Math.max(1, Math.ceil(width / descriptor.unitWidth));
+    const nominalRows = Math.max(1, Math.ceil(height / descriptor.unitHeight));
+    const aggregation = Math.max(1, Math.ceil(Math.sqrt(nominalColumns * nominalRows / MAX_VIDEO_DISPLAY_CELLS)));
+    const displayColumns = Math.ceil(nominalColumns / aggregation);
+    const displayRows = Math.ceil(nominalRows / aggregation);
+    const cells = buildVideoCells({
+      row,
+      descriptor,
+      width,
+      height,
+      nominalColumns,
+      nominalRows,
+      displayColumns,
+      displayRows,
+      aggregation
+    });
+    return {
+      kind: "video-grid",
+      title: descriptor.codecFamily + " " + descriptor.unitName + " grid",
+      codecFamily: descriptor.codecFamily,
+      codec: track.codec,
+      frameType: row.frameType || "unknown",
+      sampleSize: Number(row.size) || 0,
+      unitName: descriptor.unitName,
+      unitWidth: descriptor.unitWidth,
+      unitHeight: descriptor.unitHeight,
+      mediaWidth: width,
+      mediaHeight: height,
+      nominalColumns,
+      nominalRows,
+      nominalUnitCount: nominalColumns * nominalRows,
+      displayColumns,
+      displayRows,
+      displayCellCount: displayColumns * displayRows,
+      aggregation,
+      accuracy: descriptor.accuracy,
+      note: descriptor.note,
+      cells
+    };
+  }
+  function buildVideoCells(options) {
+    const cells = [];
+    let totalWeight = 0;
+    for (let rowIndex = 0; rowIndex < options.displayRows; rowIndex += 1) {
+      for (let columnIndex = 0; columnIndex < options.displayColumns; columnIndex += 1) {
+        const unitColumnStart = columnIndex * options.aggregation;
+        const unitColumnEnd = Math.min(options.nominalColumns, unitColumnStart + options.aggregation);
+        const unitRowStart = rowIndex * options.aggregation;
+        const unitRowEnd = Math.min(options.nominalRows, unitRowStart + options.aggregation);
+        const nominalUnits = Math.max(1, (unitColumnEnd - unitColumnStart) * (unitRowEnd - unitRowStart));
+        const weight = nominalUnits * getSyntheticSpatialWeight(options.row, rowIndex, columnIndex, options.displayRows, options.displayColumns);
+        totalWeight += weight;
+        cells.push({
+          rowIndex,
+          columnIndex,
+          unitColumnStart,
+          unitColumnEnd,
+          unitRowStart,
+          unitRowEnd,
+          nominalUnits,
+          pixelLeft: unitColumnStart * options.descriptor.unitWidth,
+          pixelTop: unitRowStart * options.descriptor.unitHeight,
+          pixelRight: Math.min(options.width, unitColumnEnd * options.descriptor.unitWidth),
+          pixelBottom: Math.min(options.height, unitRowEnd * options.descriptor.unitHeight),
+          weight
+        });
+      }
+    }
+    const sampleSize = Math.max(0, Number(options.row.size) || 0);
+    for (const cell of cells) {
+      const byteEstimate = totalWeight > 0 ? sampleSize * cell.weight / totalWeight : 0;
+      cell.estimatedBytes = byteEstimate;
+      cell.intensity = sampleSize > 0 ? clamp(byteEstimate * cells.length / sampleSize, 0.12, 1) : 0.12;
+      delete cell.weight;
+    }
+    return cells;
+  }
+  function getSyntheticSpatialWeight(row, rowIndex, columnIndex, rowCount, columnCount) {
+    const x = columnCount <= 1 ? 0.5 : columnIndex / (columnCount - 1);
+    const y = rowCount <= 1 ? 0.5 : rowIndex / (rowCount - 1);
+    const centerX = x - 0.5;
+    const centerY = y - 0.5;
+    const centerBias = 1.1 - Math.min(0.65, Math.sqrt(centerX * centerX + centerY * centerY));
+    const type = row.frameType || "";
+    const typeBias = type === "I" || type === "IDR" ? 1.15 : type === "B" ? 0.92 : 1;
+    return Math.max(0.1, centerBias * typeBias * (0.72 + deterministicNoise(row, rowIndex, columnIndex) * 0.56));
+  }
+  function deterministicNoise(row, rowIndex, columnIndex) {
+    let value = ((Number(row.trackId) || 0) * 73856093 ^ (Number(row.sampleIndex) || 0) * 19349663 ^ rowIndex * 83492791 ^ columnIndex * 2654435761) >>> 0;
+    value ^= value << 13;
+    value ^= value >>> 17;
+    value ^= value << 5;
+    return (value >>> 0) % 1e3 / 999;
+  }
+  function buildAudioInternalsModel(row, track) {
+    const sampleSize = Math.max(0, Number(row.size) || 0);
+    const sampleRate = getAudioSampleRate(track);
+    const activeBandwidthHz = getActiveAudioBandwidth(row, track, sampleRate);
+    const weights = AUDIO_BANDS.map((band, index) => getAudioBandWeight(band, index, row, activeBandwidthHz));
+    const totalWeight = weights.reduce((sum, value) => sum + value, 0) || 1;
+    const bands = AUDIO_BANDS.map((band, index) => {
+      const estimatedBytes = sampleSize * weights[index] / totalWeight;
+      return {
+        ...band,
+        active: band.startHz < activeBandwidthHz,
+        estimatedBytes,
+        ratio: sampleSize > 0 ? estimatedBytes / sampleSize : 0,
+        intensity: clamp(weights[index] / Math.max(...weights), 0.12, 1)
+      };
+    });
+    return {
+      kind: "audio-bands",
+      title: (track.codecConfig && track.codecConfig.audioObjectTypeName || track.codec || "Audio") + " band budget",
+      codec: track.codec,
+      frameType: row.frameType || "audio",
+      sampleSize,
+      sampleRate,
+      activeBandwidthHz,
+      channelCount: track.channelCount || 0,
+      note: "This is a packet-size and codec-metadata estimate. Exact per-band bit allocation requires codec payload decoding.",
+      bands
+    };
+  }
+  function getAudioSampleRate(track) {
+    const configRate = track.codecConfig && (track.codecConfig.samplingFrequency || track.codecConfig.inputSampleRate);
+    return Math.max(0, Number(configRate || track.sampleRate || 0));
+  }
+  function getActiveAudioBandwidth(row, track, sampleRate) {
+    const tags = (row.nalTypes || []).map((value) => String(value));
+    const bandwidthTag = tags.find((value) => /^(NB|MB|WB|SWB|FB)$/.test(value));
+    const bandwidthMap = { NB: 4e3, MB: 6e3, WB: 8e3, SWB: 12e3, FB: 2e4 };
+    if (bandwidthTag) return bandwidthMap[bandwidthTag];
+    const nyquist = sampleRate > 0 ? sampleRate / 2 : 2e4;
+    return Math.max(4e3, Math.min(2e4, nyquist));
+  }
+  function getAudioBandWeight(band, index, row, activeBandwidthHz) {
+    if (band.startHz >= activeBandwidthHz) return 0.04;
+    const activeEnd = Math.min(band.endHz, activeBandwidthHz);
+    const activeSpan = Math.max(0, activeEnd - band.startHz);
+    const spanWeight = Math.log2(1 + activeSpan / 40);
+    return Math.max(0.08, spanWeight * (0.72 + deterministicNoise(row, index, band.endHz) * 0.56));
+  }
+  function clamp(value, minimum, maximum) {
+    return Math.min(maximum, Math.max(minimum, value));
+  }
+  var MAX_VIDEO_DISPLAY_CELLS, VIDEO_CODING_UNITS, AUDIO_BANDS;
+  var init_frame_internals = __esm({
+    "local-source:C:\\Users\\user\\Documents\\Codex\\2026-07-08\\js-html-mp4-html-mp4-i\\src\\js\\core\\codecs\\frame-internals.js"() {
+      MAX_VIDEO_DISPLAY_CELLS = 1800;
+      VIDEO_CODING_UNITS = [
+        {
+          matches: (track) => track.codecDescriptor === "avc" || ["avc1", "avc2", "avc3", "avc4"].includes(track.codec),
+          codecFamily: "AVC / H.264",
+          unitName: "macroblock",
+          unitWidth: 16,
+          unitHeight: 16,
+          accuracy: "nominal-exact-grid",
+          note: "AVC uses a 16x16 macroblock raster. Internal prediction partitions and transform blocks require slice-data syntax decoding."
+        },
+        {
+          matches: (track) => track.codecDescriptor === "hevc" || ["hvc1", "hev1"].includes(track.codec),
+          codecFamily: "HEVC / H.265",
+          unitName: "CTU",
+          unitWidth: 64,
+          unitHeight: 64,
+          accuracy: "nominal-grid",
+          note: "HEVC CTU size is signaled in SPS. This view uses the common 64x64 CTU nominal grid until SPS partition parsing is added."
+        },
+        {
+          matches: (track) => track.codec === "V_VP9" || track.codecDescriptor === "V_VP9" || String(track.codec).toLowerCase() === "vp9",
+          codecFamily: "VP9",
+          unitName: "superblock",
+          unitWidth: 64,
+          unitHeight: 64,
+          accuracy: "nominal-grid",
+          note: "VP9 superblock partition data is entropy coded in frame payloads. This view shows a nominal 64x64 superblock grid."
+        },
+        {
+          matches: (track) => track.codec === "av01" || track.codecDescriptor === "av1",
+          codecFamily: "AV1",
+          unitName: "superblock",
+          unitWidth: 128,
+          unitHeight: 128,
+          accuracy: "future-nominal-grid",
+          note: "AV1 can use 64x64 or 128x128 superblocks. This placeholder assumes 128x128 until AV1 sequence header parsing is added."
+        }
+      ];
+      AUDIO_BANDS = [
+        { label: "Sub", range: "20-60 Hz", startHz: 20, endHz: 60 },
+        { label: "Bass", range: "60-250 Hz", startHz: 60, endHz: 250 },
+        { label: "Low mid", range: "250-500 Hz", startHz: 250, endHz: 500 },
+        { label: "Mid", range: "500 Hz-2 kHz", startHz: 500, endHz: 2e3 },
+        { label: "High mid", range: "2-4 kHz", startHz: 2e3, endHz: 4e3 },
+        { label: "Presence", range: "4-6 kHz", startHz: 4e3, endHz: 6e3 },
+        { label: "Brilliance", range: "6-12 kHz", startHz: 6e3, endHz: 12e3 },
+        { label: "Air", range: "12-20 kHz", startHz: 12e3, endHz: 2e4 }
+      ];
+    }
+  });
+
   // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\core\self-tests.js
   async function runParserSelfTests() {
     const results = [];
@@ -5747,6 +6172,25 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "aria.seekFrame": "Seek to track {trackId} sample {sampleIndex} at {time}",
           "aria.seekFragment": "Seek to fragment {fragmentIndex} starting at {time}",
           "graph.axisTitle": "Time / frame",
+          "frameInternals.title": "Selected frame internals",
+          "frameInternals.badge": "nominal view",
+          "frameInternals.empty": "Select a frame row to inspect nominal block or audio band structure.",
+          "frameInternals.unsupported": "No supported internal structure view is available for this selected sample.",
+          "frameInternals.codec": "Codec",
+          "frameInternals.frame": "Frame",
+          "frameInternals.unit": "Unit",
+          "frameInternals.mediaSize": "Media size",
+          "frameInternals.nominalGrid": "Nominal grid",
+          "frameInternals.displayedGrid": "Displayed grid",
+          "frameInternals.sampleSize": "Sample size",
+          "frameInternals.accuracy": "Accuracy",
+          "frameInternals.nominal": "nominal",
+          "frameInternals.sampleRate": "Sample rate",
+          "frameInternals.activeBandwidth": "Active bandwidth",
+          "frameInternals.channels": "Channels",
+          "frameInternals.audioBands": "Audio band budget",
+          "frameInternals.videoEstimateNote": "Color intensity distributes this sample's byte size across the nominal coding-unit grid as an estimate; it is not decoded per-block entropy data.",
+          "frameInternals.audioEstimateNote": "Band sizes are estimated from packet size and codec metadata; scalefactor or spectral payload decoding is not implemented.",
           "unit.bytes": "bytes",
           "unit.max": "max {value}",
           "count.rows": "{count} rows",
@@ -5916,6 +6360,25 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "aria.seekFrame": "Track {trackId} sample {sampleIndex}\uC758 {time} \uC704\uCE58\uB85C \uC774\uB3D9",
           "aria.seekFragment": "{time}\uC5D0\uC11C \uC2DC\uC791\uD558\uB294 fragment {fragmentIndex}\uB85C \uC774\uB3D9",
           "graph.axisTitle": "\uC2DC\uAC04 / \uD504\uB808\uC784",
+          "frameInternals.title": "\uC120\uD0DD \uD504\uB808\uC784 \uB0B4\uBD80 \uC815\uBCF4",
+          "frameInternals.badge": "nominal \uBCF4\uAE30",
+          "frameInternals.empty": "\uD504\uB808\uC784 row\uB97C \uC120\uD0DD\uD558\uBA74 nominal block \uB610\uB294 audio band \uAD6C\uC870\uB97C \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
+          "frameInternals.unsupported": "\uC120\uD0DD\uB41C \uC0D8\uD50C\uC5D0 \uB300\uD574 \uC9C0\uC6D0\uB418\uB294 \uB0B4\uBD80 \uAD6C\uC870 \uBCF4\uAE30\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+          "frameInternals.codec": "\uCF54\uB371",
+          "frameInternals.frame": "\uD504\uB808\uC784",
+          "frameInternals.unit": "\uB2E8\uC704",
+          "frameInternals.mediaSize": "\uBBF8\uB514\uC5B4 \uD06C\uAE30",
+          "frameInternals.nominalGrid": "Nominal grid",
+          "frameInternals.displayedGrid": "\uD45C\uC2DC grid",
+          "frameInternals.sampleSize": "\uC0D8\uD50C \uD06C\uAE30",
+          "frameInternals.accuracy": "\uC815\uD655\uB3C4",
+          "frameInternals.nominal": "nominal",
+          "frameInternals.sampleRate": "\uC0D8\uD50C \uB808\uC774\uD2B8",
+          "frameInternals.activeBandwidth": "\uD65C\uC131 \uB300\uC5ED\uD3ED",
+          "frameInternals.channels": "\uCC44\uB110",
+          "frameInternals.audioBands": "\uC624\uB514\uC624 \uB300\uC5ED\uBCC4 byte \uCD94\uC815",
+          "frameInternals.videoEstimateNote": "\uC0C9 \uAC15\uB3C4\uB294 \uC774 \uC0D8\uD50C\uC758 byte \uD06C\uAE30\uB97C nominal coding-unit grid\uC5D0 \uCD94\uC815 \uBD84\uBC30\uD55C \uAC12\uC785\uB2C8\uB2E4. decoded per-block entropy \uB370\uC774\uD130\uAC00 \uC544\uB2D9\uB2C8\uB2E4.",
+          "frameInternals.audioEstimateNote": "\uB300\uC5ED\uBCC4 \uD06C\uAE30\uB294 packet size\uC640 codec metadata \uAE30\uBC18 \uCD94\uC815\uCE58\uC785\uB2C8\uB2E4. scalefactor \uB610\uB294 spectral payload decode\uB294 \uAD6C\uD604\uB418\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
           "unit.bytes": "bytes",
           "unit.max": "\uCD5C\uB300 {value}",
           "count.rows": "{count} rows",
@@ -6151,7 +6614,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   });
 
   // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\core\common\formatting.js
-  function clamp(value, min, max) {
+  function clamp2(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
   function formatBytes(value) {
@@ -6219,6 +6682,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       init_registry2();
       init_registry();
       init_frame_scanner();
+      init_frame_internals();
       init_self_tests();
       init_ui_constants();
       init_formatting();
@@ -6233,7 +6697,8 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         shouldAutoScan,
         formatBytes,
         getDefaultSampleFrameType,
-        getFrameTypeScanner
+        getFrameTypeScanner,
+        buildFrameInternalsModel
       };
     }
   });
@@ -6764,7 +7229,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       const scrollHeight = Number(options.scrollElement.scrollHeight);
       const maxScrollTop = Math.max(0, (Number.isFinite(scrollHeight) && scrollHeight > 0 ? scrollHeight : contentHeight) - clientHeight);
       const rowCenter = scrollTopOffset + normalizedRowIndex * rowHeight + rowHeight / 2;
-      options.scrollElement.scrollTop = clamp2(rowCenter - clientHeight / 2, 0, maxScrollTop);
+      options.scrollElement.scrollTop = clamp3(rowCenter - clientHeight / 2, 0, maxScrollTop);
     }
     return {
       setRows,
@@ -6774,7 +7239,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       scrollRowIntoCenter
     };
   }
-  function clamp2(value, minimum, maximum) {
+  function clamp3(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
   }
   var init_recycler_view = __esm({
@@ -7074,6 +7539,8 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       frameCountText: document.getElementById("frameCountText"),
       frameGraphView: document.getElementById("frameGraphView"),
       frameTableView: document.getElementById("frameTableView"),
+      frameInternalsPanel: document.getElementById("frameInternalsPanel"),
+      frameInternalsBody: document.getElementById("frameInternalsBody"),
       frameWrap: document.getElementById("frameWrap"),
       frameHeader: document.getElementById("frameHeader"),
       frameScroller: document.getElementById("frameScroller"),
@@ -7115,6 +7582,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       getAnalysis: () => state.analysis,
       getFilteredRows: () => state.filteredRows,
       getSelectedFrameKey: () => state.selectedFrameKey,
+      getSelectedFrameInternals: () => buildSelectedFrameInternalsModel(),
       getSelectedFragmentIndex: () => state.selectedFragmentIndex,
       getFragmentRows: () => state.fragmentRows.slice(),
       getSelectedBox: () => state.selectedBox,
@@ -7353,6 +7821,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         elements.warningsBody.innerHTML = emptyHtml("empty.noWarnings");
         elements.frameCountText.textContent = t("count.rows", { count: 0 });
         elements.graphAxisUnit.textContent = t("unit.bytes");
+        renderFrameInternals();
         renderFrameTableLayout([]);
         elements.trackFilter.innerHTML = '<option value="">' + escapeHtml2(t("option.all")) + "</option>";
         elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml2(t("option.noTrack")) + "</option>";
@@ -7574,6 +8043,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       synchronizeFragmentSelectionToFrameRow(row);
       seekPreviewToFrameRow(row);
       scheduleFrameRender();
+      renderFrameInternals();
       if (previousFragmentIndex !== state.selectedFragmentIndex) renderFragments();
     }
     function activateFragmentByIndex(fragmentIndex) {
@@ -7588,6 +8058,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       }
       renderFragments();
       scheduleFrameRender();
+      renderFrameInternals();
       return fragment;
     }
     function findFragmentRowByIndex(fragmentIndex) {
@@ -7679,6 +8150,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       synchronizeFragmentSelectionToFrameRow(row);
       scrollSynchronizedFrameRowIntoView(row);
       scheduleFrameRender();
+      renderFrameInternals();
       if (previousFragmentIndex !== state.selectedFragmentIndex) renderFragments();
       return row;
     }
@@ -7695,6 +8167,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       if (fragment.startFrameRow && !elements.autoPlaybackSynchronizationToggle.checked) {
         state.selectedFrameKey = getFrameRowKey(fragment.startFrameRow);
         scheduleFrameRender();
+        renderFrameInternals();
       }
       renderFragments();
       return fragment;
@@ -7896,6 +8369,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       elements.graphAxisScale.innerHTML = "";
       elements.graphAxisUnit.textContent = t("unit.bytes");
       elements.frameCountText.textContent = t("count.rows", { count: 0 });
+      renderFrameInternals();
       elements.trackFilter.innerHTML = '<option value="">' + escapeHtml2(t("option.all")) + "</option>";
       elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml2(t("option.noTrack")) + "</option>";
       elements.scanButton.disabled = true;
@@ -7951,7 +8425,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       return maxDurationSeconds;
     }
     function setProgress(label, percent) {
-      const bounded = clamp(Number(percent) || 0, 0, 100);
+      const bounded = clamp2(Number(percent) || 0, 0, 100);
       state.progressSourceLabel = label;
       state.progressRawLabel = translateRuntimeLabel(label);
       state.progressPercentValue = bounded;
@@ -8444,7 +8918,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       if (!entries.length) return '<section class="metric-section"><h3>' + escapeHtml2(t("metrics.frameTypeDistribution")) + "</h3>" + emptyHtml("empty.noFrameTypeData") + "</section>";
       return '<section class="metric-section"><h3>' + escapeHtml2(t("metrics.frameTypeDistribution")) + '</h3><div class="metric-type-list">' + entries.map(([frameType, count]) => {
         const ratio = totalRows ? count * 100 / totalRows : 0;
-        return '<div class="metric-type-row"><span>' + escapeHtml2(frameType) + '</span><div class="metric-type-bar"><span style="width:' + clamp(ratio, 0, 100).toFixed(2) + '%"></span></div><strong>' + count + "</strong></div>";
+        return '<div class="metric-type-row"><span>' + escapeHtml2(frameType) + '</span><div class="metric-type-bar"><span style="width:' + clamp2(ratio, 0, 100).toFixed(2) + '%"></span></div><strong>' + count + "</strong></div>";
       }).join("") + "</div></section>";
     }
     function renderTopSampleRows(rows) {
@@ -8496,6 +8970,82 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         if (state.selectedFrameKey && !rows.some((row) => getFrameRowKey(row) === state.selectedFrameKey)) state.selectedFrameKey = "";
         scheduleFrameRender();
       }
+      renderFrameInternals();
+    }
+    function renderFrameInternals() {
+      if (!elements.frameInternalsBody) return;
+      const model = buildSelectedFrameInternalsModel();
+      if (model.kind === "empty") {
+        elements.frameInternalsBody.innerHTML = emptyHtml("frameInternals.empty");
+        return;
+      }
+      if (model.kind === "video-grid") {
+        elements.frameInternalsBody.innerHTML = renderVideoFrameInternals(model);
+        return;
+      }
+      if (model.kind === "audio-bands") {
+        elements.frameInternalsBody.innerHTML = renderAudioFrameInternals(model);
+        return;
+      }
+      elements.frameInternalsBody.innerHTML = '<div class="empty compact">' + escapeHtml2(model.note || t("frameInternals.unsupported")) + "</div>";
+    }
+    function buildSelectedFrameInternalsModel() {
+      if (!state.analysis || !state.selectedFrameKey) return buildFrameInternalsModel(null, null);
+      const row = findFrameRowByKey(state.selectedFrameKey);
+      return buildFrameInternalsModel(row, row ? getRowTrack(row) : null);
+    }
+    function renderVideoFrameInternals(model) {
+      const frameClass = getFrameTypeClass(model.frameType);
+      const stats = [
+        [t("frameInternals.codec"), model.codecFamily],
+        [t("frameInternals.frame"), formatSelectedFrameLabel()],
+        [t("frameInternals.unit"), model.unitName + " " + model.unitWidth + "x" + model.unitHeight],
+        [t("frameInternals.mediaSize"), model.mediaWidth + "x" + model.mediaHeight],
+        [t("frameInternals.nominalGrid"), model.nominalColumns + "x" + model.nominalRows + " (" + model.nominalUnitCount + ")"],
+        [t("frameInternals.displayedGrid"), model.displayColumns + "x" + model.displayRows + (model.aggregation > 1 ? " (x" + model.aggregation + ")" : "")],
+        [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+        [t("frameInternals.accuracy"), t("frameInternals.nominal")]
+      ];
+      return '<div class="frame-internals-layout"><div class="frame-internals-summary"><div class="frame-internals-title-row"><strong>' + escapeHtml2(model.title) + '</strong><span class="pill ' + frameClass + '">' + escapeHtml2(formatFrameTypeLabel(model.frameType)) + '</span></div><p class="frame-internals-note">' + escapeHtml2(model.note) + "</p>" + renderFrameInternalsStats(stats) + '</div><div class="block-heatmap-wrap"><div class="block-heatmap" style="--block-columns:' + model.displayColumns + ";--frame-aspect-ratio:" + model.mediaWidth + " / " + model.mediaHeight + '">' + model.cells.map((cell) => renderVideoBlockCell(cell, model, frameClass)).join("") + '</div><p class="frame-internals-note">' + escapeHtml2(t("frameInternals.videoEstimateNote")) + "</p></div></div>";
+    }
+    function renderVideoBlockCell(cell, model, frameClass) {
+      const title = [
+        model.unitName + " x " + (cell.unitColumnStart + 1) + "-" + cell.unitColumnEnd + ", y " + (cell.unitRowStart + 1) + "-" + cell.unitRowEnd,
+        "pixels " + cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom,
+        "estimated " + formatBytes(cell.estimatedBytes),
+        cell.nominalUnits + " nominal units"
+      ].join(" | ");
+      return '<div class="block-cell ' + frameClass + '" title="' + escapeHtml2(title) + '" style="--cell-alpha:' + cell.intensity.toFixed(3) + '"></div>';
+    }
+    function renderAudioFrameInternals(model) {
+      const stats = [
+        [t("frameInternals.codec"), model.title],
+        [t("frameInternals.frame"), formatSelectedFrameLabel()],
+        [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+        [t("frameInternals.sampleRate"), model.sampleRate ? formatMetricNumber(model.sampleRate, 0) + " Hz" : t("value.notAvailable")],
+        [t("frameInternals.activeBandwidth"), formatAudioFrequency(model.activeBandwidthHz)],
+        [t("frameInternals.channels"), model.channelCount || t("value.notAvailable")]
+      ];
+      return '<div class="frame-internals-layout"><div class="frame-internals-summary"><div class="frame-internals-title-row"><strong>' + escapeHtml2(t("frameInternals.audioBands")) + '</strong><span class="pill aac">' + escapeHtml2(formatFrameTypeLabel(model.frameType)) + '</span></div><p class="frame-internals-note">' + escapeHtml2(model.note) + "</p>" + renderFrameInternalsStats(stats) + '</div><div class="block-heatmap-wrap"><div class="audio-band-plot">' + model.bands.map(renderAudioBandRow).join("") + '</div><p class="frame-internals-note">' + escapeHtml2(t("frameInternals.audioEstimateNote")) + "</p></div></div>";
+    }
+    function renderAudioBandRow(band) {
+      const widthPercent = clamp2(band.ratio * 100, band.active ? 2 : 0.8, 100);
+      const title = band.label + " " + band.range + " | estimated " + formatBytes(band.estimatedBytes);
+      return '<div class="audio-band-row" title="' + escapeHtml2(title) + '"><div class="audio-band-label">' + escapeHtml2(band.label) + "<br><small>" + escapeHtml2(band.range) + '</small></div><div class="audio-band-bar"><span class="audio-band-fill" style="width:' + widthPercent.toFixed(3) + "%;--band-alpha:" + band.intensity.toFixed(3) + '"></span></div><div class="audio-band-size">' + escapeHtml2(formatBytes(band.estimatedBytes)) + "</div></div>";
+    }
+    function renderFrameInternalsStats(stats) {
+      return '<div class="frame-internals-stats">' + stats.map(
+        ([label, value]) => '<div class="frame-internals-stat"><span>' + escapeHtml2(label) + "</span><strong>" + escapeHtml2(String(value)) + "</strong></div>"
+      ).join("") + "</div>";
+    }
+    function formatSelectedFrameLabel() {
+      const row = findFrameRowByKey(state.selectedFrameKey);
+      return row ? "T" + row.trackId + " #" + row.sampleIndex : t("value.notAvailable");
+    }
+    function formatAudioFrequency(value) {
+      const numberValue = Number(value);
+      if (!Number.isFinite(numberValue) || numberValue <= 0) return t("value.notAvailable");
+      return numberValue >= 1e3 ? formatMetricNumber(numberValue / 1e3, 1) + " kHz" : formatMetricNumber(numberValue, 0) + " Hz";
     }
     function renderFrameTableLayout(rows) {
       const columns = getFrameTableColumns();
@@ -8636,7 +9186,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     function renderGraphRow(row, visualIndex) {
       const type = row.frameType || "unknown";
       const typeClass = getFrameTypeClass(type);
-      const widthPercent = state.graphMaxSize ? clamp((row.size || 0) * 100 / state.graphMaxSize, 0, 100) : 0;
+      const widthPercent = state.graphMaxSize ? clamp2((row.size || 0) * 100 / state.graphMaxSize, 0, 100) : 0;
       const timeLabel = formatGraphTime(row);
       const frameRowKey = getFrameRowKey(row);
       const selectedClass = frameRowKey === state.selectedFrameKey ? " selected" : "";

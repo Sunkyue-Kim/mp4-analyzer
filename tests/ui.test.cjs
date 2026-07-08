@@ -608,6 +608,7 @@ test("source HTML has required controls, tabs, and no external runtime assets af
     "warningsBody",
     "frameGraphButton", "frameTableButton", "autoPlaybackSynchronizationToggle",
     "fragmentPlaybackSynchronizationToggle", "fragmentCountText", "fragmentsBody",
+    "frameInternalsPanel", "frameInternalsBody",
     "frameWrap", "frameHeader", "frameScroller", "graphScroller",
     "remoteUrlModal", "remoteUrlForm", "remoteUrlInput", "remoteUrlSubmitButton"
   ]) {
@@ -625,6 +626,8 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /synchronizeFragmentSelectionToPlayback/);
   assert.match(sourceUi, /handleFragmentRowPointerActivation/);
   assert.match(sourceUi, /createRecyclerView/);
+  assert.match(sourceUi, /buildFrameInternalsModel/);
+  assert.match(sourceUi, /renderFrameInternals/);
   assert.match(sourceUi, /createDataGridLayout/);
   assert.match(sourceUi, /renderDataGridCells/);
   assert.match(sourceUi, /frameTableRecycler\.setRows\(rows\)/);

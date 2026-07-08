@@ -180,12 +180,80 @@ test("codec registry provides interchangeable descriptors and scanners", async (
   assert.equal((await scanner.parse(new Uint8Array([0x00, 0x00, 0x00, 0x02, 0x65, 0xb0]))).frameType, "I");
 });
 
+test("frame internals model builds nominal video grids and audio band estimates", async () => {
+  const loader = await createSourceModuleLoader();
+  const { buildFrameInternalsModel } = await loader.import("src/js/core/codecs/frame-internals.js");
+
+  const videoModel = buildFrameInternalsModel(
+    { trackId: 1, sampleIndex: 10, size: 120000, frameType: "I" },
+    { trackId: 1, handlerType: "vide", codec: "avc1", codecDescriptor: "avc", width: 1920, height: 1080 }
+  );
+  assert.equal(videoModel.kind, "video-grid");
+  assert.equal(videoModel.unitName, "macroblock");
+  assert.equal(videoModel.nominalColumns, 120);
+  assert.equal(videoModel.nominalRows, 68);
+  assert.ok(videoModel.aggregation > 1);
+  assert.ok(videoModel.cells.length <= 1800);
+  assert.equal(Math.round(sum(videoModel.cells.map((cell) => cell.estimatedBytes))), 120000);
+  assert.ok(videoModel.cells.every((cell) => cell.pixelRight <= 1920 && cell.pixelBottom <= 1080));
+
+  const hevcModel = buildFrameInternalsModel(
+    { trackId: 2, sampleIndex: 1, size: 90000, frameType: "P" },
+    { trackId: 2, handlerType: "vide", codec: "hvc1", codecDescriptor: "hevc", width: 1280, height: 720 }
+  );
+  assert.equal(hevcModel.unitName, "CTU");
+  assert.equal(hevcModel.unitWidth, 64);
+
+  const vp9Model = buildFrameInternalsModel(
+    { trackId: 4, sampleIndex: 2, size: 24000, frameType: "P" },
+    { trackId: 4, handlerType: "vide", codec: "V_VP9", codecDescriptor: "V_VP9", width: 640, height: 360 }
+  );
+  assert.equal(vp9Model.unitName, "superblock");
+  assert.equal(vp9Model.unitWidth, 64);
+
+  const av1Model = buildFrameInternalsModel(
+    { trackId: 5, sampleIndex: 2, size: 24000, frameType: "I" },
+    { trackId: 5, handlerType: "vide", codec: "av01", codecDescriptor: "av1", width: 640, height: 360 }
+  );
+  assert.equal(av1Model.unitWidth, 128);
+
+  assert.equal(buildFrameInternalsModel(
+    { trackId: 9, sampleIndex: 1, size: 100 },
+    { trackId: 9, handlerType: "vide", codec: "raw", width: 0, height: 1080 }
+  ).kind, "unsupported");
+
+  const audioModel = buildFrameInternalsModel(
+    { trackId: 3, sampleIndex: 4, size: 960, frameType: "Opus", nalTypes: ["Opus", "NB", "1 frames"] },
+    { trackId: 3, handlerType: "soun", codec: "opus", channelCount: 2, sampleRate: 48000, codecConfig: { audioObjectTypeName: "Opus", samplingFrequency: 48000 } }
+  );
+  assert.equal(audioModel.kind, "audio-bands");
+  assert.equal(audioModel.activeBandwidthHz, 4000);
+  assert.equal(audioModel.bands.length, 8);
+  assert.equal(Math.round(sum(audioModel.bands.map((band) => band.estimatedBytes))), 960);
+  assert.equal(audioModel.bands.find((band) => band.label === "Air").active, false);
+
+  const zeroAudioModel = buildFrameInternalsModel(
+    { trackId: 6, sampleIndex: 1, size: 0, frameType: "audio", nalTypes: [] },
+    { trackId: 6, handlerType: "soun", codec: "aac", channelCount: 0, sampleRate: 0, codecConfig: null }
+  );
+  assert.equal(zeroAudioModel.sampleRate, 0);
+  assert.equal(zeroAudioModel.activeBandwidthHz, 20000);
+  assert.ok(zeroAudioModel.bands.every((band) => band.ratio === 0));
+
+  assert.equal(buildFrameInternalsModel(null, null).kind, "empty");
+  assert.equal(buildFrameInternalsModel({ size: 1 }, { handlerType: "meta", codec: "text" }).kind, "unsupported");
+});
+
 function packBits(bits) {
   const bytes = new Uint8Array(Math.ceil(bits.length / 8));
   for (let bitIndex = 0; bitIndex < bits.length; bitIndex += 1) {
     if (bits[bitIndex] === "1") bytes[Math.floor(bitIndex / 8)] |= 1 << (7 - (bitIndex % 8));
   }
   return bytes;
+}
+
+function sum(values) {
+  return values.reduce((total, value) => total + value, 0);
 }
 
 function makeMp3HeaderBytes(options = {}) {

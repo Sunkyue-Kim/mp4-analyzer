@@ -8,6 +8,7 @@ import {
   getFrameTypeScanner
 } from "./codecs/registry.js";
 import { scanFrameTypes, shouldAutoScan } from "./codecs/frame-scanner.js";
+import { buildFrameInternalsModel } from "./codecs/frame-internals.js";
 import { runParserSelfTests } from "./self-tests.js";
 import {
   ROW_HEIGHT,
@@ -40,7 +41,8 @@ export const Core = {
   shouldAutoScan,
   formatBytes,
   getDefaultSampleFrameType,
-  getFrameTypeScanner
+  getFrameTypeScanner,
+  buildFrameInternalsModel
 };
 
 export {
@@ -59,5 +61,6 @@ export {
   safeJsonReplacer,
   findDescendants,
   getDefaultSampleFrameType,
-  getFrameTypeScanner
+  getFrameTypeScanner,
+  buildFrameInternalsModel
 };

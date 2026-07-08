@@ -375,7 +375,7 @@ function verifyResponsiveLayoutCss() {
   );
   assertCssRule(
     sourceCss,
-    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frames-panel\.active\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(320px,\s*auto\);/,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frames-panel\.active\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(320px,\s*auto\) auto;/,
     "Mobile frame panel must preserve a minimum table row instead of collapsing below filters."
   );
   assertCssRule(

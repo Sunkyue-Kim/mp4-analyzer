@@ -13,7 +13,8 @@ import {
   safeJsonReplacer,
   findDescendants,
   getDefaultSampleFrameType,
-  getFrameTypeScanner
+  getFrameTypeScanner,
+  buildFrameInternalsModel
 } from "../core/analyzer-core.js";
 import {
   I18N,
@@ -123,6 +124,8 @@ const elements = {
   frameCountText: document.getElementById("frameCountText"),
   frameGraphView: document.getElementById("frameGraphView"),
   frameTableView: document.getElementById("frameTableView"),
+  frameInternalsPanel: document.getElementById("frameInternalsPanel"),
+  frameInternalsBody: document.getElementById("frameInternalsBody"),
   frameWrap: document.getElementById("frameWrap"),
   frameHeader: document.getElementById("frameHeader"),
   frameScroller: document.getElementById("frameScroller"),
@@ -168,6 +171,7 @@ const devToolsApi = {
   getAnalysis: () => state.analysis,
   getFilteredRows: () => state.filteredRows,
   getSelectedFrameKey: () => state.selectedFrameKey,
+  getSelectedFrameInternals: () => buildSelectedFrameInternalsModel(),
   getSelectedFragmentIndex: () => state.selectedFragmentIndex,
   getFragmentRows: () => state.fragmentRows.slice(),
   getSelectedBox: () => state.selectedBox,
@@ -419,6 +423,7 @@ function refreshDynamicLanguage() {
     elements.warningsBody.innerHTML = emptyHtml("empty.noWarnings");
     elements.frameCountText.textContent = t("count.rows", { count: 0 });
     elements.graphAxisUnit.textContent = t("unit.bytes");
+    renderFrameInternals();
     renderFrameTableLayout([]);
     elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + '</option>';
     elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.noTrack")) + '</option>';
@@ -661,6 +666,7 @@ function activateFrameRow(row) {
   synchronizeFragmentSelectionToFrameRow(row);
   seekPreviewToFrameRow(row);
   scheduleFrameRender();
+  renderFrameInternals();
   if (previousFragmentIndex !== state.selectedFragmentIndex) renderFragments();
 }
 
@@ -676,6 +682,7 @@ function activateFragmentByIndex(fragmentIndex) {
   }
   renderFragments();
   scheduleFrameRender();
+  renderFrameInternals();
   return fragment;
 }
 
@@ -787,6 +794,7 @@ function synchronizeFrameSelectionToPlayback(options = {}) {
   synchronizeFragmentSelectionToFrameRow(row);
   scrollSynchronizedFrameRowIntoView(row);
   scheduleFrameRender();
+  renderFrameInternals();
   if (previousFragmentIndex !== state.selectedFragmentIndex) renderFragments();
   return row;
 }
@@ -806,6 +814,7 @@ function synchronizeFragmentSelectionToPlayback(options = {}) {
   if (fragment.startFrameRow && !elements.autoPlaybackSynchronizationToggle.checked) {
     state.selectedFrameKey = getFrameRowKey(fragment.startFrameRow);
     scheduleFrameRender();
+    renderFrameInternals();
   }
   renderFragments();
   return fragment;
@@ -1033,6 +1042,7 @@ function resetView(file, options = {}) {
   elements.graphAxisScale.innerHTML = "";
   elements.graphAxisUnit.textContent = t("unit.bytes");
   elements.frameCountText.textContent = t("count.rows", { count: 0 });
+  renderFrameInternals();
   elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + '</option>';
   elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.noTrack")) + '</option>';
   elements.scanButton.disabled = true;
@@ -1708,6 +1718,117 @@ function renderFrames() {
     if (state.selectedFrameKey && !rows.some((row) => getFrameRowKey(row) === state.selectedFrameKey)) state.selectedFrameKey = "";
     scheduleFrameRender();
   }
+  renderFrameInternals();
+}
+
+function renderFrameInternals() {
+  if (!elements.frameInternalsBody) return;
+  const model = buildSelectedFrameInternalsModel();
+  if (model.kind === "empty") {
+    elements.frameInternalsBody.innerHTML = emptyHtml("frameInternals.empty");
+    return;
+  }
+  if (model.kind === "video-grid") {
+    elements.frameInternalsBody.innerHTML = renderVideoFrameInternals(model);
+    return;
+  }
+  if (model.kind === "audio-bands") {
+    elements.frameInternalsBody.innerHTML = renderAudioFrameInternals(model);
+    return;
+  }
+  elements.frameInternalsBody.innerHTML = '<div class="empty compact">' + escapeHtml(model.note || t("frameInternals.unsupported")) + '</div>';
+}
+
+function buildSelectedFrameInternalsModel() {
+  if (!state.analysis || !state.selectedFrameKey) return buildFrameInternalsModel(null, null);
+  const row = findFrameRowByKey(state.selectedFrameKey);
+  return buildFrameInternalsModel(row, row ? getRowTrack(row) : null);
+}
+
+function renderVideoFrameInternals(model) {
+  const frameClass = getFrameTypeClass(model.frameType);
+  const stats = [
+    [t("frameInternals.codec"), model.codecFamily],
+    [t("frameInternals.frame"), formatSelectedFrameLabel()],
+    [t("frameInternals.unit"), model.unitName + " " + model.unitWidth + "x" + model.unitHeight],
+    [t("frameInternals.mediaSize"), model.mediaWidth + "x" + model.mediaHeight],
+    [t("frameInternals.nominalGrid"), model.nominalColumns + "x" + model.nominalRows + " (" + model.nominalUnitCount + ")"],
+    [t("frameInternals.displayedGrid"), model.displayColumns + "x" + model.displayRows + (model.aggregation > 1 ? " (x" + model.aggregation + ")" : "")],
+    [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+    [t("frameInternals.accuracy"), t("frameInternals.nominal")]
+  ];
+  return '<div class="frame-internals-layout">' +
+    '<div class="frame-internals-summary">' +
+    '<div class="frame-internals-title-row"><strong>' + escapeHtml(model.title) + '</strong><span class="pill ' + frameClass + '">' + escapeHtml(formatFrameTypeLabel(model.frameType)) + '</span></div>' +
+    '<p class="frame-internals-note">' + escapeHtml(model.note) + '</p>' +
+    renderFrameInternalsStats(stats) +
+    '</div>' +
+    '<div class="block-heatmap-wrap">' +
+    '<div class="block-heatmap" style="--block-columns:' + model.displayColumns + ';--frame-aspect-ratio:' + model.mediaWidth + ' / ' + model.mediaHeight + '">' +
+    model.cells.map((cell) => renderVideoBlockCell(cell, model, frameClass)).join("") +
+    '</div>' +
+    '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.videoEstimateNote")) + '</p>' +
+    '</div>' +
+    '</div>';
+}
+
+function renderVideoBlockCell(cell, model, frameClass) {
+  const title = [
+    model.unitName + " x " + (cell.unitColumnStart + 1) + "-" + cell.unitColumnEnd + ", y " + (cell.unitRowStart + 1) + "-" + cell.unitRowEnd,
+    "pixels " + cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom,
+    "estimated " + formatBytes(cell.estimatedBytes),
+    cell.nominalUnits + " nominal units"
+  ].join(" | ");
+  return '<div class="block-cell ' + frameClass + '" title="' + escapeHtml(title) + '" style="--cell-alpha:' + cell.intensity.toFixed(3) + '"></div>';
+}
+
+function renderAudioFrameInternals(model) {
+  const stats = [
+    [t("frameInternals.codec"), model.title],
+    [t("frameInternals.frame"), formatSelectedFrameLabel()],
+    [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+    [t("frameInternals.sampleRate"), model.sampleRate ? formatMetricNumber(model.sampleRate, 0) + " Hz" : t("value.notAvailable")],
+    [t("frameInternals.activeBandwidth"), formatAudioFrequency(model.activeBandwidthHz)],
+    [t("frameInternals.channels"), model.channelCount || t("value.notAvailable")]
+  ];
+  return '<div class="frame-internals-layout">' +
+    '<div class="frame-internals-summary">' +
+    '<div class="frame-internals-title-row"><strong>' + escapeHtml(t("frameInternals.audioBands")) + '</strong><span class="pill aac">' + escapeHtml(formatFrameTypeLabel(model.frameType)) + '</span></div>' +
+    '<p class="frame-internals-note">' + escapeHtml(model.note) + '</p>' +
+    renderFrameInternalsStats(stats) +
+    '</div>' +
+    '<div class="block-heatmap-wrap">' +
+    '<div class="audio-band-plot">' + model.bands.map(renderAudioBandRow).join("") + '</div>' +
+    '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.audioEstimateNote")) + '</p>' +
+    '</div>' +
+    '</div>';
+}
+
+function renderAudioBandRow(band) {
+  const widthPercent = clamp(band.ratio * 100, band.active ? 2 : 0.8, 100);
+  const title = band.label + " " + band.range + " | estimated " + formatBytes(band.estimatedBytes);
+  return '<div class="audio-band-row" title="' + escapeHtml(title) + '">' +
+    '<div class="audio-band-label">' + escapeHtml(band.label) + '<br><small>' + escapeHtml(band.range) + '</small></div>' +
+    '<div class="audio-band-bar"><span class="audio-band-fill" style="width:' + widthPercent.toFixed(3) + '%;--band-alpha:' + band.intensity.toFixed(3) + '"></span></div>' +
+    '<div class="audio-band-size">' + escapeHtml(formatBytes(band.estimatedBytes)) + '</div>' +
+    '</div>';
+}
+
+function renderFrameInternalsStats(stats) {
+  return '<div class="frame-internals-stats">' + stats.map(([label, value]) =>
+    '<div class="frame-internals-stat"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(String(value)) + '</strong></div>'
+  ).join("") + '</div>';
+}
+
+function formatSelectedFrameLabel() {
+  const row = findFrameRowByKey(state.selectedFrameKey);
+  return row ? "T" + row.trackId + " #" + row.sampleIndex : t("value.notAvailable");
+}
+
+function formatAudioFrequency(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) return t("value.notAvailable");
+  return numberValue >= 1000 ? formatMetricNumber(numberValue / 1000, 1) + " kHz" : formatMetricNumber(numberValue, 0) + " Hz";
 }
 
 function renderFrameTableLayout(rows) {

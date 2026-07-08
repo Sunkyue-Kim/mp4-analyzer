@@ -17,6 +17,7 @@ This project is a local-first inspection tool. It opens files with standard brow
 | Video codecs | AVC/H.264, HEVC/H.265, VP9 metadata, ProRes metadata, unknown-codec fallback |
 | Audio codecs | AAC, MP3, Opus, unknown-codec fallback |
 | Views | Summary, boxes/elements, tracks, frames, metrics, fragments, warnings |
+| Frame internals | Nominal video coding-unit grids and audio band byte-budget estimates for selected samples |
 | Exports | JSON and CSV |
 | Languages | English and Korean |
 | Output builds | Single-file HTML and chunked lazy-load HTML |
@@ -27,6 +28,7 @@ This project is a local-first inspection tool. It opens files with standard brow
 - Track summaries: codec, handler/type, duration, timescale, dimensions, sample counts, audio configuration, and codec configuration
 - Sample/frame rows: index, track, type, offset, size, DTS, PTS, duration, sync/keyframe state, NAL types, chunks, and fragments where available
 - Visual analysis: frame-size graph, bitrate moving average, FPS moving average, largest samples, and fragment timing
+- Selected-frame internals: nominal AVC macroblock, HEVC CTU, VP9 superblock grids, and audio band byte-budget estimates
 - Playback-assisted navigation: selecting frame/fragment rows can seek the preview player when browser playback supports the file
 - Large tables: recycler-style grids keep DOM size bounded for high sample counts
 - Background analysis: file parsing and frame scanning are designed to run outside the main UI flow where practical
@@ -36,6 +38,7 @@ This project is a local-first inspection tool. It opens files with standard brow
 This is not a transcoder, decoder, repair tool, or compliance validator.
 
 - It does not decode video frames into pixels or audio frames into PCM samples.
+- It does not decode entropy-coded block partition syntax. AVC macroblock partitions, HEVC CTU/CU/PU/TU trees, VP9/AV1 partition trees, transform blocks, scalefactors, and exact block-level byte attribution are future decoder-parser work.
 - It does not rewrite, transmux, optimize, or repair media files.
 - It does not implement DASH/HLS manifest loading.
 - It does not bypass DRM, encrypted media, browser CORS policy, or server range-request policy.
@@ -74,6 +77,8 @@ For remote URLs:
 | MP3 | ID3 detection and MPEG audio frame scanning | Yes | Not applicable | Audio metadata and frame rows only |
 | Ogg Opus | Ogg pages, lacing, Opus identification | Packet-level rows | Not applicable | Opus packets are parsed structurally, not decoded |
 
+The selected-frame internals panel is intentionally first-pass and nominal: AVC uses a 16x16 macroblock raster, HEVC currently uses a 64x64 CTU raster, VP9 uses a 64x64 superblock raster, and audio uses packet-size plus codec-metadata band estimates. Exact partition trees and per-band or per-block bit allocation require codec payload decoding and are not implemented yet.
+
 ## Privacy And Network Model
 
 Local files stay local. The browser grants the page a `File`/`Blob` handle, and the app reads only the ranges it needs with `slice()` and `arrayBuffer()`.
@@ -109,6 +114,7 @@ src/
         ogg/                     Ogg/Opus parser
       codecs/
         registry.js              codec descriptor registry
+        frame-internals.js       nominal selected-frame internal visualization models
         audio/                   AAC, MP3, Opus
         video/                   AVC, HEVC
     i18n/                        English/Korean catalogs and descriptions
@@ -168,9 +174,9 @@ Validation samples live under `validation/generated/` and are exposed by the Git
 
 Current coverage snapshot from `npm run test:coverage`:
 
-- Tests: 38 passed, 0 failed
-- All files: 95.04% line coverage, 74.00% branch coverage, 93.37% function coverage
-- Strong coverage areas: binary readers, HTTP range readers, remote URL fallback/progress handling, browser worker client message flow, bitstream helpers, formatting edge cases, AAC/MP3/Opus parser branches, codec registry, i18n, data grid/recycler helpers, ISO BMFF sample modeling, ISO BMFF rare box parsing, MP3 container detection, source-map build wiring, and bundled sample container integration
+- Tests: 39 passed, 0 failed
+- All files: 95.29% line coverage, 74.11% branch coverage, 93.72% function coverage
+- Strong coverage areas: binary readers, HTTP range readers, remote URL fallback/progress handling, browser worker client message flow, bitstream helpers, formatting edge cases, AAC/MP3/Opus parser branches, nominal frame internals models, codec registry, i18n, data grid/recycler helpers, ISO BMFF sample modeling, ISO BMFF rare box parsing, MP3 container detection, source-map build wiring, and bundled sample container integration
 - Lower branch coverage remains mainly in browser-worker runtime branches and malformed/edge container branches such as oversized/invalid MP4 boxes, MP3 ID3v1 edge metadata, Ogg page edge cases, and WebM lacing variants
 
 ## Export Model
