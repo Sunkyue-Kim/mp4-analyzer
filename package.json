@@ -1,0 +1,14 @@
+{
+  "name": "mp4-analyzer-single-html",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "extract:source": "node tools/extract-source.cjs",
+    "build": "node tools/build.cjs"
+  },
+  "devDependencies": {
+    "esbuild": "latest",
+    "html-minifier-terser": "latest"
+  }
+}

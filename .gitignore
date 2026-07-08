@@ -1,0 +1,6 @@
+node_modules/
+.tools/
+validation/
+
+.DS_Store
+Thumbs.db
