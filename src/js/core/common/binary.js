@@ -1,0 +1,165 @@
+const CACHE_CHUNK_BYTES = 4 * 1024 * 1024;
+const MAX_CACHE_BYTES = 64 * 1024 * 1024;
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
+function toBig(value) {
+  return typeof value === "bigint" ? value : BigInt(value);
+}
+
+function toSafeNumber(value, context) {
+  const bigValue = toBig(value);
+  if (bigValue > MAX_SAFE_BIGINT) {
+    throw new Error(context + " is too large for browser File.slice(): " + bigValue.toString());
+  }
+  return Number(bigValue);
+}
+
+function hexByte(value) {
+  return value.toString(16).padStart(2, "0");
+}
+
+function fourCcFromBytes(bytes, offset) {
+  return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+}
+
+function safeJsonReplacer(key, value) {
+  if (typeof value === "bigint") return value.toString();
+  if (key.endsWith("Big")) return undefined;
+  return value;
+}
+
+class ByteCursor {
+  constructor(bytes) {
+    this.bytes = bytes;
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  }
+
+  get length() {
+    return this.bytes.byteLength;
+  }
+
+  ensure(offset, size) {
+    return offset >= 0 && offset + size <= this.length;
+  }
+
+  uint8(offset) {
+    if (!this.ensure(offset, 1)) throw new Error("Unexpected EOF at " + offset);
+    return this.view.getUint8(offset);
+  }
+
+  uint16(offset) {
+    if (!this.ensure(offset, 2)) throw new Error("Unexpected EOF at " + offset);
+    return this.view.getUint16(offset, false);
+  }
+
+  int32(offset) {
+    if (!this.ensure(offset, 4)) throw new Error("Unexpected EOF at " + offset);
+    return this.view.getInt32(offset, false);
+  }
+
+  uint32(offset) {
+    if (!this.ensure(offset, 4)) throw new Error("Unexpected EOF at " + offset);
+    return this.view.getUint32(offset, false);
+  }
+
+  uint64(offset) {
+    const high = this.uint32(offset);
+    const low = this.uint32(offset + 4);
+    return (BigInt(high) << 32n) + BigInt(low);
+  }
+
+  string(offset, length) {
+    if (!this.ensure(offset, length)) throw new Error("Unexpected EOF at " + offset);
+    let result = "";
+    for (let index = 0; index < length; index += 1) {
+      const byte = this.bytes[offset + index];
+      if (byte === 0) break;
+      result += String.fromCharCode(byte);
+    }
+    return result;
+  }
+
+  bytesAt(offset, length) {
+    if (!this.ensure(offset, length)) throw new Error("Unexpected EOF at " + offset);
+    return this.bytes.subarray(offset, offset + length);
+  }
+}
+
+function readFullBoxHeader(cursor) {
+  return {
+    version: cursor.uint8(0),
+    flags: (cursor.uint8(1) << 16) | (cursor.uint8(2) << 8) | cursor.uint8(3)
+  };
+}
+
+class BlobRangeReader {
+  constructor(file) {
+    this.file = file;
+    this.cache = new Map();
+    this.cacheBytes = 0;
+    this.cancelled = false;
+  }
+
+  cancel() {
+    this.cancelled = true;
+  }
+
+  async readRange(offsetBig, lengthBig) {
+    if (this.cancelled) throw new Error("Analysis cancelled.");
+    const offset = toSafeNumber(offsetBig, "offset");
+    const length = toSafeNumber(lengthBig, "length");
+    if (length <= 0) return new Uint8Array(0);
+    const result = new Uint8Array(length);
+    let written = 0;
+    let cursor = offset;
+    const end = offset + length;
+    while (cursor < end) {
+      if (this.cancelled) throw new Error("Analysis cancelled.");
+      const chunkIndex = Math.floor(cursor / CACHE_CHUNK_BYTES);
+      const chunkStart = chunkIndex * CACHE_CHUNK_BYTES;
+      const chunk = await this.readChunk(chunkIndex);
+      const localStart = cursor - chunkStart;
+      const copyLength = Math.min(chunk.byteLength - localStart, end - cursor);
+      result.set(chunk.subarray(localStart, localStart + copyLength), written);
+      written += copyLength;
+      cursor += copyLength;
+    }
+    return result;
+  }
+
+  async readChunk(chunkIndex) {
+    const cached = this.cache.get(chunkIndex);
+    if (cached) {
+      this.cache.delete(chunkIndex);
+      this.cache.set(chunkIndex, cached);
+      return cached.bytes;
+    }
+    const chunkStart = chunkIndex * CACHE_CHUNK_BYTES;
+    const chunkEnd = Math.min(chunkStart + CACHE_CHUNK_BYTES, this.file.size);
+    const buffer = await this.file.slice(chunkStart, chunkEnd).arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    this.cache.set(chunkIndex, { bytes, size: bytes.byteLength });
+    this.cacheBytes += bytes.byteLength;
+    this.evict();
+    return bytes;
+  }
+
+  evict() {
+    while (this.cacheBytes > MAX_CACHE_BYTES && this.cache.size > 1) {
+      const firstKey = this.cache.keys().next().value;
+      const item = this.cache.get(firstKey);
+      this.cache.delete(firstKey);
+      this.cacheBytes -= item.size;
+    }
+  }
+}
+
+export {
+  toSafeNumber,
+  hexByte,
+  fourCcFromBytes,
+  safeJsonReplacer,
+  ByteCursor,
+  readFullBoxHeader,
+  BlobRangeReader
+};

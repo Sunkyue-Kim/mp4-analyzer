@@ -27,7 +27,13 @@ Build outputs:
 
 - `src/app.js`: build entry
 - `src/js/main.js`: browser bootstrap
-- `src/js/core/analyzer-core.js`: MP4/fMP4 parser, sample model, AVC/HEVC/AAC parsing, self-tests
+- `src/js/core/analyzer-core.js`: small public API facade and plugin orchestration
+- `src/js/core/common/`: binary readers, bitstream helpers, formatting, UI constants
+- `src/js/core/containers/`: pluggable container analyzers
+- `src/js/core/containers/isobmff/`: MP4/fMP4 box parser and sample model
+- `src/js/core/codecs/registry.js`: codec capability registry used by containers and frame scanning
+- `src/js/core/codecs/audio/`: audio codec parsers such as AAC
+- `src/js/core/codecs/video/`: video codec parsers such as AVC and HEVC
 - `src/js/i18n/catalogs.js`: English/Korean UI strings and box descriptions
 - `src/js/samples/sample-manifest.js`: static sample file manifest for Pages
 - `src/js/ui/analyzer-ui.js`: DOM state, rendering, filters, exports, media preview, sample loading
