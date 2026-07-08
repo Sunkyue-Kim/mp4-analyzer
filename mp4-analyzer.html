@@ -823,7 +823,8 @@ button:disabled {
 }
 .json-view {
   min-width: 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   padding: 10px 0 12px;
   font-family: var(--mono);
   font-size: 12px;
@@ -833,11 +834,12 @@ button:disabled {
 }
 .json-entry {
   display: grid;
-  grid-template-columns: minmax(120px, 0.32fr) minmax(0, 1fr);
+  grid-template-columns: minmax(124px, 180px) minmax(240px, 1fr);
   gap: 8px;
   align-items: start;
   padding: 3px 12px 3px calc(12px + var(--json-depth) * 14px);
-  min-width: 0;
+  min-width: max(100%, 560px);
+  box-sizing: border-box;
 }
 .json-entry:hover {
   background: #f7fbfd;
@@ -846,11 +848,13 @@ button:disabled {
   color: #24527a;
   font-weight: 700;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .json-value {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .json-node {
   min-width: 0;
@@ -894,7 +898,8 @@ button:disabled {
 .json-byte-truncation {
   color: var(--muted);
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .json-children {
   margin-top: 3px;
@@ -925,7 +930,8 @@ button:disabled {
   max-height: 180px;
   overflow: auto;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   color: #334155;
 }
 .json-byte-truncation {

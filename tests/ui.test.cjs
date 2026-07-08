@@ -594,11 +594,13 @@ test("remote loader uses range metadata when HEAD is weak and falls back to blob
 test("source HTML has required controls, tabs, and no external runtime assets after build", () => {
   const rootDirectory = path.resolve(__dirname, "..");
   const sourceHtml = fs.readFileSync(path.join(rootDirectory, "src", "index.html"), "utf8");
+  const sourceCss = fs.readFileSync(path.join(rootDirectory, "src", "styles.css"), "utf8");
   const sourceUi = fs.readFileSync(path.join(rootDirectory, "src", "js", "ui", "analyzer-ui.js"), "utf8");
   const sourceWorker = fs.readFileSync(path.join(rootDirectory, "src", "js", "worker", "analyzer-worker.js"), "utf8");
   const builtHtml = fs.readFileSync(path.join(rootDirectory, "mp4-analyzer.html"), "utf8");
   const builtMinifiedHtml = fs.readFileSync(path.join(rootDirectory, "index.html"), "utf8");
   const chunkedHtmlPath = path.join(rootDirectory, "chunked", "index.html");
+  const jsonValueCssBlock = sourceCss.match(/\.json-value\s*\{[^}]*\}/)?.[0] || "";
 
   for (const id of [
     "fileInput", "languageSelect", "sampleField", "sampleSelect", "openButton", "openUrlButton",
@@ -630,6 +632,11 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /getDerivedBoxFields/);
   assert.match(sourceUi, /SAMPLE_ENTRY_DERIVED_FIELD_NAMES/);
   assert.match(sourceUi, /JSON_BYTE_PREVIEW_COUNT/);
+  assert.match(sourceCss, /\.json-view\s*\{[\s\S]*?overflow-x:\s*auto;/);
+  assert.match(sourceCss, /\.json-entry\s*\{[\s\S]*?min-width:\s*max\(100%,\s*560px\);/);
+  assert.match(sourceCss, /\.json-entry\s*\{[\s\S]*?grid-template-columns:\s*minmax\(124px,\s*180px\)\s*minmax\(240px,\s*1fr\);/);
+  assert.match(jsonValueCssBlock, /overflow-wrap:\s*break-word;/);
+  assert.doesNotMatch(jsonValueCssBlock, /overflow-wrap:\s*anywhere;/);
   assert.match(sourceUi, /createRecyclerView/);
   assert.match(sourceUi, /buildFrameInternalsModel/);
   assert.match(sourceUi, /buildFrameInternalsColorScale/);
