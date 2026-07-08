@@ -1474,11 +1474,15 @@
     }
 
     .block-cell {
+      --cell-red: 31;
+      --cell-green: 122;
+      --cell-blue: 140;
+      --cell-alpha: 0.75;
       min-width: 0;
       min-height: 0;
       border: 0;
       padding: 0;
-      background: rgba(31, 122, 140, var(--cell-alpha));
+      background: rgba(var(--cell-red), var(--cell-green), var(--cell-blue), var(--cell-alpha));
       cursor: help;
     }
 
@@ -1487,11 +1491,11 @@
       outline-offset: -1px;
     }
 
-    .block-cell.i { background: rgba(15, 159, 95, var(--cell-alpha)); }
-    .block-cell.p { background: rgba(22, 149, 154, var(--cell-alpha)); }
-    .block-cell.b { background: rgba(122, 90, 248, var(--cell-alpha)); }
-    .block-cell.warn { background: rgba(181, 71, 8, var(--cell-alpha)); }
-    .block-cell.err { background: rgba(217, 45, 32, var(--cell-alpha)); }
+    .block-cell.i { --cell-red: 15; --cell-green: 159; --cell-blue: 95; }
+    .block-cell.p { --cell-red: 22; --cell-green: 149; --cell-blue: 154; }
+    .block-cell.b { --cell-red: 122; --cell-green: 90; --cell-blue: 248; }
+    .block-cell.warn { --cell-red: 181; --cell-green: 71; --cell-blue: 8; }
+    .block-cell.err { --cell-red: 217; --cell-green: 45; --cell-blue: 32; }
 
     .audio-band-plot {
       display: grid;

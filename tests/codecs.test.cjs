@@ -182,11 +182,25 @@ test("codec registry provides interchangeable descriptors and scanners", async (
 
 test("frame internals model builds nominal video grids and audio band estimates", async () => {
   const loader = await createSourceModuleLoader();
-  const { buildFrameInternalsModel } = await loader.import("src/js/core/codecs/frame-internals.js");
+  const { buildFrameInternalsColorScale, buildFrameInternalsModel } = await loader.import("src/js/core/codecs/frame-internals.js");
+  const videoTrack = { trackId: 1, handlerType: "vide", codec: "avc1", codecDescriptor: "avc", width: 1920, height: 1080 };
+  const globalVideoRows = [
+    { trackId: 1, sampleIndex: 1, size: 9000, frameType: "P" },
+    { trackId: 1, sampleIndex: 2, size: 18000, frameType: "B" },
+    { trackId: 1, sampleIndex: 3, size: 45000, frameType: "P" },
+    { trackId: 1, sampleIndex: 10, size: 120000, frameType: "I" },
+    { trackId: 2, sampleIndex: 1, size: 999999, frameType: "I" }
+  ];
+  const colorScale = buildFrameInternalsColorScale(videoTrack, globalVideoRows);
+  assert.equal(colorScale.mode, "global-track-percentile");
+  assert.equal(colorScale.sampleCount, 4);
+  assert.ok(colorScale.valueCount > 4);
+  assert.ok(colorScale.max > colorScale.min);
 
   const videoModel = buildFrameInternalsModel(
     { trackId: 1, sampleIndex: 10, size: 120000, frameType: "I" },
-    { trackId: 1, handlerType: "vide", codec: "avc1", codecDescriptor: "avc", width: 1920, height: 1080 }
+    videoTrack,
+    { colorScale }
   );
   assert.equal(videoModel.kind, "video-grid");
   assert.equal(videoModel.unitName, "macroblock");
@@ -196,6 +210,9 @@ test("frame internals model builds nominal video grids and audio band estimates"
   assert.ok(videoModel.cells.length <= 1800);
   assert.equal(Math.round(sum(videoModel.cells.map((cell) => cell.estimatedBytes))), 120000);
   assert.ok(videoModel.cells.every((cell) => cell.pixelRight <= 1920 && cell.pixelBottom <= 1080));
+  assert.equal(videoModel.colorScale.mode, "global-track-percentile");
+  assert.ok(videoModel.cells.some((cell) => cell.globalPercentile > 0.5));
+  assert.ok(videoModel.cells.every((cell) => Number.isFinite(cell.color.red) && Number.isFinite(cell.color.green) && Number.isFinite(cell.color.blue)));
 
   const hevcModel = buildFrameInternalsModel(
     { trackId: 2, sampleIndex: 1, size: 90000, frameType: "P" },

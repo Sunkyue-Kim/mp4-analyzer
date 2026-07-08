@@ -14,6 +14,7 @@ import {
   findDescendants,
   getDefaultSampleFrameType,
   getFrameTypeScanner,
+  buildFrameInternalsColorScale,
   buildFrameInternalsModel
 } from "../core/analyzer-core.js";
 import {
@@ -75,7 +76,8 @@ const state = {
   playbackSynchronizationRequestType: "",
   boxTreeActivationCount: 0,
   lastBoxTreeActivation: null,
-  frameInternalsTooltipTarget: null
+  frameInternalsTooltipTarget: null,
+  frameInternalsColorScaleCache: new Map()
 };
 
 const elements = {
@@ -1002,6 +1004,7 @@ async function scanCurrentAnalysis() {
   try {
     const analysis = await analysisWorkerClient.scanFrameTypes(state.analysis, { onProgress: setProgress });
     state.analysis = analysis;
+    state.frameInternalsColorScaleCache = new Map();
     setProgress("Frame type scan complete", 100);
     renderFrames();
     renderTracks();
@@ -1032,6 +1035,7 @@ function resetView(file, options = {}) {
   state.lastPlaybackSynchronizationFrameKey = "";
   state.lastPlaybackSynchronizationFragmentIndex = 0;
   state.fragmentRows = [];
+  state.frameInternalsColorScaleCache = new Map();
   state.transientWarnings = options.initialWarnings ? options.initialWarnings.slice() : [];
   if (!options.keepSampleSelection && elements.sampleSelect) elements.sampleSelect.value = "";
   setFilePreview(file, options);
@@ -1754,7 +1758,29 @@ function renderFrameInternals() {
 function buildSelectedFrameInternalsModel() {
   if (!state.analysis || !state.selectedFrameKey) return buildFrameInternalsModel(null, null);
   const row = findFrameRowByKey(state.selectedFrameKey);
-  return buildFrameInternalsModel(row, row ? getRowTrack(row) : null);
+  const track = row ? getRowTrack(row) : null;
+  return buildFrameInternalsModel(row, track, {
+    colorScale: getFrameInternalsColorScale(track)
+  });
+}
+
+function getFrameInternalsColorScale(track) {
+  if (!track || track.handlerType !== "vide" || !state.analysis) return null;
+  const cacheKey = [
+    track.trackId,
+    track.codec,
+    track.codecDescriptor || "",
+    track.width || 0,
+    track.height || 0,
+    state.analysis.sampleRows.length
+  ].join(":");
+  if (!state.frameInternalsColorScaleCache.has(cacheKey)) {
+    state.frameInternalsColorScaleCache.set(
+      cacheKey,
+      buildFrameInternalsColorScale(track, state.analysis.sampleRows)
+    );
+  }
+  return state.frameInternalsColorScaleCache.get(cacheKey);
 }
 
 function renderVideoFrameInternals(model) {
@@ -1767,6 +1793,7 @@ function renderVideoFrameInternals(model) {
     [t("frameInternals.nominalGrid"), model.nominalColumns + "x" + model.nominalRows + " (" + model.nominalUnitCount + ")"],
     [t("frameInternals.displayedGrid"), model.displayColumns + "x" + model.displayRows + (model.aggregation > 1 ? " (x" + model.aggregation + ")" : "")],
     [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+    [t("frameInternals.colorScale"), formatFrameInternalsColorScale(model.colorScale)],
     [t("frameInternals.accuracy"), t("frameInternals.nominal")]
   ];
   return '<div class="frame-internals-layout">' +
@@ -1789,6 +1816,7 @@ function renderVideoBlockCell(cell, model, frameClass) {
   const tooltipRows = [
     [t("frameInternals.tooltip.pixelRange"), cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom],
     [t("frameInternals.tooltip.estimatedBytes"), formatBytes(cell.estimatedBytes)],
+    [t("frameInternals.tooltip.globalPercentile"), formatMetricNumber((cell.globalPercentile || 0) * 100, 1) + "%"],
     [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
     [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
   ];
@@ -1798,7 +1826,25 @@ function renderVideoBlockCell(cell, model, frameClass) {
       rows: tooltipRows,
       note: t("frameInternals.videoEstimateNote")
     }) +
-    ' style="--cell-alpha:' + cell.intensity.toFixed(3) + '"></div>';
+    ' style="' + renderVideoBlockCellStyle(cell) + '"></div>';
+}
+
+function renderVideoBlockCellStyle(cell) {
+  const color = cell.color || { red: 31, green: 122, blue: 140 };
+  const alpha = Number.isFinite(cell.intensity) ? cell.intensity : 0.75;
+  return '--cell-red:' + color.red + ';--cell-green:' + color.green + ';--cell-blue:' + color.blue + ';--cell-alpha:' + alpha.toFixed(3);
+}
+
+function formatFrameInternalsColorScale(colorScale) {
+  if (!colorScale) return t("value.notAvailable");
+  if (colorScale.mode === "global-track-percentile") {
+    return t("frameInternals.globalTrackPercentile", {
+      count: colorScale.sampleCount,
+      values: colorScale.valueCount
+    });
+  }
+  if (colorScale.mode === "selected-frame-percentile") return t("frameInternals.selectedFramePercentile");
+  return t("value.notAvailable");
 }
 
 function renderAudioFrameInternals(model) {

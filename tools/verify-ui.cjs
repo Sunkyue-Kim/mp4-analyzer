@@ -400,6 +400,11 @@ function verifyResponsiveLayoutCss() {
   );
   assertCssRule(
     sourceCss,
+    /\.block-cell\s*\{[\s\S]*?--cell-red:[\s\S]*?--cell-green:[\s\S]*?--cell-blue:[\s\S]*?background:\s*rgba\(var\(--cell-red\),\s*var\(--cell-green\),\s*var\(--cell-blue\),\s*var\(--cell-alpha\)\);/,
+    "Frame internals block cells must use dynamic RGB heatmap variables."
+  );
+  assertCssRule(
+    sourceCss,
     /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frames-panel\.active\s*\{[\s\S]*?--frames-controls-min-height:\s*152px;[\s\S]*?--frames-list-min-height:\s*320px;[\s\S]*?--frames-internals-min-height:\s*240px;/,
     "Mobile frame panel must preserve separate minimum control, list, and internals areas."
   );
@@ -507,6 +512,12 @@ async function main() {
   }
   if (!/renderFrameInternalsTooltipAttributes/.test(sourceUi) || !/handleFrameInternalsTooltipPointerOver/.test(sourceUi)) {
     throw new Error("Frame internals block details must use the custom tooltip controller.");
+  }
+  if (!/buildFrameInternalsColorScale/.test(sourceUi) || !/frameInternalsColorScaleCache/.test(sourceUi)) {
+    throw new Error("Frame internals must cache a global percentile color scale per video track.");
+  }
+  if (!/globalPercentile/.test(sourceUi) || !/--cell-red:/.test(sourceUi)) {
+    throw new Error("Frame internals block colors must render percentile-based RGB heatmap variables.");
   }
   if (!/data-inspection-tooltip=/.test(sourceUi)) {
     throw new Error("Frame internals hover targets must carry structured custom tooltip data.");

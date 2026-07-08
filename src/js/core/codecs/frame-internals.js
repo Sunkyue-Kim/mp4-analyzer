@@ -1,4 +1,14 @@
 const MAX_VIDEO_DISPLAY_CELLS = 1800;
+const MAX_GLOBAL_DISTRIBUTION_VALUES = 120000;
+
+const HEAT_COLOR_STOPS = [
+  { percentile: 0, red: 226, green: 245, blue: 241 },
+  { percentile: 0.25, red: 116, green: 209, blue: 188 },
+  { percentile: 0.5, red: 28, green: 164, blue: 135 },
+  { percentile: 0.75, red: 255, green: 191, blue: 0 },
+  { percentile: 0.9, red: 247, green: 124, blue: 60 },
+  { percentile: 1, red: 198, green: 40, blue: 40 }
+];
 
 const VIDEO_CODING_UNITS = [
   {
@@ -50,7 +60,7 @@ const AUDIO_BANDS = [
   { label: "Air", range: "12-20 kHz", startHz: 12000, endHz: 20000 }
 ];
 
-function buildFrameInternalsModel(row, track) {
+function buildFrameInternalsModel(row, track, options = {}) {
   if (!row || !track) {
     return {
       kind: "empty",
@@ -58,7 +68,7 @@ function buildFrameInternalsModel(row, track) {
       note: "Select a frame row to inspect its nominal internal structure."
     };
   }
-  if (track.handlerType === "vide") return buildVideoInternalsModel(row, track);
+  if (track.handlerType === "vide") return buildVideoInternalsModel(row, track, options);
   if (track.handlerType === "soun") return buildAudioInternalsModel(row, track);
   return {
     kind: "unsupported",
@@ -67,7 +77,7 @@ function buildFrameInternalsModel(row, track) {
   };
 }
 
-function buildVideoInternalsModel(row, track) {
+function buildVideoInternalsModel(row, track, options = {}) {
   const descriptor = VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
   const width = Math.max(0, Math.round(Number(track.width) || 0));
   const height = Math.max(0, Math.round(Number(track.height) || 0));
@@ -96,6 +106,18 @@ function buildVideoInternalsModel(row, track) {
     displayRows,
     aggregation
   });
+  const colorScale = options.colorScale || buildFrameInternalsColorScale(track, options.sampleRows, {
+    descriptor,
+    width,
+    height,
+    nominalColumns,
+    nominalRows,
+    displayColumns,
+    displayRows,
+    aggregation,
+    fallbackCells: cells
+  });
+  applyVideoColorScale(cells, colorScale);
 
   return {
     kind: "video-grid",
@@ -117,9 +139,68 @@ function buildVideoInternalsModel(row, track) {
     displayCellCount: displayColumns * displayRows,
     aggregation,
     accuracy: descriptor.accuracy,
+    colorScale: summarizeColorScale(colorScale),
     note: descriptor.note,
     cells
   };
+}
+
+function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
+  if (!track || track.handlerType !== "vide") return buildValueDistribution([], "unavailable", 0);
+  const descriptor = options.descriptor || VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
+  const width = options.width || Math.max(0, Math.round(Number(track.width) || 0));
+  const height = options.height || Math.max(0, Math.round(Number(track.height) || 0));
+  if (!descriptor || !width || !height) return buildValueDistribution([], "unavailable", 0);
+
+  const nominalColumns = options.nominalColumns || Math.max(1, Math.ceil(width / descriptor.unitWidth));
+  const nominalRows = options.nominalRows || Math.max(1, Math.ceil(height / descriptor.unitHeight));
+  const aggregation = options.aggregation || Math.max(1, Math.ceil(Math.sqrt((nominalColumns * nominalRows) / MAX_VIDEO_DISPLAY_CELLS)));
+  const displayColumns = options.displayColumns || Math.ceil(nominalColumns / aggregation);
+  const displayRows = options.displayRows || Math.ceil(nominalRows / aggregation);
+  const rows = getVideoScaleRows(track, sampleRows);
+
+  if (!rows.length) {
+    const fallbackValues = (options.fallbackCells || [])
+      .map((cell) => Number(cell.estimatedBytes) || 0)
+      .filter((value) => value >= 0);
+    return buildValueDistribution(fallbackValues, "selected-frame-percentile", fallbackValues.length ? 1 : 0);
+  }
+
+  const scaleOptions = {
+    descriptor,
+    width,
+    height,
+    nominalColumns,
+    nominalRows,
+    displayColumns,
+    displayRows,
+    aggregation
+  };
+  const cellCount = Math.max(1, displayColumns * displayRows);
+  const cellStride = Math.max(1, Math.ceil((rows.length * cellCount) / MAX_GLOBAL_DISTRIBUTION_VALUES));
+  const sampledValues = [];
+  for (const sampleRow of rows) {
+    const sampleSize = Math.max(0, Number(sampleRow.size) || 0);
+    if (!sampleSize) continue;
+    const totalWeight = calculateVideoTotalWeight(scaleOptions, sampleRow);
+    if (totalWeight <= 0) continue;
+    for (let linearIndex = 0; linearIndex < cellCount; linearIndex += cellStride) {
+      const rowIndex = Math.floor(linearIndex / displayColumns);
+      const columnIndex = linearIndex % displayColumns;
+      const weight = getVideoCellWeight(scaleOptions, sampleRow, rowIndex, columnIndex);
+      sampledValues.push(sampleSize * weight / totalWeight);
+    }
+  }
+  return buildValueDistribution(sampledValues, "global-track-percentile", rows.length);
+}
+
+function getVideoScaleRows(track, sampleRows) {
+  if (!Array.isArray(sampleRows)) return [];
+  return sampleRows.filter((row) =>
+    row &&
+    String(row.trackId) === String(track.trackId) &&
+    Math.max(0, Number(row.size) || 0) > 0
+  );
 }
 
 function buildVideoCells(options) {
@@ -154,10 +235,130 @@ function buildVideoCells(options) {
   for (const cell of cells) {
     const byteEstimate = totalWeight > 0 ? sampleSize * cell.weight / totalWeight : 0;
     cell.estimatedBytes = byteEstimate;
-    cell.intensity = sampleSize > 0 ? clamp(byteEstimate * cells.length / sampleSize, 0.12, 1) : 0.12;
+    cell.localRatio = sampleSize > 0 ? byteEstimate * cells.length / sampleSize : 0;
     delete cell.weight;
   }
   return cells;
+}
+
+function calculateVideoTotalWeight(options, row) {
+  let totalWeight = 0;
+  for (let rowIndex = 0; rowIndex < options.displayRows; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < options.displayColumns; columnIndex += 1) {
+      totalWeight += getVideoCellWeight(options, row, rowIndex, columnIndex);
+    }
+  }
+  return totalWeight;
+}
+
+function getVideoCellWeight(options, row, rowIndex, columnIndex) {
+  const unitColumnStart = columnIndex * options.aggregation;
+  const unitColumnEnd = Math.min(options.nominalColumns, unitColumnStart + options.aggregation);
+  const unitRowStart = rowIndex * options.aggregation;
+  const unitRowEnd = Math.min(options.nominalRows, unitRowStart + options.aggregation);
+  const nominalUnits = Math.max(1, (unitColumnEnd - unitColumnStart) * (unitRowEnd - unitRowStart));
+  return nominalUnits * getSyntheticSpatialWeight(row, rowIndex, columnIndex, options.displayRows, options.displayColumns);
+}
+
+function applyVideoColorScale(cells, colorScale) {
+  const values = colorScale && colorScale.values || [];
+  for (const cell of cells) {
+    const percentile = getPercentileRank(values, cell.estimatedBytes);
+    const color = getPercentileHeatColor(percentile);
+    cell.globalPercentile = percentile;
+    cell.intensity = getPercentileAlpha(percentile);
+    cell.color = color;
+  }
+}
+
+function buildValueDistribution(values, mode, sampleCount) {
+  const sortedValues = values
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right);
+  if (!sortedValues.length) sortedValues.push(0);
+  return {
+    mode,
+    values: sortedValues,
+    valueCount: sortedValues.length,
+    sampleCount,
+    min: sortedValues[0],
+    max: sortedValues[sortedValues.length - 1],
+    p10: getQuantile(sortedValues, 0.1),
+    p25: getQuantile(sortedValues, 0.25),
+    p50: getQuantile(sortedValues, 0.5),
+    p75: getQuantile(sortedValues, 0.75),
+    p90: getQuantile(sortedValues, 0.9),
+    p95: getQuantile(sortedValues, 0.95),
+    p99: getQuantile(sortedValues, 0.99)
+  };
+}
+
+function summarizeColorScale(colorScale) {
+  const { values, ...summary } = colorScale || buildValueDistribution([], "unavailable", 0);
+  return summary;
+}
+
+function getQuantile(sortedValues, percentile) {
+  if (!sortedValues.length) return 0;
+  const position = clamp(percentile, 0, 1) * (sortedValues.length - 1);
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.ceil(position);
+  if (lowerIndex === upperIndex) return sortedValues[lowerIndex];
+  const ratio = position - lowerIndex;
+  return sortedValues[lowerIndex] * (1 - ratio) + sortedValues[upperIndex] * ratio;
+}
+
+function getPercentileRank(sortedValues, value) {
+  if (!sortedValues.length) return 0.5;
+  const minimum = sortedValues[0];
+  const maximum = sortedValues[sortedValues.length - 1];
+  if (maximum <= minimum) return 0.5;
+  const index = upperBound(sortedValues, value);
+  return clamp((index - 1) / (sortedValues.length - 1), 0, 1);
+}
+
+function upperBound(sortedValues, value) {
+  let low = 0;
+  let high = sortedValues.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (sortedValues[middle] <= value) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function getPercentileAlpha(percentile) {
+  const mappedPercentile = getNonlinearHeatPercentile(percentile);
+  return 0.72 + mappedPercentile * 0.28;
+}
+
+function getPercentileHeatColor(percentile) {
+  const mappedPercentile = getNonlinearHeatPercentile(percentile);
+  let lowerStop = HEAT_COLOR_STOPS[0];
+  let upperStop = HEAT_COLOR_STOPS[HEAT_COLOR_STOPS.length - 1];
+  for (let index = 1; index < HEAT_COLOR_STOPS.length; index += 1) {
+    if (mappedPercentile <= HEAT_COLOR_STOPS[index].percentile) {
+      lowerStop = HEAT_COLOR_STOPS[index - 1];
+      upperStop = HEAT_COLOR_STOPS[index];
+      break;
+    }
+  }
+  const span = Math.max(0.000001, upperStop.percentile - lowerStop.percentile);
+  const ratio = clamp((mappedPercentile - lowerStop.percentile) / span, 0, 1);
+  return {
+    red: Math.round(lowerStop.red + (upperStop.red - lowerStop.red) * ratio),
+    green: Math.round(lowerStop.green + (upperStop.green - lowerStop.green) * ratio),
+    blue: Math.round(lowerStop.blue + (upperStop.blue - lowerStop.blue) * ratio)
+  };
+}
+
+function getNonlinearHeatPercentile(percentile) {
+  const value = clamp(percentile, 0, 1);
+  if (value < 0.5) return 0.38 * Math.pow(value / 0.5, 0.9);
+  if (value < 0.9) return 0.38 + 0.42 * Math.pow((value - 0.5) / 0.4, 0.72);
+  return 0.8 + 0.2 * Math.pow((value - 0.9) / 0.1, 0.45);
 }
 
 function getSyntheticSpatialWeight(row, rowIndex, columnIndex, rowCount, columnCount) {
@@ -243,5 +444,6 @@ function clamp(value, minimum, maximum) {
 export {
   AUDIO_BANDS,
   VIDEO_CODING_UNITS,
+  buildFrameInternalsColorScale,
   buildFrameInternalsModel
 };

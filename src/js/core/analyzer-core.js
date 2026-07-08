@@ -8,7 +8,7 @@ import {
   getFrameTypeScanner
 } from "./codecs/registry.js";
 import { scanFrameTypes, shouldAutoScan } from "./codecs/frame-scanner.js";
-import { buildFrameInternalsModel } from "./codecs/frame-internals.js";
+import { buildFrameInternalsColorScale, buildFrameInternalsModel } from "./codecs/frame-internals.js";
 import { runParserSelfTests } from "./self-tests.js";
 import {
   ROW_HEIGHT,
@@ -42,6 +42,7 @@ export const Core = {
   formatBytes,
   getDefaultSampleFrameType,
   getFrameTypeScanner,
+  buildFrameInternalsColorScale,
   buildFrameInternalsModel
 };
 
@@ -62,5 +63,6 @@ export {
   findDescendants,
   getDefaultSampleFrameType,
   getFrameTypeScanner,
+  buildFrameInternalsColorScale,
   buildFrameInternalsModel
 };
