@@ -3,7 +3,7 @@ const path = require("node:path");
 
 const rootDirectory = path.resolve(__dirname, "..");
 const sourceHtmlPath = path.join(rootDirectory, "mp4-analyzer.html");
-const sourceDirectory = path.join(rootDirectory, "src");
+const sourceDirectory = path.join(rootDirectory, "src", "extracted-from-html");
 
 const html = fs.readFileSync(sourceHtmlPath, "utf8");
 const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/i);
@@ -26,4 +26,4 @@ fs.writeFileSync(path.join(sourceDirectory, "index.html"), templateHtml, "utf8")
 fs.writeFileSync(path.join(sourceDirectory, "styles.css"), styleMatch[1].replace(/^\r?\n/, "").replace(/\s*$/, "\n"), "utf8");
 fs.writeFileSync(path.join(sourceDirectory, "app.js"), scriptMatch[1].replace(/^\r?\n/, "").replace(/\s*$/, "\n"), "utf8");
 
-console.log("Extracted source files into src/.");
+console.log("Extracted inline assets into src/extracted-from-html/.");

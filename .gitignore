@@ -1,6 +1,9 @@
 node_modules/
 .tools/
-validation/
+
+validation/*
+!validation/generated/
+!validation/generated/*.mp4
 
 .DS_Store
 Thumbs.db

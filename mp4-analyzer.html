@@ -128,7 +128,8 @@ button:disabled {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-.language-field {
+.language-field,
+.sample-field {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -136,13 +137,17 @@ button:disabled {
   font-size: 12px;
   white-space: nowrap;
 }
-.language-field select {
+.language-field select,
+.sample-field select {
   min-height: 34px;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   padding: 6px 8px;
   background: #fff;
   color: var(--text);
+}
+.sample-field select {
+  max-width: 210px;
 }
 .primary {
   color: #fff;
@@ -1018,14 +1023,17 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px;
   }
-  .language-field {
+  .language-field,
+  .sample-field {
     justify-content: space-between;
     width: 100%;
     grid-column: 1 / -1;
   }
-  .language-field select {
+  .language-field select,
+  .sample-field select {
     min-width: 0;
     width: 100%;
+    max-width: none;
   }
   .toolbar button {
     width: 100%;
@@ -1184,6 +1192,12 @@ button:disabled {
             <option value="ko">한국어</option>
           </select>
         </label>
+        <label class="sample-field">
+          <span data-i18n="field.sample">Sample</span>
+          <select id="sampleSelect" aria-label="Sample files" data-i18n-aria-label="field.sample">
+            <option value="" data-i18n="option.samplePlaceholder">Sample files...</option>
+          </select>
+        </label>
         <button id="openButton" class="primary" data-i18n="button.open">Open file</button>
         <button id="scanButton" disabled data-i18n="button.scan">Scan frame types</button>
         <button id="cancelButton" class="danger" disabled data-i18n="button.cancel">Cancel</button>
@@ -1332,17 +1346,386 @@ button:disabled {
   </div>
 
   <script>
-(function() {
-  "use strict";
-  const CACHE_CHUNK_BYTES = 4 * 1024 * 1024;
-  const MAX_CACHE_BYTES = 64 * 1024 * 1024;
-  const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
-  const ROW_HEIGHT = 32;
-  const GRAPH_ROW_HEIGHT = 30;
-  const METRIC_CHART_WIDTH = 1e3;
-  const METRIC_CHART_HEIGHT = 230;
-  const METRIC_CHART_PADDING = { left: 64, right: 22, top: 18, bottom: 30 };
-  const CONTAINER_BOXES = /* @__PURE__ */ new Set([
+(() => {
+  // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\i18n\catalogs.js
+  var I18N = {
+    en: {
+      "app.title": "MP4/fMP4 Media Analyzer",
+      "app.subtitle": "Single-file parser for boxes, samples, fragments, and video frame types.",
+      "language.label": "Language",
+      "status.initial": "Open or drop a media file to begin.",
+      "status.cancelling": "Cancelling...",
+      "status.failed": "Failed: {message}",
+      "status.scanComplete": "Frame type scan complete",
+      "status.scanStopped": "Scan stopped: {message}",
+      "status.reading": "Reading {name}",
+      "status.parsingBoxes": "Parsing boxes",
+      "status.buildingTrackModel": "Building track model",
+      "status.structureParsed": "Structure parsed",
+      "status.scanningVideoSamples": "Scanning video samples",
+      "status.loadingSample": "Loading sample {name}",
+      "status.sampleLoadFailed": "Sample load failed: {message}",
+      "button.open": "Open file",
+      "button.scan": "Scan frame types",
+      "button.cancel": "Cancel",
+      "button.exportJson": "Export JSON",
+      "button.exportCsv": "Export CSV",
+      "button.clear": "Clear",
+      "preview.loadedMedia": "Loaded media",
+      "tab.summary": "Summary",
+      "tab.boxes": "Boxes",
+      "tab.tracks": "Tracks",
+      "tab.frames": "Frames",
+      "tab.metrics": "Metrics",
+      "tab.fragments": "Fragments",
+      "tab.warnings": "Warnings",
+      "empty.summary": "Open or drop a file to inspect MP4 structure and samples.",
+      "empty.boxDetailInitial": "Open a file, then select a box from the tree.",
+      "empty.selectBox": "Select a box from the tree.",
+      "empty.noTracks": "No tracks parsed.",
+      "empty.metrics": "Open a file to inspect bitrate and FPS metrics.",
+      "empty.noFragments": "No fragments parsed.",
+      "empty.noWarnings": "No warnings.",
+      "empty.parsingStructure": "Parsing structure...",
+      "empty.parsingMetrics": "Parsing metrics...",
+      "empty.noTrackMetrics": "No track available for metrics.",
+      "empty.noSamplesForTrack": "No samples found for Track {trackId}.",
+      "empty.noChartPoints": "No chart points.",
+      "empty.noFrameTypeData": "No frame type data.",
+      "empty.noSamples": "No samples.",
+      "empty.noMoof": "No moof boxes found.",
+      "drop.title": "Drop media file to analyze",
+      "drop.subtitle": "Release anywhere in this window for MP4, M4V, or MOV parsing.",
+      "boxes.treeTitle": "Box Tree",
+      "boxes.detailTitle": "Box detail",
+      "boxes.parsedFields": "Parsed fields",
+      "boxes.unknownType": "Unknown or unregistered box type",
+      "boxes.noDescription": "No built-in description is available for this box type. It may be vendor-specific, private, or not yet mapped by this analyzer.",
+      "field.track": "Track",
+      "field.frameType": "Frame type",
+      "field.sync": "Sync",
+      "field.minSize": "Min size",
+      "field.maxSize": "Max size",
+      "field.warningOnly": "Warning only",
+      "field.view": "View",
+      "field.sample": "Sample",
+      "field.movingAverageSamples": "Moving average samples",
+      "field.chartPoints": "Chart points",
+      "option.all": "All",
+      "option.syncOnly": "Sync only",
+      "option.nonSyncOnly": "Non-sync only",
+      "option.noTrack": "No track",
+      "option.samplePlaceholder": "Sample files...",
+      "view.graph": "Graph",
+      "view.table": "Table",
+      "aria.frameViewMode": "Frame view mode",
+      "aria.seekFrame": "Seek to track {trackId} sample {sampleIndex} at {time}",
+      "graph.axisTitle": "Time / frame",
+      "unit.bytes": "bytes",
+      "unit.max": "max {value}",
+      "count.rows": "{count} rows",
+      "column.index": "Index",
+      "column.track": "Track",
+      "column.handler": "Handler",
+      "column.codec": "Codec",
+      "column.duration": "Duration",
+      "column.media": "Media",
+      "column.samples": "Samples",
+      "column.avgBitrate": "Avg bitrate",
+      "column.fpsSamples": "FPS / samples/s",
+      "column.avgSample": "Avg sample",
+      "column.codecConfig": "Codec config",
+      "column.offset": "Offset",
+      "column.size": "Size",
+      "column.sync": "Sync",
+      "column.type": "Type",
+      "column.chunkFragment": "Chunk/Frag",
+      "column.time": "Time",
+      "value.yes": "yes",
+      "value.no": "no",
+      "value.none": "none",
+      "value.unknownMime": "unknown MIME type",
+      "value.unknown": "unknown",
+      "value.mixed": "mixed",
+      "value.audio": "audio",
+      "value.sample": "sample",
+      "value.notAvailable": "n/a",
+      "summary.fileSize": "File size",
+      "summary.tracks": "Tracks",
+      "summary.videoTracks": "Video tracks",
+      "summary.fragments": "Fragments",
+      "summary.samples": "Samples",
+      "summary.avcTracks": "AVC tracks",
+      "summary.hevcTracks": "HEVC tracks",
+      "summary.aacTracks": "AAC tracks",
+      "summary.warnings": "Warnings",
+      "summary.note": "AVC/HEVC frame type scan reads each sample range and parses video NAL slice headers. Other codecs are shown as sample metadata only.",
+      "metrics.track": "Track",
+      "metrics.avgFps": "Avg FPS",
+      "metrics.samplesPerSecond": "Samples/s",
+      "metrics.peakMaBitrate": "Peak MA bitrate",
+      "metrics.peakMaFps": "Peak MA FPS",
+      "metrics.medianSample": "Median sample",
+      "metrics.syncSamples": "Sync samples",
+      "metrics.bitrateMovingAverage": "Bitrate moving average",
+      "metrics.fpsMovingAverage": "FPS moving average",
+      "metrics.sampleRateMovingAverage": "Sample rate moving average",
+      "metrics.chartMax": "max {value} \xB7 {count} plotted points",
+      "metrics.frameTypeDistribution": "Frame type distribution",
+      "metrics.largestSamples": "Largest samples",
+      "fragments.title": "Fragments",
+      "warning.prefixTrackSample": "Track {trackId} sample {sampleIndex}: {warning}",
+      "warning.sampleLoadFailed": "Sample load failed. If this page is opened from file://, the browser may block loading local sample files. Use the GitHub Pages URL or open/drop the sample manually. {message}",
+      "box.field.type": "type",
+      "box.field.description": "description",
+      "box.field.path": "path",
+      "box.field.offset": "offset",
+      "box.field.size": "size",
+      "box.field.headerSize": "header size",
+      "box.field.children": "children",
+      "box.field.warnings": "warnings"
+    },
+    ko: {
+      "app.title": "MP4/fMP4 \uBBF8\uB514\uC5B4 \uBD84\uC11D\uAE30",
+      "app.subtitle": "\uBC15\uC2A4, \uC0D8\uD50C, \uD504\uB798\uADF8\uBA3C\uD2B8, \uC601\uC0C1 \uD504\uB808\uC784 \uD0C0\uC785\uC744 \uBD84\uC11D\uD558\uB294 \uB2E8\uC77C \uD30C\uC77C \uD30C\uC11C\uC785\uB2C8\uB2E4.",
+      "language.label": "\uC5B8\uC5B4",
+      "status.initial": "\uBBF8\uB514\uC5B4 \uD30C\uC77C\uC744 \uC5F4\uAC70\uB098 \uB04C\uC5B4\uB2E4 \uB193\uC73C\uC138\uC694.",
+      "status.cancelling": "\uCDE8\uC18C \uC911...",
+      "status.failed": "\uC2E4\uD328: {message}",
+      "status.scanComplete": "\uD504\uB808\uC784 \uD0C0\uC785 \uC2A4\uCE94 \uC644\uB8CC",
+      "status.scanStopped": "\uC2A4\uCE94 \uC911\uB2E8: {message}",
+      "status.reading": "{name} \uC77D\uB294 \uC911",
+      "status.parsingBoxes": "\uBC15\uC2A4 \uD30C\uC2F1 \uC911",
+      "status.buildingTrackModel": "\uD2B8\uB799 \uBAA8\uB378 \uAD6C\uC131 \uC911",
+      "status.structureParsed": "\uAD6C\uC870 \uD30C\uC2F1 \uC644\uB8CC",
+      "status.scanningVideoSamples": "\uBE44\uB514\uC624 \uC0D8\uD50C \uC2A4\uCE94 \uC911",
+      "status.loadingSample": "\uC0D8\uD50C \uB85C\uB4DC \uC911: {name}",
+      "status.sampleLoadFailed": "\uC0D8\uD50C \uB85C\uB4DC \uC2E4\uD328: {message}",
+      "button.open": "\uD30C\uC77C \uC5F4\uAE30",
+      "button.scan": "\uD504\uB808\uC784 \uD0C0\uC785 \uC2A4\uCE94",
+      "button.cancel": "\uCDE8\uC18C",
+      "button.exportJson": "JSON \uB0B4\uBCF4\uB0B4\uAE30",
+      "button.exportCsv": "CSV \uB0B4\uBCF4\uB0B4\uAE30",
+      "button.clear": "\uCD08\uAE30\uD654",
+      "preview.loadedMedia": "\uB85C\uB4DC\uB41C \uBBF8\uB514\uC5B4",
+      "tab.summary": "\uC694\uC57D",
+      "tab.boxes": "\uBC15\uC2A4",
+      "tab.tracks": "\uD2B8\uB799",
+      "tab.frames": "\uD504\uB808\uC784",
+      "tab.metrics": "\uBA54\uD2B8\uB9AD",
+      "tab.fragments": "\uD504\uB798\uADF8\uBA3C\uD2B8",
+      "tab.warnings": "\uACBD\uACE0",
+      "empty.summary": "\uD30C\uC77C\uC744 \uC5F4\uAC70\uB098 \uB4DC\uB86D\uD558\uBA74 MP4 \uAD6C\uC870\uC640 \uC0D8\uD50C\uC744 \uAC80\uC0AC\uD569\uB2C8\uB2E4.",
+      "empty.boxDetailInitial": "\uD30C\uC77C\uC744 \uC5F0 \uB4A4 \uD2B8\uB9AC\uC5D0\uC11C \uBC15\uC2A4\uB97C \uC120\uD0DD\uD558\uC138\uC694.",
+      "empty.selectBox": "\uD2B8\uB9AC\uC5D0\uC11C \uBC15\uC2A4\uB97C \uC120\uD0DD\uD558\uC138\uC694.",
+      "empty.noTracks": "\uD30C\uC2F1\uB41C \uD2B8\uB799\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "empty.metrics": "\uD30C\uC77C\uC744 \uC5F4\uBA74 bitrate\uC640 FPS \uBA54\uD2B8\uB9AD\uC744 \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
+      "empty.noFragments": "\uD30C\uC2F1\uB41C \uD504\uB798\uADF8\uBA3C\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "empty.noWarnings": "\uACBD\uACE0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "empty.parsingStructure": "\uAD6C\uC870 \uD30C\uC2F1 \uC911...",
+      "empty.parsingMetrics": "\uBA54\uD2B8\uB9AD \uACC4\uC0B0 \uC911...",
+      "empty.noTrackMetrics": "\uBA54\uD2B8\uB9AD\uC744 \uD45C\uC2DC\uD560 \uD2B8\uB799\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "empty.noSamplesForTrack": "Track {trackId}\uC758 \uC0D8\uD50C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "empty.noChartPoints": "\uCC28\uD2B8 \uD3EC\uC778\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "empty.noFrameTypeData": "\uD504\uB808\uC784 \uD0C0\uC785 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "empty.noSamples": "\uC0D8\uD50C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "empty.noMoof": "moof \uBC15\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "drop.title": "\uBD84\uC11D\uD560 \uBBF8\uB514\uC5B4 \uD30C\uC77C \uB4DC\uB86D",
+      "drop.subtitle": "\uC774 \uCC3D \uC5B4\uB514\uC5D0\uC11C\uB4E0 MP4, M4V, MOV \uD30C\uC77C\uC744 \uB193\uC73C\uBA74 \uD30C\uC2F1\uD569\uB2C8\uB2E4.",
+      "boxes.treeTitle": "\uBC15\uC2A4 \uD2B8\uB9AC",
+      "boxes.detailTitle": "\uBC15\uC2A4 \uC0C1\uC138",
+      "boxes.parsedFields": "\uD30C\uC2F1\uB41C \uD544\uB4DC",
+      "boxes.unknownType": "\uC54C \uC218 \uC5C6\uAC70\uB098 \uB4F1\uB85D\uB418\uC9C0 \uC54A\uC740 \uBC15\uC2A4 \uD0C0\uC785",
+      "boxes.noDescription": "\uC774 \uBC15\uC2A4 \uD0C0\uC785\uC5D0 \uB300\uD55C \uB0B4\uC7A5 \uC124\uBA85\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uBCA4\uB354 \uC804\uC6A9, private, \uB610\uB294 \uC544\uC9C1 \uB9E4\uD551\uB418\uC9C0 \uC54A\uC740 \uD0C0\uC785\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
+      "field.track": "\uD2B8\uB799",
+      "field.frameType": "\uD504\uB808\uC784 \uD0C0\uC785",
+      "field.sync": "\uC2F1\uD06C",
+      "field.minSize": "\uCD5C\uC18C \uD06C\uAE30",
+      "field.maxSize": "\uCD5C\uB300 \uD06C\uAE30",
+      "field.warningOnly": "\uACBD\uACE0\uB9CC",
+      "field.view": "\uBCF4\uAE30",
+      "field.sample": "\uC0D8\uD50C",
+      "field.movingAverageSamples": "\uC774\uB3D9\uD3C9\uADE0 \uC0D8\uD50C \uC218",
+      "field.chartPoints": "\uCC28\uD2B8 \uD3EC\uC778\uD2B8",
+      "option.all": "\uC804\uCCB4",
+      "option.syncOnly": "\uC2F1\uD06C\uB9CC",
+      "option.nonSyncOnly": "\uBE44\uC2F1\uD06C\uB9CC",
+      "option.noTrack": "\uD2B8\uB799 \uC5C6\uC74C",
+      "option.samplePlaceholder": "\uC0D8\uD50C \uD30C\uC77C \uC120\uD0DD...",
+      "view.graph": "\uADF8\uB798\uD504",
+      "view.table": "\uD14C\uC774\uBE14",
+      "aria.frameViewMode": "\uD504\uB808\uC784 \uBCF4\uAE30 \uBC29\uC2DD",
+      "aria.seekFrame": "Track {trackId} sample {sampleIndex}\uC758 {time} \uC704\uCE58\uB85C \uC774\uB3D9",
+      "graph.axisTitle": "\uC2DC\uAC04 / \uD504\uB808\uC784",
+      "unit.bytes": "bytes",
+      "unit.max": "\uCD5C\uB300 {value}",
+      "count.rows": "{count} rows",
+      "column.index": "\uC778\uB371\uC2A4",
+      "column.track": "\uD2B8\uB799",
+      "column.handler": "\uD578\uB4E4\uB7EC",
+      "column.codec": "\uCF54\uB371",
+      "column.duration": "\uAE38\uC774",
+      "column.media": "\uBBF8\uB514\uC5B4",
+      "column.samples": "\uC0D8\uD50C",
+      "column.avgBitrate": "\uD3C9\uADE0 bitrate",
+      "column.fpsSamples": "FPS / \uC0D8\uD50C/s",
+      "column.avgSample": "\uD3C9\uADE0 \uC0D8\uD50C",
+      "column.codecConfig": "\uCF54\uB371 \uC124\uC815",
+      "column.offset": "\uC624\uD504\uC14B",
+      "column.size": "\uD06C\uAE30",
+      "column.sync": "\uC2F1\uD06C",
+      "column.type": "\uD0C0\uC785",
+      "column.chunkFragment": "\uCCAD\uD06C/\uD504\uB798\uADF8\uBA3C\uD2B8",
+      "column.time": "\uC2DC\uAC04",
+      "value.yes": "\uC608",
+      "value.no": "\uC544\uB2C8\uC624",
+      "value.none": "\uC5C6\uC74C",
+      "value.unknownMime": "\uC54C \uC218 \uC5C6\uB294 MIME type",
+      "value.unknown": "\uC54C \uC218 \uC5C6\uC74C",
+      "value.mixed": "\uD63C\uD569",
+      "value.audio": "\uC624\uB514\uC624",
+      "value.sample": "\uC0D8\uD50C",
+      "value.notAvailable": "n/a",
+      "summary.fileSize": "\uD30C\uC77C \uD06C\uAE30",
+      "summary.tracks": "\uD2B8\uB799",
+      "summary.videoTracks": "\uBE44\uB514\uC624 \uD2B8\uB799",
+      "summary.fragments": "\uD504\uB798\uADF8\uBA3C\uD2B8",
+      "summary.samples": "\uC0D8\uD50C",
+      "summary.avcTracks": "AVC \uD2B8\uB799",
+      "summary.hevcTracks": "HEVC \uD2B8\uB799",
+      "summary.aacTracks": "AAC \uD2B8\uB799",
+      "summary.warnings": "\uACBD\uACE0",
+      "summary.note": "AVC/HEVC \uD504\uB808\uC784 \uD0C0\uC785 \uC2A4\uCE94\uC740 \uAC01 \uC0D8\uD50C \uBC94\uC704\uB97C \uC77D\uACE0 \uC601\uC0C1 NAL slice header\uB97C \uD30C\uC2F1\uD569\uB2C8\uB2E4. \uB2E4\uB978 \uCF54\uB371\uC740 \uC0D8\uD50C \uBA54\uD0C0\uB370\uC774\uD130\uAE4C\uC9C0\uB9CC \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
+      "metrics.track": "\uD2B8\uB799",
+      "metrics.avgFps": "\uD3C9\uADE0 FPS",
+      "metrics.samplesPerSecond": "\uC0D8\uD50C/s",
+      "metrics.peakMaBitrate": "\uCD5C\uB300 \uC774\uB3D9\uD3C9\uADE0 bitrate",
+      "metrics.peakMaFps": "\uCD5C\uB300 \uC774\uB3D9\uD3C9\uADE0 FPS",
+      "metrics.medianSample": "\uC911\uC559\uAC12 \uC0D8\uD50C",
+      "metrics.syncSamples": "\uC2F1\uD06C \uC0D8\uD50C",
+      "metrics.bitrateMovingAverage": "Bitrate \uC774\uB3D9\uD3C9\uADE0",
+      "metrics.fpsMovingAverage": "FPS \uC774\uB3D9\uD3C9\uADE0",
+      "metrics.sampleRateMovingAverage": "\uC0D8\uD50C \uB808\uC774\uD2B8 \uC774\uB3D9\uD3C9\uADE0",
+      "metrics.chartMax": "\uCD5C\uB300 {value} \xB7 \uD45C\uC2DC \uD3EC\uC778\uD2B8 {count}\uAC1C",
+      "metrics.frameTypeDistribution": "\uD504\uB808\uC784 \uD0C0\uC785 \uBD84\uD3EC",
+      "metrics.largestSamples": "\uAC00\uC7A5 \uD070 \uC0D8\uD50C",
+      "fragments.title": "\uD504\uB798\uADF8\uBA3C\uD2B8",
+      "warning.prefixTrackSample": "Track {trackId} sample {sampleIndex}: {warning}",
+      "warning.sampleLoadFailed": "\uC0D8\uD50C \uB85C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4. file://\uB85C \uC5F0 \uACBD\uC6B0 \uBE0C\uB77C\uC6B0\uC800\uAC00 \uB85C\uCEEC \uC0D8\uD50C \uD30C\uC77C \uB85C\uB529\uC744 \uB9C9\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4. GitHub Pages URL\uC744 \uC0AC\uC6A9\uD558\uAC70\uB098 \uC0D8\uD50C \uD30C\uC77C\uC744 \uC9C1\uC811 \uC5F4\uAE30/\uB4DC\uB86D\uD558\uC138\uC694. {message}",
+      "box.field.type": "\uD0C0\uC785",
+      "box.field.description": "\uC124\uBA85",
+      "box.field.path": "\uACBD\uB85C",
+      "box.field.offset": "\uC624\uD504\uC14B",
+      "box.field.size": "\uD06C\uAE30",
+      "box.field.headerSize": "\uD5E4\uB354 \uD06C\uAE30",
+      "box.field.children": "\uC790\uC2DD",
+      "box.field.warnings": "\uACBD\uACE0"
+    }
+  };
+  var BOX_TYPE_I18N = {
+    ko: {
+      ftyp: ["File Type Box / \uD30C\uC77C \uD0C0\uC785 \uBC15\uC2A4", "MP4/QuickTime brand, minor version, compatible brand \uBAA9\uB85D\uC744 \uC120\uC5B8\uD569\uB2C8\uB2E4."],
+      moov: ["Movie Box / \uBB34\uBE44 \uBC15\uC2A4", "\uD2B8\uB799, \uD0C0\uC774\uBC0D, \uC0D8\uD50C \uD14C\uC774\uBE14\uC744 \uB2F4\uB294 \uCD5C\uC0C1\uC704 \uBA54\uD0C0\uB370\uC774\uD130 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      mdat: ["Media Data Box / \uBBF8\uB514\uC5B4 \uB370\uC774\uD130 \uBC15\uC2A4", "\uC0D8\uD50C \uD14C\uC774\uBE14\uC774 \uCC38\uC870\uD558\uB294 \uC778\uCF54\uB529\uB41C \uBBF8\uB514\uC5B4 payload byte\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
+      free: ["Free Space Box / \uC5EC\uC720 \uACF5\uAC04 \uBC15\uC2A4", "\uB098\uC911\uC5D0 \uB36E\uC5B4\uC4F8 \uC218 \uC788\uB294 padding \uB610\uB294 \uC608\uC57D byte\uC785\uB2C8\uB2E4."],
+      skip: ["Skip Box / \uC2A4\uD0B5 \uBC15\uC2A4", "free\uC640 \uC720\uC0AC\uD55C padding \uB610\uB294 \uBB34\uC2DC\uB418\uB294 byte\uC785\uB2C8\uB2E4."],
+      wide: ["Wide Box / \uC640\uC774\uB4DC \uBC15\uC2A4", "large-size box \uACF5\uAC04\uC744 \uC608\uC57D\uD558\uAE30 \uC704\uD55C legacy QuickTime padding\uC785\uB2C8\uB2E4."],
+      uuid: ["UUID Box / UUID \uBC15\uC2A4", "16-byte UUID\uB85C \uC2DD\uBCC4\uB418\uB294 \uBCA4\uB354 \uC804\uC6A9 \uD655\uC7A5 \uBC15\uC2A4\uC785\uB2C8\uB2E4."],
+      trak: ["Track Box / \uD2B8\uB799 \uBC15\uC2A4", "\uBE44\uB514\uC624, \uC624\uB514\uC624, \uC790\uB9C9 \uAC19\uC740 \uD558\uB098\uC758 \uBBF8\uB514\uC5B4 \uD2B8\uB799 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      tkhd: ["Track Header Box / \uD2B8\uB799 \uD5E4\uB354 \uBC15\uC2A4", "\uD2B8\uB799 ID, duration, dimension, layer, display metadata\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
+      edts: ["Edit Box / \uD3B8\uC9D1 \uBC15\uC2A4", "edit-list timing adjustment\uB97C \uB2F4\uB294 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      elst: ["Edit List Box / \uD3B8\uC9D1 \uB9AC\uC2A4\uD2B8 \uBC15\uC2A4", "presentation timeline \uAD6C\uAC04\uC744 media timeline \uBC94\uC704\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
+      mdia: ["Media Box / \uBBF8\uB514\uC5B4 \uBC15\uC2A4", "media timing, handler, media information \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      mdhd: ["Media Header Box / \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "\uD2B8\uB799 media timescale, duration, language\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
+      hdlr: ["Handler Reference Box / \uD578\uB4E4\uB7EC \uCC38\uC870 \uBC15\uC2A4", "vide, soun \uAC19\uC740 \uD2B8\uB799 handler type\uC744 \uC120\uC5B8\uD569\uB2C8\uB2E4."],
+      minf: ["Media Information Box / \uBBF8\uB514\uC5B4 \uC815\uBCF4 \uBC15\uC2A4", "media-specific header, data reference, sample table \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      vmhd: ["Video Media Header Box / \uBE44\uB514\uC624 \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "graphics mode \uAC19\uC740 \uBE44\uB514\uC624 \uD2B8\uB799 \uD45C\uC2DC \uBA54\uD0C0\uB370\uC774\uD130\uC785\uB2C8\uB2E4."],
+      smhd: ["Sound Media Header Box / \uC0AC\uC6B4\uB4DC \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "balance \uAC19\uC740 \uC624\uB514\uC624 \uD2B8\uB799 \uD45C\uC2DC \uBA54\uD0C0\uB370\uC774\uD130\uC785\uB2C8\uB2E4."],
+      hmhd: ["Hint Media Header Box / \uD78C\uD2B8 \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "\uC2A4\uD2B8\uB9AC\uBC0D\uC6A9 hint track \uBA54\uD0C0\uB370\uC774\uD130\uC785\uB2C8\uB2E4."],
+      nmhd: ["Null Media Header Box / \uB110 \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "\uD2B9\uC218 media header\uAC00 \uC5C6\uB294 \uD2B8\uB799\uC6A9 generic media header\uC785\uB2C8\uB2E4."],
+      dinf: ["Data Information Box / \uB370\uC774\uD130 \uC815\uBCF4 \uBC15\uC2A4", "\uBBF8\uB514\uC5B4 \uB370\uC774\uD130\uAC00 \uC704\uCE58\uD55C \uACF3\uC744 \uC124\uBA85\uD558\uB294 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      dref: ["Data Reference Box / \uB370\uC774\uD130 \uCC38\uC870 \uBC15\uC2A4", "sample entry\uAC00 \uC0AC\uC6A9\uD558\uB294 data reference \uBAA9\uB85D\uC785\uB2C8\uB2E4."],
+      url: ["Data Entry URL Box / \uB370\uC774\uD130 \uC5D4\uD2B8\uB9AC URL \uBC15\uC2A4", "URL data reference\uC785\uB2C8\uB2E4. MP4\uC5D0\uC11C\uB294 \uBCF4\uD1B5 self-contained\uC785\uB2C8\uB2E4."],
+      urn: ["Data Entry URN Box / \uB370\uC774\uD130 \uC5D4\uD2B8\uB9AC URN \uBC15\uC2A4", "\uBBF8\uB514\uC5B4 \uB370\uC774\uD130\uB97C \uC704\uD55C URN data reference\uC785\uB2C8\uB2E4."],
+      stbl: ["Sample Table Box / \uC0D8\uD50C \uD14C\uC774\uBE14 \uBC15\uC2A4", "\uC0D8\uD50C\uC758 timing, size, chunk, offset \uB9E4\uD551 \uD14C\uC774\uBE14 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      stsd: ["Sample Description Box / \uC0D8\uD50C \uC124\uBA85 \uBC15\uC2A4", "codec sample entry\uC640 codec configuration box\uB97C \uC120\uC5B8\uD569\uB2C8\uB2E4."],
+      stts: ["Decoding Time to Sample Box / \uB514\uCF54\uB529 \uC2DC\uAC04-\uC0D8\uD50C \uBC15\uC2A4", "\uC0D8\uD50C\uC744 decode duration\uACFC DTS \uC9C4\uD589\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
+      ctts: ["Composition Time to Sample Box / \uD569\uC131 \uC2DC\uAC04-\uC0D8\uD50C \uBC15\uC2A4", "reordered frame\uC744 \uC704\uD574 DTS \uB300\uBE44 PTS offset\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      stsc: ["Sample to Chunk Box / \uC0D8\uD50C-\uCCAD\uD06C \uBC15\uC2A4", "sample run\uC744 chunk number\uC640 samples-per-chunk\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
+      stsz: ["Sample Size Box / \uC0D8\uD50C \uD06C\uAE30 \uBC15\uC2A4", "\uC0D8\uD50C\uBCC4 byte size \uB610\uB294 \uD558\uB098\uC758 constant sample size\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      stz2: ["Compact Sample Size Box / compact \uC0D8\uD50C \uD06C\uAE30 \uBC15\uC2A4", "4/8/16-bit compact per-sample size\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      stco: ["Chunk Offset Box / \uCCAD\uD06C \uC624\uD504\uC14B \uBC15\uC2A4", "\uBBF8\uB514\uC5B4 \uB370\uC774\uD130 chunk\uC758 32-bit file offset\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      co64: ["64-bit Chunk Offset Box / 64-bit \uCCAD\uD06C \uC624\uD504\uC14B \uBC15\uC2A4", "\uBBF8\uB514\uC5B4 \uB370\uC774\uD130 chunk\uC758 64-bit file offset\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      stss: ["Sync Sample Box / \uC2F1\uD06C \uC0D8\uD50C \uBC15\uC2A4", "\uC77C\uBC18\uC801\uC73C\uB85C keyframe\uC778 random-access sync sample \uBAA9\uB85D\uC785\uB2C8\uB2E4."],
+      stsh: ["Shadow Sync Sample Box / shadow sync \uC0D8\uD50C \uBC15\uC2A4", "non-sync sample\uC744 shadow sync sample\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
+      sdtp: ["Sample Dependency Type Box / \uC0D8\uD50C \uC758\uC874\uC131 \uD0C0\uC785 \uBC15\uC2A4", "random access\uC640 prediction\uC744 \uC704\uD55C per-sample dependency flag\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      sbgp: ["Sample to Group Box / \uC0D8\uD50C-\uADF8\uB8F9 \uBC15\uC2A4", "sample range\uB97C sample group\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
+      sgpd: ["Sample Group Description Box / \uC0D8\uD50C \uADF8\uB8F9 \uC124\uBA85 \uBC15\uC2A4", "sbgp\uAC00 \uCC38\uC870\uD558\uB294 sample group\uC744 \uC124\uBA85\uD569\uB2C8\uB2E4."],
+      saiz: ["Sample Auxiliary Information Sizes Box / \uC0D8\uD50C \uBCF4\uC870 \uC815\uBCF4 \uD06C\uAE30 \uBC15\uC2A4", "per-sample auxiliary information size\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      saio: ["Sample Auxiliary Information Offsets Box / \uC0D8\uD50C \uBCF4\uC870 \uC815\uBCF4 \uC624\uD504\uC14B \uBC15\uC2A4", "per-sample auxiliary information offset\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      mvhd: ["Movie Header Box / \uBB34\uBE44 \uD5E4\uB354 \uBC15\uC2A4", "movie-level timescale, duration, rate, volume, next track ID\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
+      mvex: ["Movie Extends Box / \uBB34\uBE44 \uD655\uC7A5 \uBC15\uC2A4", "movie fragment \uC0AC\uC6A9\uACFC \uAE30\uBCF8 fragment \uC124\uC815\uC744 \uC120\uC5B8\uD569\uB2C8\uB2E4."],
+      mehd: ["Movie Extends Header Box / \uBB34\uBE44 \uD655\uC7A5 \uD5E4\uB354 \uBC15\uC2A4", "\uC804\uCCB4 fragmented movie duration\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      trex: ["Track Extends Box / \uD2B8\uB799 \uD655\uC7A5 \uBC15\uC2A4", "fragment\uC758 \uAE30\uBCF8 sample description, duration, size, flag\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
+      moof: ["Movie Fragment Box / \uBB34\uBE44 \uD504\uB798\uADF8\uBA3C\uD2B8 \uBC15\uC2A4", "fragmented MP4\uC758 \uD55C fragment\uC5D0 \uB300\uD55C track run \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      mfhd: ["Movie Fragment Header Box / \uBB34\uBE44 \uD504\uB798\uADF8\uBA3C\uD2B8 \uD5E4\uB354 \uBC15\uC2A4", "fragment sequence number\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
+      traf: ["Track Fragment Box / \uD2B8\uB799 \uD504\uB798\uADF8\uBA3C\uD2B8 \uBC15\uC2A4", "\uD55C \uD2B8\uB799\uC758 fragment metadata\uC640 sample run \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      tfhd: ["Track Fragment Header Box / \uD2B8\uB799 \uD504\uB798\uADF8\uBA3C\uD2B8 \uD5E4\uB354 \uBC15\uC2A4", "track ID\uC640 \uB4A4\uB530\uB974\uB294 trun box\uC758 \uAE30\uBCF8 sample \uAC12\uC744 \uB2F4\uC2B5\uB2C8\uB2E4."],
+      tfdt: ["Track Fragment Decode Time Box / \uD2B8\uB799 \uD504\uB798\uADF8\uBA3C\uD2B8 \uB514\uCF54\uB4DC \uC2DC\uAC04 \uBC15\uC2A4", "track fragment \uCCAB \uC0D8\uD50C\uC758 base decode time\uC785\uB2C8\uB2E4."],
+      trun: ["Track Run Box / \uD2B8\uB799 \uB7F0 \uBC15\uC2A4", "fragment \uB0B4 per-sample duration, size, flag, composition offset, data offset\uC744 \uB2F4\uC2B5\uB2C8\uB2E4."],
+      mfra: ["Movie Fragment Random Access Box / \uBB34\uBE44 \uD504\uB798\uADF8\uBA3C\uD2B8 \uB79C\uB364 \uC561\uC138\uC2A4 \uBC15\uC2A4", "movie fragment\uC5D0 \uB300\uD55C random-access index \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      tfra: ["Track Fragment Random Access Box / \uD2B8\uB799 \uD504\uB798\uADF8\uBA3C\uD2B8 \uB79C\uB364 \uC561\uC138\uC2A4 \uBC15\uC2A4", "\uD55C \uD2B8\uB799\uC758 fragmented media random-access entry\uC785\uB2C8\uB2E4."],
+      mfro: ["Movie Fragment Random Access Offset Box / \uBB34\uBE44 \uD504\uB798\uADF8\uBA3C\uD2B8 \uB79C\uB364 \uC561\uC138\uC2A4 \uC624\uD504\uC14B \uBC15\uC2A4", "backward lookup\uC744 \uC704\uD574 mfra box size\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      meta: ["Metadata Box / \uBA54\uD0C0\uB370\uC774\uD130 \uBC15\uC2A4", "timed \uB610\uB294 file-level metadata \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      ilst: ["Item List Box / \uC544\uC774\uD15C \uB9AC\uC2A4\uD2B8 \uBC15\uC2A4", "QuickTime/iTunes metadata item list\uC785\uB2C8\uB2E4."],
+      udta: ["User Data Box / \uC0AC\uC6A9\uC790 \uB370\uC774\uD130 \uBC15\uC2A4", "user data\uC640 metadata \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      tref: ["Track Reference Box / \uD2B8\uB799 \uCC38\uC870 \uBC15\uC2A4", "\uD2B8\uB799 \uC0AC\uC774\uC758 reference\uB97C \uB2F4\uB294 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      sinf: ["Protection Scheme Information Box / \uBCF4\uD638 \uC2A4\uD0B4 \uC815\uBCF4 \uBC15\uC2A4", "encryption \uB610\uB294 protection scheme metadata \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      frma: ["Original Format Box / \uC6D0\uBCF8 \uD3EC\uB9F7 \uBC15\uC2A4", "\uBCF4\uD638\uB418\uAE30 \uC804 \uC6D0\uB798 sample entry format\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
+      schm: ["Scheme Type Box / \uC2A4\uD0B4 \uD0C0\uC785 \uBC15\uC2A4", "protection \uB610\uB294 restricted scheme\uC744 \uC2DD\uBCC4\uD569\uB2C8\uB2E4."],
+      schi: ["Scheme Information Box / \uC2A4\uD0B4 \uC815\uBCF4 \uBC15\uC2A4", "scheme-specific protection information \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
+      avcC: ["AVC Configuration Box / AVC \uC124\uC815 \uBC15\uC2A4", "profile, level, SPS/PPS, NAL length size\uB97C \uD3EC\uD568\uD55C H.264/AVC decoder configuration\uC785\uB2C8\uB2E4."],
+      hvcC: ["HEVC Configuration Box / HEVC \uC124\uC815 \uBC15\uC2A4", "profile, level, VPS/SPS/PPS, NAL length size\uB97C \uD3EC\uD568\uD55C H.265/HEVC decoder configuration\uC785\uB2C8\uB2E4."],
+      esds: ["Elementary Stream Descriptor Box / elementary stream descriptor \uBC15\uC2A4", "\uC8FC\uB85C mp4a \uD2B8\uB799\uC758 AAC AudioSpecificConfig\uB97C \uB2F4\uB294 MPEG-4 descriptor\uC785\uB2C8\uB2E4."],
+      pasp: ["Pixel Aspect Ratio Box / \uD53D\uC140 \uC885\uD6A1\uBE44 \uBC15\uC2A4", "horizontal/vertical pixel aspect ratio spacing\uC785\uB2C8\uB2E4."],
+      colr: ["Colour Information Box / \uC0C9\uC0C1 \uC815\uBCF4 \uBC15\uC2A4", "color primaries, transfer characteristics, matrix coefficients \uB610\uB294 ICC profile\uC785\uB2C8\uB2E4."],
+      clap: ["Clean Aperture Box / clean aperture \uBC15\uC2A4", "display cropping\uC6A9 clean aperture dimension\uACFC offset\uC785\uB2C8\uB2E4."],
+      btrt: ["Bitrate Box / bitrate \uBC15\uC2A4", "buffer size, maximum bitrate, average bitrate hint\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
+      avc1: ["AVC Sample Entry / AVC \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "avcC codec configuration\uC744 \uC0AC\uC6A9\uD558\uB294 H.264/AVC video sample entry\uC785\uB2C8\uB2E4."],
+      avc3: ["AVC3 Sample Entry / AVC3 \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "parameter set\uC774 sample \uC548\uC5D0 \uB098\uD0C0\uB0A0 \uC218 \uC788\uB294 H.264/AVC video sample entry\uC785\uB2C8\uB2E4."],
+      hvc1: ["HEVC Sample Entry / HEVC \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "hvcC codec configuration\uC744 \uC0AC\uC6A9\uD558\uB294 H.265/HEVC video sample entry\uC785\uB2C8\uB2E4."],
+      hev1: ["HEV1 Sample Entry / HEV1 \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "parameter set\uC774 sample \uC548\uC5D0 \uB098\uD0C0\uB0A0 \uC218 \uC788\uB294 H.265/HEVC sample entry\uC785\uB2C8\uB2E4."],
+      mp4a: ["MPEG-4 Audio Sample Entry / MPEG-4 \uC624\uB514\uC624 \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "\uC8FC\uB85C esds decoder configuration\uC744 \uAC00\uC9C4 AAC audio sample entry\uC785\uB2C8\uB2E4."],
+      ap4h: ["Apple ProRes 4444 Sample Entry / Apple ProRes 4444 \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "Apple ProRes 4444 video sample entry\uC785\uB2C8\uB2E4."]
+    }
+  };
+  var activeLanguage = "en";
+  function t(key, values) {
+    const dictionary = I18N[activeLanguage] || I18N.en;
+    let text = dictionary[key] || I18N.en[key] || key;
+    for (const [name, value] of Object.entries(values || {})) {
+      text = text.replace(new RegExp("\\{" + name + "\\}", "g"), String(value));
+    }
+    return text;
+  }
+  function getLanguage() {
+    return activeLanguage;
+  }
+  function setLanguage(language) {
+    activeLanguage = I18N[language] ? language : "en";
+    return activeLanguage;
+  }
+
+  // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\core\analyzer-core.js
+  var CACHE_CHUNK_BYTES = 4 * 1024 * 1024;
+  var MAX_CACHE_BYTES = 64 * 1024 * 1024;
+  var MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+  var ROW_HEIGHT = 32;
+  var GRAPH_ROW_HEIGHT = 30;
+  var METRIC_CHART_WIDTH = 1e3;
+  var METRIC_CHART_HEIGHT = 230;
+  var METRIC_CHART_PADDING = { left: 64, right: 22, top: 18, bottom: 30 };
+  var CONTAINER_BOXES = /* @__PURE__ */ new Set([
     "moov",
     "trak",
     "mdia",
@@ -1361,10 +1744,10 @@ button:disabled {
     "sinf",
     "schi"
   ]);
-  const FULLBOX_CONTAINER_OFFSETS = /* @__PURE__ */ new Map([
+  var FULLBOX_CONTAINER_OFFSETS = /* @__PURE__ */ new Map([
     ["meta", 4]
   ]);
-  const PARSED_FIELD_BOXES = /* @__PURE__ */ new Set([
+  var PARSED_FIELD_BOXES = /* @__PURE__ */ new Set([
     "ftyp",
     "mvhd",
     "tkhd",
@@ -1385,7 +1768,7 @@ button:disabled {
     "tfdt",
     "trun"
   ]);
-  const VIDEO_SAMPLE_ENTRIES = /* @__PURE__ */ new Set([
+  var VIDEO_SAMPLE_ENTRIES = /* @__PURE__ */ new Set([
     "avc1",
     "avc2",
     "avc3",
@@ -1404,8 +1787,8 @@ button:disabled {
     "aprn",
     "aprh"
   ]);
-  const AUDIO_SAMPLE_ENTRIES = /* @__PURE__ */ new Set(["mp4a", "enca", "ac-3", "ec-3", "Opus", "alac"]);
-  const AUDIO_SAMPLE_RATES = [
+  var AUDIO_SAMPLE_ENTRIES = /* @__PURE__ */ new Set(["mp4a", "enca", "ac-3", "ec-3", "Opus", "alac"]);
+  var AUDIO_SAMPLE_RATES = [
     96e3,
     88200,
     64e3,
@@ -1420,7 +1803,7 @@ button:disabled {
     8e3,
     7350
   ];
-  const AUDIO_OBJECT_TYPE_NAMES = {
+  var AUDIO_OBJECT_TYPE_NAMES = {
     1: "AAC Main",
     2: "AAC LC",
     3: "AAC SSR",
@@ -1431,8 +1814,8 @@ button:disabled {
     29: "PS",
     42: "USAC"
   };
-  const HEVC_IRAP_NAL_TYPES = /* @__PURE__ */ new Set([16, 17, 18, 19, 20, 21, 22, 23]);
-  const BOX_TYPE_INFO = {
+  var HEVC_IRAP_NAL_TYPES = /* @__PURE__ */ new Set([16, 17, 18, 19, 20, 21, 22, 23]);
+  var BOX_TYPE_INFO = {
     ftyp: {
       name: "File Type Box",
       description: "Declares the MP4/QuickTime brand, minor version, and compatible brands."
@@ -1726,356 +2109,6 @@ button:disabled {
       description: "Apple ProRes 4444 video sample entry."
     }
   };
-  const I18N = {
-    en: {
-      "app.title": "MP4/fMP4 Media Analyzer",
-      "app.subtitle": "Single-file parser for boxes, samples, fragments, and video frame types.",
-      "language.label": "Language",
-      "status.initial": "Open or drop a media file to begin.",
-      "status.cancelling": "Cancelling...",
-      "status.failed": "Failed: {message}",
-      "status.scanComplete": "Frame type scan complete",
-      "status.scanStopped": "Scan stopped: {message}",
-      "status.reading": "Reading {name}",
-      "status.parsingBoxes": "Parsing boxes",
-      "status.buildingTrackModel": "Building track model",
-      "status.structureParsed": "Structure parsed",
-      "status.scanningVideoSamples": "Scanning video samples",
-      "button.open": "Open file",
-      "button.scan": "Scan frame types",
-      "button.cancel": "Cancel",
-      "button.exportJson": "Export JSON",
-      "button.exportCsv": "Export CSV",
-      "button.clear": "Clear",
-      "preview.loadedMedia": "Loaded media",
-      "tab.summary": "Summary",
-      "tab.boxes": "Boxes",
-      "tab.tracks": "Tracks",
-      "tab.frames": "Frames",
-      "tab.metrics": "Metrics",
-      "tab.fragments": "Fragments",
-      "tab.warnings": "Warnings",
-      "empty.summary": "Open or drop a file to inspect MP4 structure and samples.",
-      "empty.boxDetailInitial": "Open a file, then select a box from the tree.",
-      "empty.selectBox": "Select a box from the tree.",
-      "empty.noTracks": "No tracks parsed.",
-      "empty.metrics": "Open a file to inspect bitrate and FPS metrics.",
-      "empty.noFragments": "No fragments parsed.",
-      "empty.noWarnings": "No warnings.",
-      "empty.parsingStructure": "Parsing structure...",
-      "empty.parsingMetrics": "Parsing metrics...",
-      "empty.noTrackMetrics": "No track available for metrics.",
-      "empty.noSamplesForTrack": "No samples found for Track {trackId}.",
-      "empty.noChartPoints": "No chart points.",
-      "empty.noFrameTypeData": "No frame type data.",
-      "empty.noSamples": "No samples.",
-      "empty.noMoof": "No moof boxes found.",
-      "drop.title": "Drop media file to analyze",
-      "drop.subtitle": "Release anywhere in this window for MP4, M4V, or MOV parsing.",
-      "boxes.treeTitle": "Box Tree",
-      "boxes.detailTitle": "Box detail",
-      "boxes.parsedFields": "Parsed fields",
-      "boxes.unknownType": "Unknown or unregistered box type",
-      "boxes.noDescription": "No built-in description is available for this box type. It may be vendor-specific, private, or not yet mapped by this analyzer.",
-      "field.track": "Track",
-      "field.frameType": "Frame type",
-      "field.sync": "Sync",
-      "field.minSize": "Min size",
-      "field.maxSize": "Max size",
-      "field.warningOnly": "Warning only",
-      "field.view": "View",
-      "field.movingAverageSamples": "Moving average samples",
-      "field.chartPoints": "Chart points",
-      "option.all": "All",
-      "option.syncOnly": "Sync only",
-      "option.nonSyncOnly": "Non-sync only",
-      "option.noTrack": "No track",
-      "view.graph": "Graph",
-      "view.table": "Table",
-      "aria.frameViewMode": "Frame view mode",
-      "aria.seekFrame": "Seek to track {trackId} sample {sampleIndex} at {time}",
-      "graph.axisTitle": "Time / frame",
-      "unit.bytes": "bytes",
-      "unit.max": "max {value}",
-      "count.rows": "{count} rows",
-      "column.index": "Index",
-      "column.track": "Track",
-      "column.handler": "Handler",
-      "column.codec": "Codec",
-      "column.duration": "Duration",
-      "column.media": "Media",
-      "column.samples": "Samples",
-      "column.avgBitrate": "Avg bitrate",
-      "column.fpsSamples": "FPS / samples/s",
-      "column.avgSample": "Avg sample",
-      "column.codecConfig": "Codec config",
-      "column.offset": "Offset",
-      "column.size": "Size",
-      "column.sync": "Sync",
-      "column.type": "Type",
-      "column.chunkFragment": "Chunk/Frag",
-      "column.time": "Time",
-      "value.yes": "yes",
-      "value.no": "no",
-      "value.none": "none",
-      "value.unknownMime": "unknown MIME type",
-      "value.unknown": "unknown",
-      "value.mixed": "mixed",
-      "value.audio": "audio",
-      "value.sample": "sample",
-      "value.notAvailable": "n/a",
-      "summary.fileSize": "File size",
-      "summary.tracks": "Tracks",
-      "summary.videoTracks": "Video tracks",
-      "summary.fragments": "Fragments",
-      "summary.samples": "Samples",
-      "summary.avcTracks": "AVC tracks",
-      "summary.hevcTracks": "HEVC tracks",
-      "summary.aacTracks": "AAC tracks",
-      "summary.warnings": "Warnings",
-      "summary.note": "AVC/HEVC frame type scan reads each sample range and parses video NAL slice headers. Other codecs are shown as sample metadata only.",
-      "metrics.track": "Track",
-      "metrics.avgFps": "Avg FPS",
-      "metrics.samplesPerSecond": "Samples/s",
-      "metrics.peakMaBitrate": "Peak MA bitrate",
-      "metrics.peakMaFps": "Peak MA FPS",
-      "metrics.medianSample": "Median sample",
-      "metrics.syncSamples": "Sync samples",
-      "metrics.bitrateMovingAverage": "Bitrate moving average",
-      "metrics.fpsMovingAverage": "FPS moving average",
-      "metrics.sampleRateMovingAverage": "Sample rate moving average",
-      "metrics.chartMax": "max {value} \xB7 {count} plotted points",
-      "metrics.frameTypeDistribution": "Frame type distribution",
-      "metrics.largestSamples": "Largest samples",
-      "fragments.title": "Fragments",
-      "warning.prefixTrackSample": "Track {trackId} sample {sampleIndex}: {warning}",
-      "box.field.type": "type",
-      "box.field.description": "description",
-      "box.field.path": "path",
-      "box.field.offset": "offset",
-      "box.field.size": "size",
-      "box.field.headerSize": "header size",
-      "box.field.children": "children",
-      "box.field.warnings": "warnings"
-    },
-    ko: {
-      "app.title": "MP4/fMP4 \uBBF8\uB514\uC5B4 \uBD84\uC11D\uAE30",
-      "app.subtitle": "\uBC15\uC2A4, \uC0D8\uD50C, \uD504\uB798\uADF8\uBA3C\uD2B8, \uC601\uC0C1 \uD504\uB808\uC784 \uD0C0\uC785\uC744 \uBD84\uC11D\uD558\uB294 \uB2E8\uC77C \uD30C\uC77C \uD30C\uC11C\uC785\uB2C8\uB2E4.",
-      "language.label": "\uC5B8\uC5B4",
-      "status.initial": "\uBBF8\uB514\uC5B4 \uD30C\uC77C\uC744 \uC5F4\uAC70\uB098 \uB04C\uC5B4\uB2E4 \uB193\uC73C\uC138\uC694.",
-      "status.cancelling": "\uCDE8\uC18C \uC911...",
-      "status.failed": "\uC2E4\uD328: {message}",
-      "status.scanComplete": "\uD504\uB808\uC784 \uD0C0\uC785 \uC2A4\uCE94 \uC644\uB8CC",
-      "status.scanStopped": "\uC2A4\uCE94 \uC911\uB2E8: {message}",
-      "status.reading": "{name} \uC77D\uB294 \uC911",
-      "status.parsingBoxes": "\uBC15\uC2A4 \uD30C\uC2F1 \uC911",
-      "status.buildingTrackModel": "\uD2B8\uB799 \uBAA8\uB378 \uAD6C\uC131 \uC911",
-      "status.structureParsed": "\uAD6C\uC870 \uD30C\uC2F1 \uC644\uB8CC",
-      "status.scanningVideoSamples": "\uBE44\uB514\uC624 \uC0D8\uD50C \uC2A4\uCE94 \uC911",
-      "button.open": "\uD30C\uC77C \uC5F4\uAE30",
-      "button.scan": "\uD504\uB808\uC784 \uD0C0\uC785 \uC2A4\uCE94",
-      "button.cancel": "\uCDE8\uC18C",
-      "button.exportJson": "JSON \uB0B4\uBCF4\uB0B4\uAE30",
-      "button.exportCsv": "CSV \uB0B4\uBCF4\uB0B4\uAE30",
-      "button.clear": "\uCD08\uAE30\uD654",
-      "preview.loadedMedia": "\uB85C\uB4DC\uB41C \uBBF8\uB514\uC5B4",
-      "tab.summary": "\uC694\uC57D",
-      "tab.boxes": "\uBC15\uC2A4",
-      "tab.tracks": "\uD2B8\uB799",
-      "tab.frames": "\uD504\uB808\uC784",
-      "tab.metrics": "\uBA54\uD2B8\uB9AD",
-      "tab.fragments": "\uD504\uB798\uADF8\uBA3C\uD2B8",
-      "tab.warnings": "\uACBD\uACE0",
-      "empty.summary": "\uD30C\uC77C\uC744 \uC5F4\uAC70\uB098 \uB4DC\uB86D\uD558\uBA74 MP4 \uAD6C\uC870\uC640 \uC0D8\uD50C\uC744 \uAC80\uC0AC\uD569\uB2C8\uB2E4.",
-      "empty.boxDetailInitial": "\uD30C\uC77C\uC744 \uC5F0 \uB4A4 \uD2B8\uB9AC\uC5D0\uC11C \uBC15\uC2A4\uB97C \uC120\uD0DD\uD558\uC138\uC694.",
-      "empty.selectBox": "\uD2B8\uB9AC\uC5D0\uC11C \uBC15\uC2A4\uB97C \uC120\uD0DD\uD558\uC138\uC694.",
-      "empty.noTracks": "\uD30C\uC2F1\uB41C \uD2B8\uB799\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "empty.metrics": "\uD30C\uC77C\uC744 \uC5F4\uBA74 bitrate\uC640 FPS \uBA54\uD2B8\uB9AD\uC744 \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
-      "empty.noFragments": "\uD30C\uC2F1\uB41C \uD504\uB798\uADF8\uBA3C\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "empty.noWarnings": "\uACBD\uACE0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "empty.parsingStructure": "\uAD6C\uC870 \uD30C\uC2F1 \uC911...",
-      "empty.parsingMetrics": "\uBA54\uD2B8\uB9AD \uACC4\uC0B0 \uC911...",
-      "empty.noTrackMetrics": "\uBA54\uD2B8\uB9AD\uC744 \uD45C\uC2DC\uD560 \uD2B8\uB799\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "empty.noSamplesForTrack": "Track {trackId}\uC758 \uC0D8\uD50C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "empty.noChartPoints": "\uCC28\uD2B8 \uD3EC\uC778\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "empty.noFrameTypeData": "\uD504\uB808\uC784 \uD0C0\uC785 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "empty.noSamples": "\uC0D8\uD50C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "empty.noMoof": "moof \uBC15\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "drop.title": "\uBD84\uC11D\uD560 \uBBF8\uB514\uC5B4 \uD30C\uC77C \uB4DC\uB86D",
-      "drop.subtitle": "\uC774 \uCC3D \uC5B4\uB514\uC5D0\uC11C\uB4E0 MP4, M4V, MOV \uD30C\uC77C\uC744 \uB193\uC73C\uBA74 \uD30C\uC2F1\uD569\uB2C8\uB2E4.",
-      "boxes.treeTitle": "\uBC15\uC2A4 \uD2B8\uB9AC",
-      "boxes.detailTitle": "\uBC15\uC2A4 \uC0C1\uC138",
-      "boxes.parsedFields": "\uD30C\uC2F1\uB41C \uD544\uB4DC",
-      "boxes.unknownType": "\uC54C \uC218 \uC5C6\uAC70\uB098 \uB4F1\uB85D\uB418\uC9C0 \uC54A\uC740 \uBC15\uC2A4 \uD0C0\uC785",
-      "boxes.noDescription": "\uC774 \uBC15\uC2A4 \uD0C0\uC785\uC5D0 \uB300\uD55C \uB0B4\uC7A5 \uC124\uBA85\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uBCA4\uB354 \uC804\uC6A9, private, \uB610\uB294 \uC544\uC9C1 \uB9E4\uD551\uB418\uC9C0 \uC54A\uC740 \uD0C0\uC785\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
-      "field.track": "\uD2B8\uB799",
-      "field.frameType": "\uD504\uB808\uC784 \uD0C0\uC785",
-      "field.sync": "\uC2F1\uD06C",
-      "field.minSize": "\uCD5C\uC18C \uD06C\uAE30",
-      "field.maxSize": "\uCD5C\uB300 \uD06C\uAE30",
-      "field.warningOnly": "\uACBD\uACE0\uB9CC",
-      "field.view": "\uBCF4\uAE30",
-      "field.movingAverageSamples": "\uC774\uB3D9\uD3C9\uADE0 \uC0D8\uD50C \uC218",
-      "field.chartPoints": "\uCC28\uD2B8 \uD3EC\uC778\uD2B8",
-      "option.all": "\uC804\uCCB4",
-      "option.syncOnly": "\uC2F1\uD06C\uB9CC",
-      "option.nonSyncOnly": "\uBE44\uC2F1\uD06C\uB9CC",
-      "option.noTrack": "\uD2B8\uB799 \uC5C6\uC74C",
-      "view.graph": "\uADF8\uB798\uD504",
-      "view.table": "\uD14C\uC774\uBE14",
-      "aria.frameViewMode": "\uD504\uB808\uC784 \uBCF4\uAE30 \uBC29\uC2DD",
-      "aria.seekFrame": "Track {trackId} sample {sampleIndex}\uC758 {time} \uC704\uCE58\uB85C \uC774\uB3D9",
-      "graph.axisTitle": "\uC2DC\uAC04 / \uD504\uB808\uC784",
-      "unit.bytes": "bytes",
-      "unit.max": "\uCD5C\uB300 {value}",
-      "count.rows": "{count} rows",
-      "column.index": "\uC778\uB371\uC2A4",
-      "column.track": "\uD2B8\uB799",
-      "column.handler": "\uD578\uB4E4\uB7EC",
-      "column.codec": "\uCF54\uB371",
-      "column.duration": "\uAE38\uC774",
-      "column.media": "\uBBF8\uB514\uC5B4",
-      "column.samples": "\uC0D8\uD50C",
-      "column.avgBitrate": "\uD3C9\uADE0 bitrate",
-      "column.fpsSamples": "FPS / \uC0D8\uD50C/s",
-      "column.avgSample": "\uD3C9\uADE0 \uC0D8\uD50C",
-      "column.codecConfig": "\uCF54\uB371 \uC124\uC815",
-      "column.offset": "\uC624\uD504\uC14B",
-      "column.size": "\uD06C\uAE30",
-      "column.sync": "\uC2F1\uD06C",
-      "column.type": "\uD0C0\uC785",
-      "column.chunkFragment": "\uCCAD\uD06C/\uD504\uB798\uADF8\uBA3C\uD2B8",
-      "column.time": "\uC2DC\uAC04",
-      "value.yes": "\uC608",
-      "value.no": "\uC544\uB2C8\uC624",
-      "value.none": "\uC5C6\uC74C",
-      "value.unknownMime": "\uC54C \uC218 \uC5C6\uB294 MIME type",
-      "value.unknown": "\uC54C \uC218 \uC5C6\uC74C",
-      "value.mixed": "\uD63C\uD569",
-      "value.audio": "\uC624\uB514\uC624",
-      "value.sample": "\uC0D8\uD50C",
-      "value.notAvailable": "n/a",
-      "summary.fileSize": "\uD30C\uC77C \uD06C\uAE30",
-      "summary.tracks": "\uD2B8\uB799",
-      "summary.videoTracks": "\uBE44\uB514\uC624 \uD2B8\uB799",
-      "summary.fragments": "\uD504\uB798\uADF8\uBA3C\uD2B8",
-      "summary.samples": "\uC0D8\uD50C",
-      "summary.avcTracks": "AVC \uD2B8\uB799",
-      "summary.hevcTracks": "HEVC \uD2B8\uB799",
-      "summary.aacTracks": "AAC \uD2B8\uB799",
-      "summary.warnings": "\uACBD\uACE0",
-      "summary.note": "AVC/HEVC \uD504\uB808\uC784 \uD0C0\uC785 \uC2A4\uCE94\uC740 \uAC01 \uC0D8\uD50C \uBC94\uC704\uB97C \uC77D\uACE0 \uC601\uC0C1 NAL slice header\uB97C \uD30C\uC2F1\uD569\uB2C8\uB2E4. \uB2E4\uB978 \uCF54\uB371\uC740 \uC0D8\uD50C \uBA54\uD0C0\uB370\uC774\uD130\uAE4C\uC9C0\uB9CC \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
-      "metrics.track": "\uD2B8\uB799",
-      "metrics.avgFps": "\uD3C9\uADE0 FPS",
-      "metrics.samplesPerSecond": "\uC0D8\uD50C/s",
-      "metrics.peakMaBitrate": "\uCD5C\uB300 \uC774\uB3D9\uD3C9\uADE0 bitrate",
-      "metrics.peakMaFps": "\uCD5C\uB300 \uC774\uB3D9\uD3C9\uADE0 FPS",
-      "metrics.medianSample": "\uC911\uC559\uAC12 \uC0D8\uD50C",
-      "metrics.syncSamples": "\uC2F1\uD06C \uC0D8\uD50C",
-      "metrics.bitrateMovingAverage": "Bitrate \uC774\uB3D9\uD3C9\uADE0",
-      "metrics.fpsMovingAverage": "FPS \uC774\uB3D9\uD3C9\uADE0",
-      "metrics.sampleRateMovingAverage": "\uC0D8\uD50C \uB808\uC774\uD2B8 \uC774\uB3D9\uD3C9\uADE0",
-      "metrics.chartMax": "\uCD5C\uB300 {value} \xB7 \uD45C\uC2DC \uD3EC\uC778\uD2B8 {count}\uAC1C",
-      "metrics.frameTypeDistribution": "\uD504\uB808\uC784 \uD0C0\uC785 \uBD84\uD3EC",
-      "metrics.largestSamples": "\uAC00\uC7A5 \uD070 \uC0D8\uD50C",
-      "fragments.title": "\uD504\uB798\uADF8\uBA3C\uD2B8",
-      "warning.prefixTrackSample": "Track {trackId} sample {sampleIndex}: {warning}",
-      "box.field.type": "\uD0C0\uC785",
-      "box.field.description": "\uC124\uBA85",
-      "box.field.path": "\uACBD\uB85C",
-      "box.field.offset": "\uC624\uD504\uC14B",
-      "box.field.size": "\uD06C\uAE30",
-      "box.field.headerSize": "\uD5E4\uB354 \uD06C\uAE30",
-      "box.field.children": "\uC790\uC2DD",
-      "box.field.warnings": "\uACBD\uACE0"
-    }
-  };
-  const BOX_TYPE_I18N = {
-    ko: {
-      ftyp: ["File Type Box / \uD30C\uC77C \uD0C0\uC785 \uBC15\uC2A4", "MP4/QuickTime brand, minor version, compatible brand \uBAA9\uB85D\uC744 \uC120\uC5B8\uD569\uB2C8\uB2E4."],
-      moov: ["Movie Box / \uBB34\uBE44 \uBC15\uC2A4", "\uD2B8\uB799, \uD0C0\uC774\uBC0D, \uC0D8\uD50C \uD14C\uC774\uBE14\uC744 \uB2F4\uB294 \uCD5C\uC0C1\uC704 \uBA54\uD0C0\uB370\uC774\uD130 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      mdat: ["Media Data Box / \uBBF8\uB514\uC5B4 \uB370\uC774\uD130 \uBC15\uC2A4", "\uC0D8\uD50C \uD14C\uC774\uBE14\uC774 \uCC38\uC870\uD558\uB294 \uC778\uCF54\uB529\uB41C \uBBF8\uB514\uC5B4 payload byte\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
-      free: ["Free Space Box / \uC5EC\uC720 \uACF5\uAC04 \uBC15\uC2A4", "\uB098\uC911\uC5D0 \uB36E\uC5B4\uC4F8 \uC218 \uC788\uB294 padding \uB610\uB294 \uC608\uC57D byte\uC785\uB2C8\uB2E4."],
-      skip: ["Skip Box / \uC2A4\uD0B5 \uBC15\uC2A4", "free\uC640 \uC720\uC0AC\uD55C padding \uB610\uB294 \uBB34\uC2DC\uB418\uB294 byte\uC785\uB2C8\uB2E4."],
-      wide: ["Wide Box / \uC640\uC774\uB4DC \uBC15\uC2A4", "large-size box \uACF5\uAC04\uC744 \uC608\uC57D\uD558\uAE30 \uC704\uD55C legacy QuickTime padding\uC785\uB2C8\uB2E4."],
-      uuid: ["UUID Box / UUID \uBC15\uC2A4", "16-byte UUID\uB85C \uC2DD\uBCC4\uB418\uB294 \uBCA4\uB354 \uC804\uC6A9 \uD655\uC7A5 \uBC15\uC2A4\uC785\uB2C8\uB2E4."],
-      trak: ["Track Box / \uD2B8\uB799 \uBC15\uC2A4", "\uBE44\uB514\uC624, \uC624\uB514\uC624, \uC790\uB9C9 \uAC19\uC740 \uD558\uB098\uC758 \uBBF8\uB514\uC5B4 \uD2B8\uB799 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      tkhd: ["Track Header Box / \uD2B8\uB799 \uD5E4\uB354 \uBC15\uC2A4", "\uD2B8\uB799 ID, duration, dimension, layer, display metadata\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
-      edts: ["Edit Box / \uD3B8\uC9D1 \uBC15\uC2A4", "edit-list timing adjustment\uB97C \uB2F4\uB294 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      elst: ["Edit List Box / \uD3B8\uC9D1 \uB9AC\uC2A4\uD2B8 \uBC15\uC2A4", "presentation timeline \uAD6C\uAC04\uC744 media timeline \uBC94\uC704\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
-      mdia: ["Media Box / \uBBF8\uB514\uC5B4 \uBC15\uC2A4", "media timing, handler, media information \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      mdhd: ["Media Header Box / \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "\uD2B8\uB799 media timescale, duration, language\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
-      hdlr: ["Handler Reference Box / \uD578\uB4E4\uB7EC \uCC38\uC870 \uBC15\uC2A4", "vide, soun \uAC19\uC740 \uD2B8\uB799 handler type\uC744 \uC120\uC5B8\uD569\uB2C8\uB2E4."],
-      minf: ["Media Information Box / \uBBF8\uB514\uC5B4 \uC815\uBCF4 \uBC15\uC2A4", "media-specific header, data reference, sample table \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      vmhd: ["Video Media Header Box / \uBE44\uB514\uC624 \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "graphics mode \uAC19\uC740 \uBE44\uB514\uC624 \uD2B8\uB799 \uD45C\uC2DC \uBA54\uD0C0\uB370\uC774\uD130\uC785\uB2C8\uB2E4."],
-      smhd: ["Sound Media Header Box / \uC0AC\uC6B4\uB4DC \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "balance \uAC19\uC740 \uC624\uB514\uC624 \uD2B8\uB799 \uD45C\uC2DC \uBA54\uD0C0\uB370\uC774\uD130\uC785\uB2C8\uB2E4."],
-      hmhd: ["Hint Media Header Box / \uD78C\uD2B8 \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "\uC2A4\uD2B8\uB9AC\uBC0D\uC6A9 hint track \uBA54\uD0C0\uB370\uC774\uD130\uC785\uB2C8\uB2E4."],
-      nmhd: ["Null Media Header Box / \uB110 \uBBF8\uB514\uC5B4 \uD5E4\uB354 \uBC15\uC2A4", "\uD2B9\uC218 media header\uAC00 \uC5C6\uB294 \uD2B8\uB799\uC6A9 generic media header\uC785\uB2C8\uB2E4."],
-      dinf: ["Data Information Box / \uB370\uC774\uD130 \uC815\uBCF4 \uBC15\uC2A4", "\uBBF8\uB514\uC5B4 \uB370\uC774\uD130\uAC00 \uC704\uCE58\uD55C \uACF3\uC744 \uC124\uBA85\uD558\uB294 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      dref: ["Data Reference Box / \uB370\uC774\uD130 \uCC38\uC870 \uBC15\uC2A4", "sample entry\uAC00 \uC0AC\uC6A9\uD558\uB294 data reference \uBAA9\uB85D\uC785\uB2C8\uB2E4."],
-      url: ["Data Entry URL Box / \uB370\uC774\uD130 \uC5D4\uD2B8\uB9AC URL \uBC15\uC2A4", "URL data reference\uC785\uB2C8\uB2E4. MP4\uC5D0\uC11C\uB294 \uBCF4\uD1B5 self-contained\uC785\uB2C8\uB2E4."],
-      urn: ["Data Entry URN Box / \uB370\uC774\uD130 \uC5D4\uD2B8\uB9AC URN \uBC15\uC2A4", "\uBBF8\uB514\uC5B4 \uB370\uC774\uD130\uB97C \uC704\uD55C URN data reference\uC785\uB2C8\uB2E4."],
-      stbl: ["Sample Table Box / \uC0D8\uD50C \uD14C\uC774\uBE14 \uBC15\uC2A4", "\uC0D8\uD50C\uC758 timing, size, chunk, offset \uB9E4\uD551 \uD14C\uC774\uBE14 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      stsd: ["Sample Description Box / \uC0D8\uD50C \uC124\uBA85 \uBC15\uC2A4", "codec sample entry\uC640 codec configuration box\uB97C \uC120\uC5B8\uD569\uB2C8\uB2E4."],
-      stts: ["Decoding Time to Sample Box / \uB514\uCF54\uB529 \uC2DC\uAC04-\uC0D8\uD50C \uBC15\uC2A4", "\uC0D8\uD50C\uC744 decode duration\uACFC DTS \uC9C4\uD589\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
-      ctts: ["Composition Time to Sample Box / \uD569\uC131 \uC2DC\uAC04-\uC0D8\uD50C \uBC15\uC2A4", "reordered frame\uC744 \uC704\uD574 DTS \uB300\uBE44 PTS offset\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      stsc: ["Sample to Chunk Box / \uC0D8\uD50C-\uCCAD\uD06C \uBC15\uC2A4", "sample run\uC744 chunk number\uC640 samples-per-chunk\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
-      stsz: ["Sample Size Box / \uC0D8\uD50C \uD06C\uAE30 \uBC15\uC2A4", "\uC0D8\uD50C\uBCC4 byte size \uB610\uB294 \uD558\uB098\uC758 constant sample size\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      stz2: ["Compact Sample Size Box / compact \uC0D8\uD50C \uD06C\uAE30 \uBC15\uC2A4", "4/8/16-bit compact per-sample size\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      stco: ["Chunk Offset Box / \uCCAD\uD06C \uC624\uD504\uC14B \uBC15\uC2A4", "\uBBF8\uB514\uC5B4 \uB370\uC774\uD130 chunk\uC758 32-bit file offset\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      co64: ["64-bit Chunk Offset Box / 64-bit \uCCAD\uD06C \uC624\uD504\uC14B \uBC15\uC2A4", "\uBBF8\uB514\uC5B4 \uB370\uC774\uD130 chunk\uC758 64-bit file offset\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      stss: ["Sync Sample Box / \uC2F1\uD06C \uC0D8\uD50C \uBC15\uC2A4", "\uC77C\uBC18\uC801\uC73C\uB85C keyframe\uC778 random-access sync sample \uBAA9\uB85D\uC785\uB2C8\uB2E4."],
-      stsh: ["Shadow Sync Sample Box / shadow sync \uC0D8\uD50C \uBC15\uC2A4", "non-sync sample\uC744 shadow sync sample\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
-      sdtp: ["Sample Dependency Type Box / \uC0D8\uD50C \uC758\uC874\uC131 \uD0C0\uC785 \uBC15\uC2A4", "random access\uC640 prediction\uC744 \uC704\uD55C per-sample dependency flag\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      sbgp: ["Sample to Group Box / \uC0D8\uD50C-\uADF8\uB8F9 \uBC15\uC2A4", "sample range\uB97C sample group\uC5D0 \uB9E4\uD551\uD569\uB2C8\uB2E4."],
-      sgpd: ["Sample Group Description Box / \uC0D8\uD50C \uADF8\uB8F9 \uC124\uBA85 \uBC15\uC2A4", "sbgp\uAC00 \uCC38\uC870\uD558\uB294 sample group\uC744 \uC124\uBA85\uD569\uB2C8\uB2E4."],
-      saiz: ["Sample Auxiliary Information Sizes Box / \uC0D8\uD50C \uBCF4\uC870 \uC815\uBCF4 \uD06C\uAE30 \uBC15\uC2A4", "per-sample auxiliary information size\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      saio: ["Sample Auxiliary Information Offsets Box / \uC0D8\uD50C \uBCF4\uC870 \uC815\uBCF4 \uC624\uD504\uC14B \uBC15\uC2A4", "per-sample auxiliary information offset\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      mvhd: ["Movie Header Box / \uBB34\uBE44 \uD5E4\uB354 \uBC15\uC2A4", "movie-level timescale, duration, rate, volume, next track ID\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
-      mvex: ["Movie Extends Box / \uBB34\uBE44 \uD655\uC7A5 \uBC15\uC2A4", "movie fragment \uC0AC\uC6A9\uACFC \uAE30\uBCF8 fragment \uC124\uC815\uC744 \uC120\uC5B8\uD569\uB2C8\uB2E4."],
-      mehd: ["Movie Extends Header Box / \uBB34\uBE44 \uD655\uC7A5 \uD5E4\uB354 \uBC15\uC2A4", "\uC804\uCCB4 fragmented movie duration\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      trex: ["Track Extends Box / \uD2B8\uB799 \uD655\uC7A5 \uBC15\uC2A4", "fragment\uC758 \uAE30\uBCF8 sample description, duration, size, flag\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
-      moof: ["Movie Fragment Box / \uBB34\uBE44 \uD504\uB798\uADF8\uBA3C\uD2B8 \uBC15\uC2A4", "fragmented MP4\uC758 \uD55C fragment\uC5D0 \uB300\uD55C track run \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      mfhd: ["Movie Fragment Header Box / \uBB34\uBE44 \uD504\uB798\uADF8\uBA3C\uD2B8 \uD5E4\uB354 \uBC15\uC2A4", "fragment sequence number\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
-      traf: ["Track Fragment Box / \uD2B8\uB799 \uD504\uB798\uADF8\uBA3C\uD2B8 \uBC15\uC2A4", "\uD55C \uD2B8\uB799\uC758 fragment metadata\uC640 sample run \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      tfhd: ["Track Fragment Header Box / \uD2B8\uB799 \uD504\uB798\uADF8\uBA3C\uD2B8 \uD5E4\uB354 \uBC15\uC2A4", "track ID\uC640 \uB4A4\uB530\uB974\uB294 trun box\uC758 \uAE30\uBCF8 sample \uAC12\uC744 \uB2F4\uC2B5\uB2C8\uB2E4."],
-      tfdt: ["Track Fragment Decode Time Box / \uD2B8\uB799 \uD504\uB798\uADF8\uBA3C\uD2B8 \uB514\uCF54\uB4DC \uC2DC\uAC04 \uBC15\uC2A4", "track fragment \uCCAB \uC0D8\uD50C\uC758 base decode time\uC785\uB2C8\uB2E4."],
-      trun: ["Track Run Box / \uD2B8\uB799 \uB7F0 \uBC15\uC2A4", "fragment \uB0B4 per-sample duration, size, flag, composition offset, data offset\uC744 \uB2F4\uC2B5\uB2C8\uB2E4."],
-      mfra: ["Movie Fragment Random Access Box / \uBB34\uBE44 \uD504\uB798\uADF8\uBA3C\uD2B8 \uB79C\uB364 \uC561\uC138\uC2A4 \uBC15\uC2A4", "movie fragment\uC5D0 \uB300\uD55C random-access index \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      tfra: ["Track Fragment Random Access Box / \uD2B8\uB799 \uD504\uB798\uADF8\uBA3C\uD2B8 \uB79C\uB364 \uC561\uC138\uC2A4 \uBC15\uC2A4", "\uD55C \uD2B8\uB799\uC758 fragmented media random-access entry\uC785\uB2C8\uB2E4."],
-      mfro: ["Movie Fragment Random Access Offset Box / \uBB34\uBE44 \uD504\uB798\uADF8\uBA3C\uD2B8 \uB79C\uB364 \uC561\uC138\uC2A4 \uC624\uD504\uC14B \uBC15\uC2A4", "backward lookup\uC744 \uC704\uD574 mfra box size\uB97C \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      meta: ["Metadata Box / \uBA54\uD0C0\uB370\uC774\uD130 \uBC15\uC2A4", "timed \uB610\uB294 file-level metadata \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      ilst: ["Item List Box / \uC544\uC774\uD15C \uB9AC\uC2A4\uD2B8 \uBC15\uC2A4", "QuickTime/iTunes metadata item list\uC785\uB2C8\uB2E4."],
-      udta: ["User Data Box / \uC0AC\uC6A9\uC790 \uB370\uC774\uD130 \uBC15\uC2A4", "user data\uC640 metadata \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      tref: ["Track Reference Box / \uD2B8\uB799 \uCC38\uC870 \uBC15\uC2A4", "\uD2B8\uB799 \uC0AC\uC774\uC758 reference\uB97C \uB2F4\uB294 \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      sinf: ["Protection Scheme Information Box / \uBCF4\uD638 \uC2A4\uD0B4 \uC815\uBCF4 \uBC15\uC2A4", "encryption \uB610\uB294 protection scheme metadata \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      frma: ["Original Format Box / \uC6D0\uBCF8 \uD3EC\uB9F7 \uBC15\uC2A4", "\uBCF4\uD638\uB418\uAE30 \uC804 \uC6D0\uB798 sample entry format\uC744 \uC800\uC7A5\uD569\uB2C8\uB2E4."],
-      schm: ["Scheme Type Box / \uC2A4\uD0B4 \uD0C0\uC785 \uBC15\uC2A4", "protection \uB610\uB294 restricted scheme\uC744 \uC2DD\uBCC4\uD569\uB2C8\uB2E4."],
-      schi: ["Scheme Information Box / \uC2A4\uD0B4 \uC815\uBCF4 \uBC15\uC2A4", "scheme-specific protection information \uCEE8\uD14C\uC774\uB108\uC785\uB2C8\uB2E4."],
-      avcC: ["AVC Configuration Box / AVC \uC124\uC815 \uBC15\uC2A4", "profile, level, SPS/PPS, NAL length size\uB97C \uD3EC\uD568\uD55C H.264/AVC decoder configuration\uC785\uB2C8\uB2E4."],
-      hvcC: ["HEVC Configuration Box / HEVC \uC124\uC815 \uBC15\uC2A4", "profile, level, VPS/SPS/PPS, NAL length size\uB97C \uD3EC\uD568\uD55C H.265/HEVC decoder configuration\uC785\uB2C8\uB2E4."],
-      esds: ["Elementary Stream Descriptor Box / elementary stream descriptor \uBC15\uC2A4", "\uC8FC\uB85C mp4a \uD2B8\uB799\uC758 AAC AudioSpecificConfig\uB97C \uB2F4\uB294 MPEG-4 descriptor\uC785\uB2C8\uB2E4."],
-      pasp: ["Pixel Aspect Ratio Box / \uD53D\uC140 \uC885\uD6A1\uBE44 \uBC15\uC2A4", "horizontal/vertical pixel aspect ratio spacing\uC785\uB2C8\uB2E4."],
-      colr: ["Colour Information Box / \uC0C9\uC0C1 \uC815\uBCF4 \uBC15\uC2A4", "color primaries, transfer characteristics, matrix coefficients \uB610\uB294 ICC profile\uC785\uB2C8\uB2E4."],
-      clap: ["Clean Aperture Box / clean aperture \uBC15\uC2A4", "display cropping\uC6A9 clean aperture dimension\uACFC offset\uC785\uB2C8\uB2E4."],
-      btrt: ["Bitrate Box / bitrate \uBC15\uC2A4", "buffer size, maximum bitrate, average bitrate hint\uB97C \uB2F4\uC2B5\uB2C8\uB2E4."],
-      avc1: ["AVC Sample Entry / AVC \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "avcC codec configuration\uC744 \uC0AC\uC6A9\uD558\uB294 H.264/AVC video sample entry\uC785\uB2C8\uB2E4."],
-      avc3: ["AVC3 Sample Entry / AVC3 \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "parameter set\uC774 sample \uC548\uC5D0 \uB098\uD0C0\uB0A0 \uC218 \uC788\uB294 H.264/AVC video sample entry\uC785\uB2C8\uB2E4."],
-      hvc1: ["HEVC Sample Entry / HEVC \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "hvcC codec configuration\uC744 \uC0AC\uC6A9\uD558\uB294 H.265/HEVC video sample entry\uC785\uB2C8\uB2E4."],
-      hev1: ["HEV1 Sample Entry / HEV1 \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "parameter set\uC774 sample \uC548\uC5D0 \uB098\uD0C0\uB0A0 \uC218 \uC788\uB294 H.265/HEVC sample entry\uC785\uB2C8\uB2E4."],
-      mp4a: ["MPEG-4 Audio Sample Entry / MPEG-4 \uC624\uB514\uC624 \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "\uC8FC\uB85C esds decoder configuration\uC744 \uAC00\uC9C4 AAC audio sample entry\uC785\uB2C8\uB2E4."],
-      ap4h: ["Apple ProRes 4444 Sample Entry / Apple ProRes 4444 \uC0D8\uD50C \uC5D4\uD2B8\uB9AC", "Apple ProRes 4444 video sample entry\uC785\uB2C8\uB2E4."]
-    }
-  };
-  let activeLanguage = "en";
-  function t(key, values) {
-    const dictionary = I18N[activeLanguage] || I18N.en;
-    let text = dictionary[key] || I18N.en[key] || key;
-    for (const [name, value] of Object.entries(values || {})) {
-      text = text.replace(new RegExp("\\{" + name + "\\}", "g"), String(value));
-    }
-    return text;
-  }
   function toBig(value) {
     return typeof value === "bigint" ? value : BigInt(value);
   }
@@ -2139,15 +2172,12 @@ button:disabled {
   function hexByte(value) {
     return value.toString(16).padStart(2, "0");
   }
-  function fourCcFromBytes(bytes, offset) {
-    return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
-  }
   function safeJsonReplacer(key, value) {
     if (typeof value === "bigint") return value.toString();
     if (key.endsWith("Big")) return void 0;
     return value;
   }
-  class ByteCursor {
+  var ByteCursor = class {
     constructor(bytes) {
       this.bytes = bytes;
       this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -2193,14 +2223,14 @@ button:disabled {
       if (!this.ensure(offset, length)) throw new Error("Unexpected EOF at " + offset);
       return this.bytes.subarray(offset, offset + length);
     }
-  }
+  };
   function readFullBoxHeader(cursor) {
     return {
       version: cursor.uint8(0),
       flags: cursor.uint8(1) << 16 | cursor.uint8(2) << 8 | cursor.uint8(3)
     };
   }
-  class BlobRangeReader {
+  var BlobRangeReader = class {
     constructor(file) {
       this.file = file;
       this.cache = /* @__PURE__ */ new Map();
@@ -2256,7 +2286,7 @@ button:disabled {
         this.cacheBytes -= item.size;
       }
     }
-  }
+  };
   async function readBoxPayload(reader, node, maxBytes) {
     const payloadSize = node.sizeBig - BigInt(node.headerSize);
     if (payloadSize < 0n) throw new Error("Invalid payload size for " + node.path);
@@ -3027,7 +3057,7 @@ button:disabled {
           pts: timing.dts + cts,
           duration: timing.duration,
           isSync: syncSet ? syncSet.has(index + 1) : true,
-          frameType: getDefaultSampleFrameType(track),
+          frameType: getDefaultSampleFrameType2(track),
           nalTypes: getDefaultSampleTags(track),
           chunkIndex: offsets[index] ? offsets[index].chunkIndex : "",
           fragmentIndex: "",
@@ -3138,7 +3168,7 @@ button:disabled {
               pts: decodeTime + ctsOffset,
               duration,
               isSync: sampleFlagsToSync(flags),
-              frameType: getDefaultSampleFrameType(track),
+              frameType: getDefaultSampleFrameType2(track),
               nalTypes: getDefaultSampleTags(track),
               chunkIndex: "",
               fragmentIndex,
@@ -3163,7 +3193,7 @@ button:disabled {
     if (flags === void 0 || flags === null) return false;
     return (flags & 65536) === 0;
   }
-  function getDefaultSampleFrameType(track) {
+  function getDefaultSampleFrameType2(track) {
     if (!track) return "";
     if (track.codec === "mp4a") return "AAC";
     if (track.handlerType === "soun") return "audio";
@@ -3189,7 +3219,7 @@ button:disabled {
     }
     return new Uint8Array(output);
   }
-  class BitReader {
+  var BitReader = class {
     constructor(bytes) {
       this.bytes = bytes;
       this.bitOffset = 0;
@@ -3215,7 +3245,7 @@ button:disabled {
       const suffix = zeros ? this.readBits(zeros) : 0;
       return (1 << zeros) - 1 + suffix;
     }
-  }
+  };
   function classifySliceType(sliceType) {
     const normalized = sliceType % 5;
     if (normalized === 0) return "P";
@@ -3342,7 +3372,7 @@ button:disabled {
     if (sliceType === 2) return "I";
     return "unknown";
   }
-  function getFrameTypeScanner(track) {
+  function getFrameTypeScanner2(track) {
     if ((track.codec === "avc1" || track.codec === "avc3") && track.avcConfig && track.avcConfig.nalLengthSize) {
       return {
         codec: "AVC",
@@ -3363,7 +3393,7 @@ button:disabled {
     const reader = analysis.reader;
     const scannableTracks = /* @__PURE__ */ new Map();
     for (const track of analysis.tracks) {
-      const scanner = getFrameTypeScanner(track);
+      const scanner = getFrameTypeScanner2(track);
       if (scanner) scannableTracks.set(track.trackId, { track, scanner });
     }
     const rows = analysis.sampleRows.filter((row) => scannableTracks.has(row.trackId) && row.offset !== "" && row.size > 0);
@@ -3423,7 +3453,7 @@ button:disabled {
   function shouldAutoScan(analysis) {
     const videoRows = analysis.sampleRows.filter((row) => {
       const track = analysis.tracks.find((candidate) => candidate.trackId === row.trackId);
-      return track && getFrameTypeScanner(track);
+      return track && getFrameTypeScanner2(track);
     });
     const totalBytes = videoRows.reduce((sum, row) => sum + (row.size || 0), 0);
     return videoRows.length > 0 && (videoRows.length <= 1e4 || totalBytes <= 512 * 1024 * 1024);
@@ -3482,7 +3512,7 @@ button:disabled {
     if (!condition) throw new Error("Self-test failed: " + name);
     results.push({ name, passed: true });
   }
-  const Core = {
+  var Core = {
     analyzeFile,
     scanFrameTypes,
     scanAvcFrameTypes,
@@ -3495,1005 +3525,1113 @@ button:disabled {
     shouldAutoScan,
     formatBytes
   };
-  if (typeof window !== "undefined") {
-    window.MP4AnalyzerCore = Core;
-  }
-  if (typeof document === "undefined" || !document.getElementById) return;
-  const state = {
-    analysis: null,
-    language: activeLanguage,
-    activeTab: "summary",
-    selectedBox: null,
-    selectedFrameKey: "",
-    filteredRows: [],
-    graphRows: [],
-    frameViewMode: "table",
-    graphMaxSize: 1,
-    filePreviewUrl: "",
-    dropHintHideTimer: 0,
-    progressSourceLabel: "Open or drop a media file to begin.",
-    progressRawLabel: t("status.initial"),
-    progressPercentValue: 0,
-    renderFrameRequest: 0
-  };
-  const elements = {
-    fileInput: document.getElementById("fileInput"),
-    languageSelect: document.getElementById("languageSelect"),
-    openButton: document.getElementById("openButton"),
-    scanButton: document.getElementById("scanButton"),
-    cancelButton: document.getElementById("cancelButton"),
-    exportJsonButton: document.getElementById("exportJsonButton"),
-    exportCsvButton: document.getElementById("exportCsvButton"),
-    mediaPreviewBar: document.getElementById("mediaPreviewBar"),
-    filePreview: document.getElementById("filePreview"),
-    mediaPreviewName: document.getElementById("mediaPreviewName"),
-    mediaPreviewMeta: document.getElementById("mediaPreviewMeta"),
-    dropOverlay: document.getElementById("dropOverlay"),
-    boxTree: document.getElementById("boxTree"),
-    boxDetail: document.getElementById("boxDetail"),
-    summaryPanel: document.getElementById("summaryPanel"),
-    boxesPanel: document.getElementById("boxesPanel"),
-    tracksPanel: document.getElementById("tracksPanel"),
-    framesPanel: document.getElementById("framesPanel"),
-    metricsPanel: document.getElementById("metricsPanel"),
-    fragmentsPanel: document.getElementById("fragmentsPanel"),
-    warningsPanel: document.getElementById("warningsPanel"),
-    progressText: document.getElementById("progressText"),
-    progressPercent: document.getElementById("progressPercent"),
-    progressFill: document.getElementById("progressFill"),
-    trackFilter: document.getElementById("trackFilter"),
-    typeFilter: document.getElementById("typeFilter"),
-    syncFilter: document.getElementById("syncFilter"),
-    minSizeFilter: document.getElementById("minSizeFilter"),
-    maxSizeFilter: document.getElementById("maxSizeFilter"),
-    warningOnlyFilter: document.getElementById("warningOnlyFilter"),
-    clearFiltersButton: document.getElementById("clearFiltersButton"),
-    frameGraphButton: document.getElementById("frameGraphButton"),
-    frameTableButton: document.getElementById("frameTableButton"),
-    frameCountText: document.getElementById("frameCountText"),
-    frameGraphView: document.getElementById("frameGraphView"),
-    frameTableView: document.getElementById("frameTableView"),
-    frameScroller: document.getElementById("frameScroller"),
-    frameSpacer: document.getElementById("frameSpacer"),
-    graphAxisScale: document.getElementById("graphAxisScale"),
-    graphAxisUnit: document.getElementById("graphAxisUnit"),
-    graphScroller: document.getElementById("graphScroller"),
-    graphSpacer: document.getElementById("graphSpacer"),
-    metricsTrackFilter: document.getElementById("metricsTrackFilter"),
-    metricsWindowInput: document.getElementById("metricsWindowInput"),
-    metricsPointLimitInput: document.getElementById("metricsPointLimitInput"),
-    metricsBody: document.getElementById("metricsBody")
-  };
-  window.MP4AnalyzerDevTools = {
-    getAnalysis: () => state.analysis,
-    getFilteredRows: () => state.filteredRows,
-    getMetricsSummary: () => {
-      const track = getSelectedMetricsTrack();
-      if (!track) return null;
-      const rows = getRowsForTrack(track.trackId);
-      return buildTrackMetrics(track, rows, getMetricsWindowSize()).summary;
+
+  // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\samples\sample-manifest.js
+  var SAMPLE_FILES = [
+    {
+      id: "avc-bframes",
+      fileName: "avc_bframes.mp4",
+      path: "validation/generated/avc_bframes.mp4",
+      type: "video/mp4",
+      labels: {
+        en: "AVC H.264 with B-frames",
+        ko: "AVC H.264 B-frame \uD3EC\uD568"
+      }
     },
-    runSmokeTests: () => Core.runParserSelfTests(),
-    summarize: () => {
-      if (!state.analysis) return { loaded: false };
+    {
+      id: "avc-fragmented",
+      fileName: "avc_fragmented.mp4",
+      path: "validation/generated/avc_fragmented.mp4",
+      type: "video/mp4",
+      labels: {
+        en: "Fragmented MP4 AVC",
+        ko: "Fragmented MP4 AVC"
+      }
+    },
+    {
+      id: "avc-no-bframes",
+      fileName: "avc_no_bframes.mp4",
+      path: "validation/generated/avc_no_bframes.mp4",
+      type: "video/mp4",
+      labels: {
+        en: "AVC H.264 without B-frames",
+        ko: "AVC H.264 B-frame \uC5C6\uC74C"
+      }
+    },
+    {
+      id: "avc-10020-samples",
+      fileName: "avc_10020.mp4",
+      path: "validation/generated/avc_10020.mp4",
+      type: "video/mp4",
+      labels: {
+        en: "AVC 10,020 sample stress file",
+        ko: "AVC 10,020 sample \uC2A4\uD2B8\uB808\uC2A4 \uD30C\uC77C"
+      }
+    }
+  ];
+
+  // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\ui\analyzer-ui.js
+  function startUserInterface(Core2) {
+    if (typeof document === "undefined" || !document.getElementById) return;
+    const state = {
+      analysis: null,
+      language: getLanguage(),
+      activeTab: "summary",
+      selectedBox: null,
+      selectedFrameKey: "",
+      filteredRows: [],
+      graphRows: [],
+      frameViewMode: "table",
+      graphMaxSize: 1,
+      filePreviewUrl: "",
+      dropHintHideTimer: 0,
+      transientWarnings: [],
+      progressSourceLabel: "Open or drop a media file to begin.",
+      progressRawLabel: t("status.initial"),
+      progressPercentValue: 0,
+      renderFrameRequest: 0
+    };
+    const elements = {
+      fileInput: document.getElementById("fileInput"),
+      languageSelect: document.getElementById("languageSelect"),
+      sampleSelect: document.getElementById("sampleSelect"),
+      openButton: document.getElementById("openButton"),
+      scanButton: document.getElementById("scanButton"),
+      cancelButton: document.getElementById("cancelButton"),
+      exportJsonButton: document.getElementById("exportJsonButton"),
+      exportCsvButton: document.getElementById("exportCsvButton"),
+      mediaPreviewBar: document.getElementById("mediaPreviewBar"),
+      filePreview: document.getElementById("filePreview"),
+      mediaPreviewName: document.getElementById("mediaPreviewName"),
+      mediaPreviewMeta: document.getElementById("mediaPreviewMeta"),
+      dropOverlay: document.getElementById("dropOverlay"),
+      boxTree: document.getElementById("boxTree"),
+      boxDetail: document.getElementById("boxDetail"),
+      summaryPanel: document.getElementById("summaryPanel"),
+      boxesPanel: document.getElementById("boxesPanel"),
+      tracksPanel: document.getElementById("tracksPanel"),
+      framesPanel: document.getElementById("framesPanel"),
+      metricsPanel: document.getElementById("metricsPanel"),
+      fragmentsPanel: document.getElementById("fragmentsPanel"),
+      warningsPanel: document.getElementById("warningsPanel"),
+      progressText: document.getElementById("progressText"),
+      progressPercent: document.getElementById("progressPercent"),
+      progressFill: document.getElementById("progressFill"),
+      trackFilter: document.getElementById("trackFilter"),
+      typeFilter: document.getElementById("typeFilter"),
+      syncFilter: document.getElementById("syncFilter"),
+      minSizeFilter: document.getElementById("minSizeFilter"),
+      maxSizeFilter: document.getElementById("maxSizeFilter"),
+      warningOnlyFilter: document.getElementById("warningOnlyFilter"),
+      clearFiltersButton: document.getElementById("clearFiltersButton"),
+      frameGraphButton: document.getElementById("frameGraphButton"),
+      frameTableButton: document.getElementById("frameTableButton"),
+      frameCountText: document.getElementById("frameCountText"),
+      frameGraphView: document.getElementById("frameGraphView"),
+      frameTableView: document.getElementById("frameTableView"),
+      frameScroller: document.getElementById("frameScroller"),
+      frameSpacer: document.getElementById("frameSpacer"),
+      graphAxisScale: document.getElementById("graphAxisScale"),
+      graphAxisUnit: document.getElementById("graphAxisUnit"),
+      graphScroller: document.getElementById("graphScroller"),
+      graphSpacer: document.getElementById("graphSpacer"),
+      metricsTrackFilter: document.getElementById("metricsTrackFilter"),
+      metricsWindowInput: document.getElementById("metricsWindowInput"),
+      metricsPointLimitInput: document.getElementById("metricsPointLimitInput"),
+      metricsBody: document.getElementById("metricsBody")
+    };
+    window.MP4AnalyzerDevTools = {
+      getAnalysis: () => state.analysis,
+      getFilteredRows: () => state.filteredRows,
+      getMetricsSummary: () => {
+        const track = getSelectedMetricsTrack();
+        if (!track) return null;
+        const rows = getRowsForTrack(track.trackId);
+        return buildTrackMetrics(track, rows, getMetricsWindowSize()).summary;
+      },
+      runSmokeTests: () => Core2.runParserSelfTests(),
+      getSamples: () => SAMPLE_FILES.slice(),
+      loadSample: (sampleId) => loadSampleById(sampleId),
+      summarize: () => {
+        if (!state.analysis) return { loaded: false };
+        return {
+          loaded: true,
+          file: state.analysis.file,
+          tracks: state.analysis.tracks.map((track) => ({
+            trackId: track.trackId,
+            handlerType: track.handlerType,
+            codec: track.codec,
+            samples: track.sampleCount,
+            avc: Boolean(track.avcConfig),
+            hevc: Boolean(track.hevcConfig),
+            aac: Boolean(track.audioConfig)
+          })),
+          sampleRows: state.analysis.sampleRows.length,
+          warnings: state.analysis.warnings
+        };
+      }
+    };
+    populateSampleSelect();
+    elements.languageSelect.addEventListener("change", () => setLanguage2(elements.languageSelect.value));
+    elements.sampleSelect.addEventListener("change", () => {
+      if (elements.sampleSelect.value) loadSampleById(elements.sampleSelect.value);
+    });
+    elements.openButton.addEventListener("click", () => elements.fileInput.click());
+    elements.fileInput.addEventListener("change", () => {
+      const file = elements.fileInput.files && elements.fileInput.files[0];
+      if (file) startAnalysis(file);
+    });
+    window.addEventListener("dragenter", handleWindowDragEnter, true);
+    window.addEventListener("dragover", handleWindowDragOver, true);
+    window.addEventListener("dragleave", handleWindowDragLeave, true);
+    window.addEventListener("dragend", hideDropOverlay, true);
+    window.addEventListener("drop", handleWindowDrop, true);
+    for (const tabButton of document.querySelectorAll(".tab")) {
+      tabButton.addEventListener("click", () => setActiveTab(tabButton.dataset.tab));
+    }
+    elements.cancelButton.addEventListener("click", () => {
+      if (state.analysis && state.analysis.reader) state.analysis.reader.cancel();
+      setProgress("Cancelling...", 0);
+    });
+    elements.scanButton.addEventListener("click", async () => {
+      if (!state.analysis) return;
+      await scanCurrentAnalysis();
+    });
+    elements.exportJsonButton.addEventListener("click", exportJson);
+    elements.exportCsvButton.addEventListener("click", exportCsv);
+    elements.frameScroller.addEventListener("scroll", scheduleFrameRender);
+    elements.graphScroller.addEventListener("scroll", scheduleFrameRender);
+    elements.frameSpacer.addEventListener("click", handleFrameRowPointerActivation);
+    elements.graphSpacer.addEventListener("click", handleFrameRowPointerActivation);
+    elements.metricsBody.addEventListener("click", handleFrameRowPointerActivation);
+    elements.frameSpacer.addEventListener("keydown", handleFrameRowKeyboardActivation);
+    elements.graphSpacer.addEventListener("keydown", handleFrameRowKeyboardActivation);
+    elements.metricsBody.addEventListener("keydown", handleFrameRowKeyboardActivation);
+    elements.frameGraphButton.addEventListener("click", () => setFrameViewMode("graph"));
+    elements.frameTableButton.addEventListener("click", () => setFrameViewMode("table"));
+    for (const input of [elements.trackFilter, elements.typeFilter, elements.syncFilter, elements.minSizeFilter, elements.maxSizeFilter, elements.warningOnlyFilter]) {
+      input.addEventListener("input", renderFrames);
+      input.addEventListener("change", renderFrames);
+    }
+    for (const input of [elements.metricsTrackFilter, elements.metricsWindowInput, elements.metricsPointLimitInput]) {
+      input.addEventListener("input", renderMetrics);
+      input.addEventListener("change", renderMetrics);
+    }
+    elements.clearFiltersButton.addEventListener("click", () => {
+      elements.trackFilter.value = "";
+      elements.typeFilter.value = "";
+      elements.syncFilter.value = "";
+      elements.minSizeFilter.value = "";
+      elements.maxSizeFilter.value = "";
+      elements.warningOnlyFilter.checked = false;
+      renderFrames();
+    });
+    setLanguage2(elements.languageSelect.value || "en");
+    function setLanguage2(language) {
+      const languageCode = setLanguage(language);
+      state.language = languageCode;
+      elements.languageSelect.value = languageCode;
+      applyStaticTranslations();
+      setProgress(state.progressSourceLabel, state.progressPercentValue);
+      refreshDynamicLanguage();
+    }
+    function applyStaticTranslations() {
+      document.documentElement.lang = getLanguage() === "ko" ? "ko" : "en";
+      document.title = t("app.title");
+      for (const element of document.querySelectorAll("[data-i18n]")) {
+        element.textContent = t(element.dataset.i18n);
+      }
+      for (const element of document.querySelectorAll("[data-i18n-aria-label]")) {
+        element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+      }
+      for (const element of document.querySelectorAll("[data-i18n-placeholder]")) {
+        element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder));
+      }
+    }
+    function refreshDynamicLanguage() {
+      populateSampleSelect();
+      if (state.analysis) {
+        renderAll();
+        renderSelectedBox();
+      } else {
+        elements.summaryPanel.innerHTML = emptyHtml("empty.summary");
+        elements.boxDetail.innerHTML = emptyHtml("empty.boxDetailInitial");
+        elements.tracksPanel.innerHTML = emptyHtml("empty.noTracks");
+        elements.metricsBody.innerHTML = emptyHtml("empty.metrics");
+        elements.fragmentsPanel.innerHTML = emptyHtml("empty.noFragments");
+        elements.warningsPanel.innerHTML = emptyHtml("empty.noWarnings");
+        elements.frameCountText.textContent = t("count.rows", { count: 0 });
+        elements.graphAxisUnit.textContent = t("unit.bytes");
+        elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + "</option>";
+        elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.noTrack")) + "</option>";
+      }
+    }
+    function emptyHtml(key, values) {
+      return '<div class="empty">' + escapeHtml(t(key, values)) + "</div>";
+    }
+    function populateSampleSelect() {
+      if (!elements.sampleSelect) return;
+      const selectedSampleId = elements.sampleSelect.value;
+      const options = [
+        '<option value="">' + escapeHtml(t("option.samplePlaceholder")) + "</option>"
+      ];
+      for (const sample of SAMPLE_FILES) {
+        const selected = sample.id === selectedSampleId ? " selected" : "";
+        options.push(
+          '<option value="' + escapeHtml(sample.id) + '"' + selected + ">" + escapeHtml(getSampleLabel(sample)) + "</option>"
+        );
+      }
+      elements.sampleSelect.innerHTML = options.join("");
+    }
+    function getSampleLabel(sample) {
+      return sample.labels[getLanguage()] || sample.labels.en || sample.fileName;
+    }
+    async function loadSampleById(sampleId) {
+      const sample = SAMPLE_FILES.find((candidate) => candidate.id === sampleId);
+      if (!sample) return;
+      await loadSampleFile(sample);
+    }
+    async function loadSampleFile(sample) {
+      const label = getSampleLabel(sample);
+      try {
+        state.transientWarnings = [];
+        setBusy(true);
+        setProgress(t("status.loadingSample", { name: label }), 3);
+        const response = await fetch(sample.path, { cache: "no-store" });
+        if (!response.ok) throw new Error(response.status + " " + response.statusText);
+        const blob = await response.blob();
+        const file = new File([blob], sample.fileName, {
+          type: sample.type || blob.type || "video/mp4",
+          lastModified: 0
+        });
+        await startAnalysis(file, { keepSampleSelection: true });
+      } catch (error) {
+        const message = error && error.message ? error.message : String(error);
+        setBusy(false);
+        state.transientWarnings = [t("warning.sampleLoadFailed", { message })];
+        setProgress(t("status.sampleLoadFailed", { message }), 0);
+        renderWarnings();
+      }
+    }
+    function handleFrameRowPointerActivation(event) {
+      const rowElement = event.target.closest("[data-frame-key]");
+      if (!rowElement) return;
+      const row = findFrameRowByKey(rowElement.dataset.frameKey);
+      if (row) activateFrameRow(row);
+    }
+    function handleFrameRowKeyboardActivation(event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const rowElement = event.target.closest("[data-frame-key]");
+      if (!rowElement) return;
+      event.preventDefault();
+      const row = findFrameRowByKey(rowElement.dataset.frameKey);
+      if (row) activateFrameRow(row);
+    }
+    function findFrameRowByKey(frameKey) {
+      if (!state.analysis || !frameKey) return null;
+      return state.analysis.sampleRows.find((row) => getFrameRowKey(row) === frameKey) || null;
+    }
+    function activateFrameRow(row) {
+      state.selectedFrameKey = getFrameRowKey(row);
+      seekPreviewToFrameRow(row);
+      scheduleFrameRender();
+    }
+    function seekPreviewToFrameRow(row) {
+      if (!elements.filePreview || !elements.filePreview.src) return;
+      const rowTimeSeconds = getRowTimeSeconds(row);
+      if (!Number.isFinite(rowTimeSeconds)) return;
+      const seekSeconds = Math.max(0, rowTimeSeconds);
+      const applySeek = () => {
+        try {
+          const duration = Number(elements.filePreview.duration);
+          const boundedSeekSeconds = Number.isFinite(duration) && duration > 0 ? Math.min(seekSeconds, Math.max(0, duration - 1e-3)) : seekSeconds;
+          elements.filePreview.currentTime = boundedSeekSeconds;
+        } catch (error) {
+          console.warn("Unable to seek preview video", error);
+        }
+      };
+      if (elements.filePreview.readyState < 1) {
+        elements.filePreview.addEventListener("loadedmetadata", applySeek, { once: true });
+        elements.filePreview.load();
+      } else {
+        applySeek();
+      }
+    }
+    function getFrameRowKey(row) {
+      return String(row.trackId) + ":" + String(row.sampleIndex);
+    }
+    function hasDraggedFiles(dataTransfer) {
+      if (!dataTransfer) return false;
+      const types = Array.from(dataTransfer.types || []);
+      if (types.includes("Files")) return true;
+      return Array.from(dataTransfer.items || []).some((item) => item.kind === "file");
+    }
+    function getDroppedMediaFile(fileList) {
+      const files = Array.from(fileList || []);
+      return files.find(isLikelyMediaFile) || files[0] || null;
+    }
+    function isLikelyMediaFile(file) {
+      if (!file) return false;
+      const name = String(file.name || "").toLowerCase();
+      return name.endsWith(".mp4") || name.endsWith(".m4v") || name.endsWith(".mov") || file.type === "video/mp4" || file.type === "video/quicktime";
+    }
+    function handleWindowDragEnter(event) {
+      if (!hasDraggedFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      showDropOverlay();
+    }
+    function handleWindowDragOver(event) {
+      if (!hasDraggedFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      showDropOverlay();
+    }
+    function handleWindowDragLeave(event) {
+      if (!hasDraggedFiles(event.dataTransfer)) return;
+      const leftWindow = event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
+      if (leftWindow) hideDropOverlay();
+    }
+    function handleWindowDrop(event) {
+      if (!hasDraggedFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      hideDropOverlay();
+      const file = getDroppedMediaFile(event.dataTransfer.files);
+      if (file) startAnalysis(file);
+    }
+    function showDropOverlay() {
+      window.clearTimeout(state.dropHintHideTimer);
+      elements.dropOverlay.classList.add("active");
+      elements.dropOverlay.setAttribute("aria-hidden", "false");
+      state.dropHintHideTimer = window.setTimeout(hideDropOverlay, 1400);
+    }
+    function hideDropOverlay() {
+      window.clearTimeout(state.dropHintHideTimer);
+      state.dropHintHideTimer = 0;
+      elements.dropOverlay.classList.remove("active");
+      elements.dropOverlay.setAttribute("aria-hidden", "true");
+    }
+    async function startAnalysis(file, options = {}) {
+      setBusy(true);
+      resetView(file, options);
+      try {
+        const analysis = await Core2.analyzeFile(file, { onProgress: setProgress });
+        state.analysis = analysis;
+        updateMediaPreviewMeta(file, analysis);
+        renderAll();
+        setBusy(false);
+        const canScan = analysis.tracks.some((track) => getFrameTypeScanner(track));
+        elements.scanButton.disabled = !canScan;
+        elements.exportJsonButton.disabled = false;
+        elements.exportCsvButton.disabled = false;
+        if (canScan && Core2.shouldAutoScan(analysis)) {
+          await scanCurrentAnalysis();
+        }
+      } catch (error) {
+        setBusy(false);
+        setProgress("Failed: " + error.message, 0);
+        elements.summaryPanel.innerHTML = emptyHtml("status.failed", { message: error.message });
+      }
+    }
+    async function scanCurrentAnalysis() {
+      setBusy(true);
+      elements.scanButton.disabled = true;
+      try {
+        await Core2.scanFrameTypes(state.analysis, { onProgress: setProgress });
+        setProgress("Frame type scan complete", 100);
+        renderFrames();
+        renderWarnings();
+      } catch (error) {
+        setProgress("Scan stopped: " + error.message, 0);
+      } finally {
+        setBusy(false);
+        elements.scanButton.disabled = false;
+      }
+    }
+    function setBusy(isBusy) {
+      elements.cancelButton.disabled = !isBusy;
+      elements.openButton.disabled = isBusy;
+      elements.sampleSelect.disabled = isBusy;
+    }
+    function resetView(file, options = {}) {
+      state.analysis = null;
+      state.selectedBox = null;
+      state.selectedFrameKey = "";
+      state.transientWarnings = [];
+      if (!options.keepSampleSelection) elements.sampleSelect.value = "";
+      setFilePreview(file);
+      elements.boxTree.innerHTML = "";
+      elements.summaryPanel.innerHTML = emptyHtml("empty.parsingStructure");
+      elements.boxDetail.innerHTML = emptyHtml("empty.selectBox");
+      elements.tracksPanel.innerHTML = emptyHtml("empty.noTracks");
+      elements.fragmentsPanel.innerHTML = emptyHtml("empty.noFragments");
+      elements.warningsPanel.innerHTML = emptyHtml("empty.noWarnings");
+      elements.metricsBody.innerHTML = emptyHtml("empty.parsingMetrics");
+      elements.frameSpacer.innerHTML = "";
+      elements.frameSpacer.style.height = "0px";
+      elements.graphSpacer.innerHTML = "";
+      elements.graphSpacer.style.height = "0px";
+      elements.graphAxisScale.innerHTML = "";
+      elements.graphAxisUnit.textContent = t("unit.bytes");
+      elements.frameCountText.textContent = t("count.rows", { count: 0 });
+      elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + "</option>";
+      elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.noTrack")) + "</option>";
+      elements.scanButton.disabled = true;
+      elements.exportJsonButton.disabled = true;
+      elements.exportCsvButton.disabled = true;
+      setProgress("Reading " + file.name, 0);
+    }
+    function setFilePreview(file) {
+      if (state.filePreviewUrl) URL.revokeObjectURL(state.filePreviewUrl);
+      state.filePreviewUrl = URL.createObjectURL(file);
+      elements.filePreview.src = state.filePreviewUrl;
+      elements.filePreview.load();
+      elements.mediaPreviewName.textContent = file.name || "Unnamed media";
+      updateMediaPreviewMeta(file, null);
+      elements.mediaPreviewBar.hidden = false;
+    }
+    function updateMediaPreviewMeta(file, analysis) {
+      const parts = [formatBytes(file.size)];
+      const durationSeconds = analysis ? getAnalysisDurationSeconds(analysis) : 0;
+      if (durationSeconds > 0) {
+        parts.push(formatPreviewBitrate(file.size * 8 / durationSeconds));
+      }
+      parts.push(file.type || t("value.unknownMime"));
+      elements.mediaPreviewMeta.textContent = parts.filter(Boolean).join(" \xB7 ");
+    }
+    function getAnalysisDurationSeconds(analysis) {
+      let maxDurationSeconds = 0;
+      for (const track of analysis.tracks || []) {
+        const duration = Number(track.duration);
+        const timescale = Number(track.timescale);
+        if (Number.isFinite(duration) && duration > 0 && timescale > 0) {
+          maxDurationSeconds = Math.max(maxDurationSeconds, duration / timescale);
+        }
+      }
+      if (maxDurationSeconds > 0) return maxDurationSeconds;
+      const trackById = new Map((analysis.tracks || []).map((track) => [track.trackId, track]));
+      for (const row of analysis.sampleRows || []) {
+        const track = trackById.get(row.trackId);
+        const timescale = Number(track && track.timescale);
+        if (!timescale) continue;
+        const rowEnd = (Number(row.pts || row.dts || 0) + Number(row.duration || 0)) / timescale;
+        if (Number.isFinite(rowEnd)) maxDurationSeconds = Math.max(maxDurationSeconds, rowEnd);
+      }
+      return maxDurationSeconds;
+    }
+    function setProgress(label, percent) {
+      const bounded = clamp(Number(percent) || 0, 0, 100);
+      state.progressSourceLabel = label;
+      state.progressRawLabel = translateRuntimeLabel(label);
+      state.progressPercentValue = bounded;
+      elements.progressText.textContent = state.progressRawLabel;
+      elements.progressPercent.textContent = Math.round(bounded) + "%";
+      elements.progressFill.style.width = bounded + "%";
+    }
+    function translateRuntimeLabel(label) {
+      if (label === "Parsing boxes") return t("status.parsingBoxes");
+      if (label === "Building track model") return t("status.buildingTrackModel");
+      if (label === "Structure parsed") return t("status.structureParsed");
+      if (label === "Scanning video samples") return t("status.scanningVideoSamples");
+      if (label === "Cancelling...") return t("status.cancelling");
+      if (label === "Frame type scan complete") return t("status.scanComplete");
+      if (label.startsWith("Reading ")) return t("status.reading", { name: label.slice("Reading ".length) });
+      if (label.startsWith("Failed: ")) return t("status.failed", { message: label.slice("Failed: ".length) });
+      if (label.startsWith("Scan stopped: ")) return t("status.scanStopped", { message: label.slice("Scan stopped: ".length) });
+      return label;
+    }
+    function setActiveTab(tabName) {
+      state.activeTab = tabName;
+      for (const button of document.querySelectorAll(".tab")) button.classList.toggle("active", button.dataset.tab === tabName);
+      for (const panel of document.querySelectorAll(".panel")) panel.classList.remove("active");
+      document.getElementById(tabName + "Panel").classList.add("active");
+      if (tabName === "frames") renderFrames();
+      if (tabName === "metrics") renderMetrics();
+    }
+    function setFrameViewMode(mode) {
+      state.frameViewMode = mode;
+      elements.frameGraphButton.classList.toggle("active", mode === "graph");
+      elements.frameTableButton.classList.toggle("active", mode === "table");
+      elements.frameGraphView.classList.toggle("active", mode === "graph");
+      elements.frameTableView.classList.toggle("active", mode === "table");
+      scheduleFrameRender();
+    }
+    function renderAll() {
+      renderSummary();
+      renderBoxTree();
+      renderTracks();
+      renderFrames();
+      renderMetrics();
+      renderFragments();
+      renderWarnings();
+    }
+    function renderSummary() {
+      const analysis = state.analysis;
+      const videoTracks = analysis.tracks.filter((track) => track.handlerType === "vide").length;
+      const fragments = analysis.topBoxes.filter((box) => box.type === "moof").length;
+      const avcTracks = analysis.tracks.filter((track) => track.codec === "avc1" || track.codec === "avc3").length;
+      const hevcTracks = analysis.tracks.filter((track) => track.codec === "hvc1" || track.codec === "hev1").length;
+      const aacTracks = analysis.tracks.filter((track) => track.codec === "mp4a").length;
+      elements.summaryPanel.innerHTML = [
+        '<div class="summary-grid">',
+        summaryCard(t("summary.fileSize"), formatBytes(analysis.file.size)),
+        summaryCard(t("summary.tracks"), String(analysis.tracks.length)),
+        summaryCard(t("summary.videoTracks"), String(videoTracks)),
+        summaryCard(t("summary.fragments"), String(fragments)),
+        summaryCard(t("summary.samples"), String(analysis.sampleRows.length)),
+        summaryCard(t("summary.avcTracks"), String(avcTracks)),
+        summaryCard(t("summary.hevcTracks"), String(hevcTracks)),
+        summaryCard(t("summary.aacTracks"), String(aacTracks)),
+        summaryCard(t("summary.warnings"), String(analysis.warnings.length)),
+        "</div>",
+        '<p class="split-note">' + escapeHtml(t("summary.note")) + "</p>",
+        renderTrackTable(analysis.tracks)
+      ].join("");
+    }
+    function summaryCard(label, value) {
+      return '<div class="card"><span>' + escapeHtml(label) + "</span><strong>" + escapeHtml(value) + "</strong></div>";
+    }
+    function renderBoxTree() {
+      const analysis = state.analysis;
+      elements.boxTree.innerHTML = analysis.topBoxes.map((node) => renderBoxNode(node)).join("");
+    }
+    function renderBoxNode(node) {
+      const childHtml = node.children && node.children.length ? '<div class="tree-children">' + node.children.map(renderBoxNode).join("") + "</div>" : "";
+      return '<div class="tree-node"><button class="tree-row" data-path="' + escapeHtml(node.path) + '" title="' + escapeHtml(formatBoxTypeLabel(node.type)) + '"><span class="type">' + escapeHtml(node.type) + '</span><span class="size">' + formatBytes(Number(node.size)) + " @ " + escapeHtml(node.offset) + "</span></button>" + childHtml + "</div>";
+    }
+    elements.boxTree.addEventListener("click", (event) => {
+      const row = event.target.closest(".tree-row");
+      if (!row || !state.analysis) return;
+      const path = row.dataset.path;
+      state.selectedBox = state.analysis.allBoxes.find((box) => box.path === path) || null;
+      for (const node of elements.boxTree.querySelectorAll(".tree-row")) node.classList.toggle("selected", node === row);
+      renderSelectedBox();
+      setActiveTab("boxes");
+    });
+    function renderSelectedBox() {
+      if (!state.selectedBox) {
+        elements.boxDetail.innerHTML = emptyHtml("empty.selectBox");
+        return;
+      }
+      const node = state.selectedBox;
+      elements.boxDetail.innerHTML = '<div class="detail-grid"><div><h2>' + escapeHtml(t("boxes.detailTitle")) + "</h2>" + renderKv([
+        [t("box.field.type"), formatBoxTypeLabel(node.type)],
+        [t("box.field.description"), getBoxTypeDescription(node.type)],
+        [t("box.field.path"), node.path],
+        [t("box.field.offset"), node.offset],
+        [t("box.field.size"), node.size + " (" + formatBytes(Number(node.size)) + ")"],
+        [t("box.field.headerSize"), node.headerSize],
+        [t("box.field.children"), node.children.length],
+        [t("box.field.warnings"), node.warnings.length ? node.warnings.join("; ") : t("value.none")]
+      ]) + "</div><div><h2>" + escapeHtml(t("boxes.parsedFields")) + '</h2><pre class="code">' + escapeHtml(JSON.stringify(node.fields, safeJsonReplacer, 2)) + "</pre></div></div>";
+    }
+    function formatBoxTypeLabel(type) {
+      const info = BOX_TYPE_INFO[type];
+      const localized = getLocalizedBoxInfo(type);
+      return info ? type + " (" + localized.name + ")" : type + " (" + t("boxes.unknownType") + ")";
+    }
+    function getBoxTypeDescription(type) {
+      return getLocalizedBoxInfo(type).description;
+    }
+    function getLocalizedBoxInfo(type) {
+      const info = BOX_TYPE_INFO[type];
+      if (!info) return { name: t("boxes.unknownType"), description: t("boxes.noDescription") };
+      const language = getLanguage();
+      const localized = BOX_TYPE_I18N[language] && BOX_TYPE_I18N[language][type];
+      if (!localized) return info;
+      return { name: localized[0], description: localized[1] };
+    }
+    function renderTracks() {
+      const analysis = state.analysis;
+      if (!analysis.tracks.length) {
+        elements.tracksPanel.innerHTML = emptyHtml("empty.noTracks");
+        return;
+      }
+      elements.tracksPanel.innerHTML = renderTrackTable(analysis.tracks);
+      elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + "</option>" + analysis.tracks.map((track) => '<option value="' + track.trackId + '">' + escapeHtml(formatTrackLabel(track)) + "</option>").join("");
+      populateMetricsTrackFilter(analysis.tracks);
+    }
+    function renderTrackTable(tracks) {
+      return '<table class="table"><thead><tr><th>' + escapeHtml(t("column.track")) + "</th><th>" + escapeHtml(t("column.handler")) + "</th><th>" + escapeHtml(t("column.codec")) + "</th><th>" + escapeHtml(t("column.duration")) + "</th><th>" + escapeHtml(t("column.media")) + "</th><th>" + escapeHtml(t("column.samples")) + "</th><th>" + escapeHtml(t("column.avgBitrate")) + "</th><th>" + escapeHtml(t("column.fpsSamples")) + "</th><th>" + escapeHtml(t("column.avgSample")) + "</th><th>" + escapeHtml(t("column.codecConfig")) + "</th></tr></thead><tbody>" + tracks.map((track) => {
+        const summaryMetrics = getTrackSummaryMetrics(track);
+        return "<tr><td>" + track.trackId + "</td><td>" + escapeHtml(track.handlerType) + "</td><td>" + escapeHtml(track.codec) + "</td><td>" + escapeHtml(formatTime(track.duration, track.timescale)) + "</td><td>" + escapeHtml(formatTrackMedia(track)) + "</td><td>" + track.sampleCount + "</td><td>" + escapeHtml(summaryMetrics ? formatBitsPerSecond(summaryMetrics.averageBitrate) : t("value.notAvailable")) + "</td><td>" + escapeHtml(summaryMetrics ? formatMetricNumber(summaryMetrics.sampleRate, 2) : t("value.notAvailable")) + "</td><td>" + escapeHtml(summaryMetrics ? formatBytes(summaryMetrics.averageSampleSize) : t("value.notAvailable")) + "</td><td>" + escapeHtml(formatTrackCodecConfig(track)) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+    }
+    function formatTrackLabel(track) {
+      return t("field.track") + " " + track.trackId + " (" + track.handlerType + ")";
+    }
+    function formatTrackMedia(track) {
+      if (track.handlerType === "vide") return track.width + "x" + track.height;
+      if (track.handlerType === "soun") {
+        const sampleRate = track.audioConfig && track.audioConfig.samplingFrequency ? track.audioConfig.samplingFrequency : track.sampleRate;
+        const channels = track.audioConfig && track.audioConfig.channelDescription ? track.audioConfig.channelDescription : track.channelCount ? track.channelCount + " channels" : "audio";
+        return channels + (sampleRate ? " @ " + sampleRate + " Hz" : "");
+      }
+      return t("value.notAvailable");
+    }
+    function formatTrackCodecConfig(track) {
+      if (track.avcConfig) return track.avcConfig.codecString + ", NAL length " + track.avcConfig.nalLengthSize;
+      if (track.hevcConfig) return track.hevcConfig.codecString + ", NAL length " + track.hevcConfig.nalLengthSize + ", " + track.hevcConfig.bitDepthLuma + "-bit";
+      if (track.audioConfig) {
+        const codecString = track.audioConfig.codecString || "mp4a";
+        return codecString + ", " + track.audioConfig.audioObjectTypeName + ", " + track.audioConfig.channelDescription;
+      }
+      return t("value.notAvailable");
+    }
+    function populateMetricsTrackFilter(tracks) {
+      const currentValue = elements.metricsTrackFilter.value;
+      const preferredTracks = tracks.filter((track) => track.handlerType === "vide");
+      const optionTracks = preferredTracks.length ? preferredTracks : tracks;
+      elements.metricsTrackFilter.innerHTML = optionTracks.length ? optionTracks.map((track) => '<option value="' + track.trackId + '">' + escapeHtml(formatTrackLabel(track) + " / " + track.codec) + "</option>").join("") : '<option value="">' + escapeHtml(t("option.noTrack")) + "</option>";
+      if (currentValue && optionTracks.some((track) => String(track.trackId) === currentValue)) {
+        elements.metricsTrackFilter.value = currentValue;
+      } else if (optionTracks.length) {
+        elements.metricsTrackFilter.value = String(optionTracks[0].trackId);
+      }
+    }
+    function renderMetrics() {
+      if (!state.analysis) return;
+      const track = getSelectedMetricsTrack();
+      if (!track) {
+        elements.metricsBody.innerHTML = emptyHtml("empty.noTrackMetrics");
+        return;
+      }
+      const rows = getRowsForTrack(track.trackId);
+      if (!rows.length) {
+        elements.metricsBody.innerHTML = emptyHtml("empty.noSamplesForTrack", { trackId: track.trackId });
+        return;
+      }
+      const windowSize = getMetricsWindowSize();
+      const pointLimit = getMetricsPointLimit();
+      const metrics = buildTrackMetrics(track, rows, windowSize);
+      elements.metricsBody.innerHTML = renderMetricsBody(track, metrics, pointLimit);
+    }
+    function getSelectedMetricsTrack() {
+      if (!state.analysis) return null;
+      const selectedTrackId = Number(elements.metricsTrackFilter.value);
+      return state.analysis.tracks.find((track) => track.trackId === selectedTrackId) || state.analysis.tracks.find((track) => track.handlerType === "vide") || state.analysis.tracks[0] || null;
+    }
+    function getRowsForTrack(trackId) {
+      if (!state.analysis) return [];
+      return state.analysis.sampleRows.filter((row) => row.trackId === trackId).slice().sort(compareRowsByPresentationTime);
+    }
+    function getMetricsWindowSize() {
+      return Math.max(1, Math.min(5e3, Math.floor(Number(elements.metricsWindowInput.value) || 1)));
+    }
+    function getMetricsPointLimit() {
+      return Math.max(120, Math.min(2e3, Math.floor(Number(elements.metricsPointLimitInput.value) || 900)));
+    }
+    function getTrackSummaryMetrics(track) {
+      if (!state.analysis || !track) return null;
+      const rows = getRowsForTrack(track.trackId);
+      if (!rows.length) return null;
+      const totalBytes = rows.reduce((sum, row) => sum + (Number(row.size) || 0), 0);
+      const totalDuration = getRowsDurationSeconds(track, rows);
+      if (!totalDuration) return null;
       return {
-        loaded: true,
+        averageBitrate: totalBytes * 8 / totalDuration,
+        sampleRate: rows.length / totalDuration,
+        averageSampleSize: totalBytes / rows.length
+      };
+    }
+    function buildTrackMetrics(track, rows, windowSize) {
+      const totalBytes = rows.reduce((sum, row) => sum + (Number(row.size) || 0), 0);
+      const totalDuration = getRowsDurationSeconds(track, rows);
+      const sizes = rows.map((row) => Number(row.size) || 0).sort((left, right) => left - right);
+      const frameTypeCounts = /* @__PURE__ */ new Map();
+      for (const row of rows) {
+        const frameType = row.frameType || getDefaultSampleFrameType(track) || "sample";
+        frameTypeCounts.set(frameType, (frameTypeCounts.get(frameType) || 0) + 1);
+      }
+      const movingAveragePoints = buildMovingAveragePoints(track, rows, windowSize);
+      const bitrateValues = movingAveragePoints.map((point) => point.bitrate).filter(Number.isFinite);
+      const fpsValues = movingAveragePoints.map((point) => point.fps).filter(Number.isFinite);
+      const syncRows = rows.filter((row) => row.isSync);
+      const keyframeIntervals = [];
+      for (let index = 1; index < syncRows.length; index += 1) {
+        keyframeIntervals.push(Math.max(0, getRowTimeSeconds(syncRows[index]) - getRowTimeSeconds(syncRows[index - 1])));
+      }
+      return {
+        rows,
+        movingAveragePoints,
+        summary: {
+          durationSeconds: totalDuration,
+          totalBytes,
+          averageBitrate: totalDuration ? totalBytes * 8 / totalDuration : 0,
+          averageFps: totalDuration ? rows.length / totalDuration : 0,
+          averageSampleSize: rows.length ? totalBytes / rows.length : 0,
+          minSampleSize: sizes.length ? sizes[0] : 0,
+          medianSampleSize: getMedian(sizes),
+          maxSampleSize: sizes.length ? sizes[sizes.length - 1] : 0,
+          syncSamples: syncRows.length,
+          averageKeyframeInterval: keyframeIntervals.length ? keyframeIntervals.reduce((sum, value) => sum + value, 0) / keyframeIntervals.length : 0,
+          peakMovingBitrate: bitrateValues.length ? Math.max.apply(null, bitrateValues) : 0,
+          peakMovingFps: fpsValues.length ? Math.max.apply(null, fpsValues) : 0
+        },
+        frameTypeCounts,
+        topSizeRows: rows.slice().sort((left, right) => (right.size || 0) - (left.size || 0)).slice(0, 10)
+      };
+    }
+    function buildMovingAveragePoints(track, rows, windowSize) {
+      const points = [];
+      const windowRows = [];
+      let windowBytes = 0;
+      let windowDuration = 0;
+      for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index];
+        const durationSeconds = getSampleDurationSeconds(row, track, rows, index);
+        const size = Number(row.size) || 0;
+        windowRows.push({ row, size, durationSeconds });
+        windowBytes += size;
+        windowDuration += durationSeconds;
+        while (windowRows.length > windowSize) {
+          const removed = windowRows.shift();
+          windowBytes -= removed.size;
+          windowDuration -= removed.durationSeconds;
+        }
+        const pointCount = windowRows.length;
+        points.push({
+          time: getRowTimeSeconds(row),
+          bitrate: windowDuration > 0 ? windowBytes * 8 / windowDuration : 0,
+          fps: windowDuration > 0 ? pointCount / windowDuration : 0,
+          row
+        });
+      }
+      return points;
+    }
+    function getSampleDurationSeconds(row, track, rows, index) {
+      const timescale = Number(track && track.timescale);
+      const duration = Number(row.duration);
+      if (timescale > 0 && duration > 0) return duration / timescale;
+      if (rows && index < rows.length - 1) {
+        const diff = getRowTimeSeconds(rows[index + 1]) - getRowTimeSeconds(row);
+        if (diff > 0) return diff;
+      }
+      return 0;
+    }
+    function getRowsDurationSeconds(track, rows) {
+      const durationSum = rows.reduce((sum, row, index) => sum + getSampleDurationSeconds(row, track, rows, index), 0);
+      if (durationSum > 0) return durationSum;
+      const trackDuration = Number(track && track.duration);
+      const timescale = Number(track && track.timescale);
+      return trackDuration > 0 && timescale > 0 ? trackDuration / timescale : 0;
+    }
+    function getMedian(sortedValues) {
+      if (!sortedValues.length) return 0;
+      const middle = Math.floor(sortedValues.length / 2);
+      return sortedValues.length % 2 ? sortedValues[middle] : (sortedValues[middle - 1] + sortedValues[middle]) / 2;
+    }
+    function renderMetricsBody(track, metrics, pointLimit) {
+      const summary = metrics.summary;
+      return [
+        '<div class="metrics-summary-grid">',
+        summaryCard(t("metrics.track"), formatTrackLabel(track) + " / " + track.codec),
+        summaryCard(t("column.duration"), formatMetricNumber(summary.durationSeconds, 3) + "s"),
+        summaryCard(t("column.avgBitrate"), formatBitsPerSecond(summary.averageBitrate)),
+        summaryCard(track.handlerType === "vide" ? t("metrics.avgFps") : t("metrics.samplesPerSecond"), formatMetricNumber(summary.averageFps, 3)),
+        summaryCard(t("metrics.peakMaBitrate"), formatBitsPerSecond(summary.peakMovingBitrate)),
+        summaryCard(t("metrics.peakMaFps"), formatMetricNumber(summary.peakMovingFps, 3)),
+        summaryCard(t("metrics.medianSample"), formatBytes(summary.medianSampleSize)),
+        summaryCard(t("metrics.syncSamples"), String(summary.syncSamples)),
+        "</div>",
+        '<div class="metrics-chart-grid">',
+        renderMetricChart(t("metrics.bitrateMovingAverage"), metrics.movingAveragePoints, "bitrate", pointLimit, formatBitsPerSecond, "bitrate"),
+        renderMetricChart(track.handlerType === "vide" ? t("metrics.fpsMovingAverage") : t("metrics.sampleRateMovingAverage"), metrics.movingAveragePoints, "fps", pointLimit, (value) => formatMetricNumber(value, 3), "fps"),
+        "</div>",
+        '<div class="metrics-insights">',
+        renderFrameTypeDistribution(metrics.frameTypeCounts, metrics.rows.length),
+        renderTopSampleRows(metrics.topSizeRows),
+        "</div>"
+      ].join("");
+    }
+    function renderMetricChart(title, points, valueKey, pointLimit, formatter, className) {
+      if (!points.length) return '<div class="metric-chart-card">' + emptyHtml("empty.noChartPoints") + "</div>";
+      const chartPoints = downsamplePoints(points, pointLimit);
+      const values = chartPoints.map((point) => Number(point[valueKey]) || 0);
+      const maxValue = Math.max(1, Math.max.apply(null, values));
+      const minTime = chartPoints[0].time;
+      const maxTime = chartPoints[chartPoints.length - 1].time;
+      const timeSpan = Math.max(1e-6, maxTime - minTime);
+      const innerWidth = METRIC_CHART_WIDTH - METRIC_CHART_PADDING.left - METRIC_CHART_PADDING.right;
+      const innerHeight = METRIC_CHART_HEIGHT - METRIC_CHART_PADDING.top - METRIC_CHART_PADDING.bottom;
+      const polylinePoints = chartPoints.map((point) => {
+        const x = METRIC_CHART_PADDING.left + (point.time - minTime) / timeSpan * innerWidth;
+        const y = METRIC_CHART_PADDING.top + innerHeight - (Number(point[valueKey]) || 0) / maxValue * innerHeight;
+        return x.toFixed(2) + "," + y.toFixed(2);
+      }).join(" ");
+      const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+        const y = METRIC_CHART_PADDING.top + innerHeight - ratio * innerHeight;
+        const label = formatter(maxValue * ratio);
+        return '<line class="metric-grid-line" x1="' + METRIC_CHART_PADDING.left + '" x2="' + (METRIC_CHART_WIDTH - METRIC_CHART_PADDING.right) + '" y1="' + y.toFixed(2) + '" y2="' + y.toFixed(2) + '"></line><text class="metric-axis-label" x="8" y="' + (y + 4).toFixed(2) + '">' + escapeHtml(label) + "</text>";
+      }).join("");
+      return '<section class="metric-chart-card"><div class="metric-chart-head"><strong>' + escapeHtml(title) + "</strong><span>" + escapeHtml(t("metrics.chartMax", { value: formatter(maxValue), count: chartPoints.length })) + '</span></div><svg class="metric-chart" viewBox="0 0 ' + METRIC_CHART_WIDTH + " " + METRIC_CHART_HEIGHT + '" preserveAspectRatio="none" aria-label="' + escapeHtml(title) + '">' + gridLines + '<text class="metric-axis-label" x="' + METRIC_CHART_PADDING.left + '" y="' + (METRIC_CHART_HEIGHT - 8) + '">' + escapeHtml(formatMetricNumber(minTime, 2)) + 's</text><text class="metric-axis-label" text-anchor="end" x="' + (METRIC_CHART_WIDTH - METRIC_CHART_PADDING.right) + '" y="' + (METRIC_CHART_HEIGHT - 8) + '">' + escapeHtml(formatMetricNumber(maxTime, 2)) + 's</text><polyline class="metric-line ' + escapeHtml(className) + '" points="' + polylinePoints + '"></polyline></svg></section>';
+    }
+    function downsamplePoints(points, limit) {
+      if (points.length <= limit) return points;
+      const result = [];
+      const step = points.length / limit;
+      for (let index = 0; index < limit; index += 1) {
+        result.push(points[Math.min(points.length - 1, Math.floor(index * step))]);
+      }
+      return result;
+    }
+    function renderFrameTypeDistribution(frameTypeCounts, totalRows) {
+      const entries = Array.from(frameTypeCounts.entries()).sort((left, right) => right[1] - left[1]);
+      if (!entries.length) return '<section class="metric-section"><h3>' + escapeHtml(t("metrics.frameTypeDistribution")) + "</h3>" + emptyHtml("empty.noFrameTypeData") + "</section>";
+      return '<section class="metric-section"><h3>' + escapeHtml(t("metrics.frameTypeDistribution")) + '</h3><div class="metric-type-list">' + entries.map(([frameType, count]) => {
+        const ratio = totalRows ? count * 100 / totalRows : 0;
+        return '<div class="metric-type-row"><span>' + escapeHtml(frameType) + '</span><div class="metric-type-bar"><span style="width:' + clamp(ratio, 0, 100).toFixed(2) + '%"></span></div><strong>' + count + "</strong></div>";
+      }).join("") + "</div></section>";
+    }
+    function renderTopSampleRows(rows) {
+      if (!rows.length) return '<section class="metric-section"><h3>' + escapeHtml(t("metrics.largestSamples")) + "</h3>" + emptyHtml("empty.noSamples") + "</section>";
+      return '<section class="metric-section"><h3>' + escapeHtml(t("metrics.largestSamples")) + '</h3><table class="table"><thead><tr><th>' + escapeHtml(t("value.sample")) + "</th><th>" + escapeHtml(t("column.time")) + "</th><th>" + escapeHtml(t("column.size")) + "</th><th>" + escapeHtml(t("column.type")) + "</th></tr></thead><tbody>" + rows.map((row) => {
+        const frameRowKey = getFrameRowKey(row);
+        return '<tr class="metric-click-row" role="button" tabindex="0" data-frame-key="' + escapeHtml(frameRowKey) + '"><td>#' + row.sampleIndex + "</td><td>" + escapeHtml(formatGraphTime(row)) + "</td><td>" + escapeHtml(formatBytes(row.size || 0)) + "</td><td>" + escapeHtml(formatFrameTypeLabel(row.frameType || "sample")) + "</td></tr>";
+      }).join("") + "</tbody></table></section>";
+    }
+    function renderFrames() {
+      if (!state.analysis) return;
+      const rows = applyFrameFilters(state.analysis.sampleRows);
+      state.filteredRows = rows;
+      state.graphRows = rows.slice().sort(compareRowsByPresentationTime);
+      state.graphMaxSize = Math.max(1, ...state.graphRows.map((row) => row.size || 0));
+      elements.frameCountText.textContent = t("count.rows", { count: rows.length });
+      elements.frameSpacer.style.height = Math.max(1, rows.length * ROW_HEIGHT) + "px";
+      elements.graphSpacer.style.height = Math.max(1, state.graphRows.length * GRAPH_ROW_HEIGHT) + "px";
+      renderGraphAxis();
+      scheduleFrameRender();
+    }
+    function compareRowsByPresentationTime(left, right) {
+      const leftTime = getRowTimeSeconds(left);
+      const rightTime = getRowTimeSeconds(right);
+      if (leftTime !== rightTime) return leftTime - rightTime;
+      if (left.trackId !== right.trackId) return left.trackId - right.trackId;
+      return left.sampleIndex - right.sampleIndex;
+    }
+    function getRowTrack(row) {
+      if (!state.analysis) return null;
+      return state.analysis.tracks.find((track) => track.trackId === row.trackId) || null;
+    }
+    function getRowTimeSeconds(row) {
+      const track = getRowTrack(row);
+      if (!track || !track.timescale) return Number(row.pts || row.dts || row.sampleIndex || 0);
+      return Number(row.pts || row.dts || 0) / Number(track.timescale);
+    }
+    function renderGraphAxis() {
+      const maxSize = state.graphMaxSize || 1;
+      const ticks = [0, 0.25, 0.5, 0.75, 1];
+      elements.graphAxisScale.innerHTML = ticks.map((ratio) => {
+        const value = Math.round(maxSize * ratio);
+        return '<span class="axis-tick" style="left:' + ratio * 100 + '%">' + escapeHtml(formatBytes(value)) + "</span>";
+      }).join("");
+      elements.graphAxisUnit.textContent = t("unit.max", { value: formatBytes(maxSize) });
+    }
+    function applyFrameFilters(rows) {
+      const trackValue = elements.trackFilter.value;
+      const typeValue = elements.typeFilter.value;
+      const syncValue = elements.syncFilter.value;
+      const minSize = elements.minSizeFilter.value === "" ? null : Number(elements.minSizeFilter.value);
+      const maxSize = elements.maxSizeFilter.value === "" ? null : Number(elements.maxSizeFilter.value);
+      const warningOnly = elements.warningOnlyFilter.checked;
+      return rows.filter((row) => {
+        if (trackValue && String(row.trackId) !== trackValue) return false;
+        if (typeValue) {
+          if (typeValue === "mixed") {
+            if (!String(row.frameType).startsWith("mixed")) return false;
+          } else if ((row.frameType || "unknown") !== typeValue) return false;
+        }
+        if (syncValue === "yes" && !row.isSync) return false;
+        if (syncValue === "no" && row.isSync) return false;
+        if (minSize !== null && row.size < minSize) return false;
+        if (maxSize !== null && row.size > maxSize) return false;
+        if (warningOnly && (!row.warnings || !row.warnings.length)) return false;
+        return true;
+      });
+    }
+    function scheduleFrameRender() {
+      cancelAnimationFrame(state.renderFrameRequest);
+      state.renderFrameRequest = requestAnimationFrame(() => {
+        if (state.frameViewMode === "graph") renderVisibleGraphRows();
+        else renderVisibleFrameRows();
+      });
+    }
+    function renderVisibleFrameRows() {
+      const rows = state.filteredRows;
+      const scrollTop = elements.frameScroller.scrollTop;
+      const height = elements.frameScroller.clientHeight || 400;
+      const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
+      const last = Math.min(rows.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + 8);
+      const html = [];
+      for (let index = first; index < last; index += 1) {
+        html.push(renderFrameRow(rows[index], index));
+      }
+      elements.frameSpacer.innerHTML = html.join("");
+    }
+    function renderVisibleGraphRows() {
+      const rows = state.graphRows;
+      const scrollTop = elements.graphScroller.scrollTop;
+      const height = elements.graphScroller.clientHeight || 400;
+      const first = Math.max(0, Math.floor(scrollTop / GRAPH_ROW_HEIGHT) - 10);
+      const last = Math.min(rows.length, Math.ceil((scrollTop + height) / GRAPH_ROW_HEIGHT) + 10);
+      const html = [];
+      for (let index = first; index < last; index += 1) {
+        html.push(renderGraphRow(rows[index], index));
+      }
+      elements.graphSpacer.innerHTML = html.join("");
+    }
+    function renderFrameRow(row, visualIndex) {
+      const type = row.frameType || "unknown";
+      const typeClass = getFrameTypeClass(type);
+      const chunkOrFragment = row.fragmentIndex ? "frag " + row.fragmentIndex : row.chunkIndex ? "chunk " + row.chunkIndex : "";
+      const frameRowKey = getFrameRowKey(row);
+      const selectedClass = frameRowKey === state.selectedFrameKey ? " selected" : "";
+      const ariaLabel = t("aria.seekFrame", { trackId: row.trackId, sampleIndex: row.sampleIndex, time: formatGraphTime(row) });
+      return '<div class="frame-row' + selectedClass + '" role="button" tabindex="0" data-frame-key="' + escapeHtml(frameRowKey) + '" aria-label="' + escapeHtml(ariaLabel) + '" style="top:' + visualIndex * ROW_HEIGHT + 'px"><div>' + row.sampleIndex + "</div><div>" + row.trackId + '</div><div title="' + escapeHtml(row.offset) + '">' + escapeHtml(row.offset) + "</div><div>" + row.size + "</div><div>" + row.dts + "</div><div>" + row.pts + "</div><div>" + row.duration + "</div><div>" + (row.isSync ? t("value.yes") : t("value.no")) + '</div><div><span class="pill ' + typeClass + '">' + escapeHtml(formatFrameTypeLabel(type)) + '</span></div><div title="' + escapeHtml(row.nalTypes.join(", ")) + '">' + escapeHtml(row.nalTypes.join(",")) + "</div><div>" + escapeHtml(chunkOrFragment) + "</div></div>";
+    }
+    function renderGraphRow(row, visualIndex) {
+      const type = row.frameType || "unknown";
+      const typeClass = getFrameTypeClass(type);
+      const widthPercent = state.graphMaxSize ? clamp((row.size || 0) * 100 / state.graphMaxSize, 0, 100) : 0;
+      const timeLabel = formatGraphTime(row);
+      const frameRowKey = getFrameRowKey(row);
+      const selectedClass = frameRowKey === state.selectedFrameKey ? " selected" : "";
+      const ariaLabel = t("aria.seekFrame", { trackId: row.trackId, sampleIndex: row.sampleIndex, time: timeLabel });
+      const title = [
+        "track " + row.trackId + " sample " + row.sampleIndex,
+        "PTS " + row.pts,
+        "DTS " + row.dts,
+        "size " + row.size + " bytes",
+        "type " + type,
+        "offset " + row.offset
+      ].join(" | ");
+      return '<div class="graph-row' + selectedClass + '" role="button" tabindex="0" data-frame-key="' + escapeHtml(frameRowKey) + '" aria-label="' + escapeHtml(ariaLabel) + '" style="top:' + visualIndex * GRAPH_ROW_HEIGHT + 'px" title="' + escapeHtml(title) + '"><div class="graph-time"><span>' + escapeHtml(timeLabel) + "</span><strong>#" + row.sampleIndex + " T" + row.trackId + '</strong></div><div class="graph-plot"><span class="graph-bar ' + typeClass + '" style="width:' + widthPercent.toFixed(4) + '%"></span></div><div class="graph-size">' + escapeHtml(formatBytes(row.size || 0)) + "</div></div>";
+    }
+    function getFrameTypeClass(type) {
+      if (type === "I" || type === "IDR") return "i";
+      if (type === "P") return "p";
+      if (type === "B") return "b";
+      if (type === "AAC" || type === "audio") return "aac";
+      if (type === "unknown") return "warn";
+      if (String(type).startsWith("mixed")) return "err";
+      return "";
+    }
+    function formatFrameTypeLabel(type) {
+      if (type === "unknown") return t("value.unknown");
+      if (type === "audio") return t("value.audio");
+      if (type === "sample") return t("value.sample");
+      if (String(type).startsWith("mixed") && getLanguage() === "ko") return type.replace("mixed", "\uD63C\uD569");
+      return type;
+    }
+    function formatGraphTime(row) {
+      const track = getRowTrack(row);
+      if (!track || !track.timescale) return String(row.pts || row.dts || row.sampleIndex);
+      return formatTime(row.pts, track.timescale);
+    }
+    function renderFragments() {
+      const analysis = state.analysis;
+      const moofs = analysis.topBoxes.filter((box) => box.type === "moof");
+      if (!moofs.length) {
+        elements.fragmentsPanel.innerHTML = emptyHtml("empty.noMoof");
+        return;
+      }
+      elements.fragmentsPanel.innerHTML = '<table class="table"><thead><tr><th>#</th><th>' + escapeHtml(t("column.offset")) + "</th><th>" + escapeHtml(t("column.size")) + "</th><th>traf</th><th>trun</th><th>" + escapeHtml(t("column.samples")) + "</th></tr></thead><tbody>" + moofs.map((moof, index) => {
+        const trafs = (moof.children || []).filter((child) => child.type === "traf");
+        const truns = findDescendants(moof, "trun", []);
+        const samples = truns.reduce((sum, trun) => sum + (trun.fields.sampleCount || 0), 0);
+        return "<tr><td>" + (index + 1) + "</td><td>" + escapeHtml(moof.offset) + "</td><td>" + escapeHtml(moof.size) + "</td><td>" + trafs.length + "</td><td>" + truns.length + "</td><td>" + samples + "</td></tr>";
+      }).join("") + "</tbody></table>";
+    }
+    function renderWarnings() {
+      const warnings = state.transientWarnings.slice();
+      if (state.analysis) {
+        warnings.push.apply(warnings, state.analysis.warnings.map(localizeWarning));
+        for (const box of state.analysis.allBoxes) {
+          for (const warning of box.warnings || []) warnings.push(box.path + ": " + localizeWarning(warning));
+        }
+        for (const row of state.analysis.sampleRows) {
+          for (const warning of row.warnings || []) warnings.push(t("warning.prefixTrackSample", { trackId: row.trackId, sampleIndex: row.sampleIndex, warning: localizeWarning(warning) }));
+        }
+      }
+      if (!warnings.length) {
+        elements.warningsPanel.innerHTML = emptyHtml("empty.noWarnings");
+        return;
+      }
+      elements.warningsPanel.innerHTML = '<div class="warning-list">' + warnings.map((warning) => '<div class="warning-item">' + escapeHtml(warning) + "</div>").join("") + "</div>";
+    }
+    function renderKv(values) {
+      const entries = Array.isArray(values) ? values : Object.entries(values);
+      return '<div class="kv">' + entries.map(([key, value]) => "<div>" + escapeHtml(key) + "</div><div>" + escapeHtml(String(value)) + "</div>").join("") + "</div>";
+    }
+    function localizeWarning(warning) {
+      if (getLanguage() !== "ko") return warning;
+      return String(warning).replace("Sample offset missing.", "\uC0D8\uD50C \uC624\uD504\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("Fragment sample size is missing.", "\uD504\uB798\uADF8\uBA3C\uD2B8 \uC0D8\uD50C \uD06C\uAE30\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("Payload too large to parse inline:", "payload\uAC00 \uB108\uBB34 \uCEE4\uC11C inline \uD30C\uC2F1\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4:").replace("Could not parse fields:", "\uD544\uB4DC\uB97C \uD30C\uC2F1\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4:").replace("No moov box found. Fragment-only streams without init segment are not supported.", "moov \uBC15\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. init segment \uC5C6\uB294 fragment-only stream\uC740 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.").replace("AVC sample entry has no avcC box.", "AVC sample entry\uC5D0 avcC \uBC15\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("HEVC sample entry has no hvcC box.", "HEVC sample entry\uC5D0 hvcC \uBC15\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("AAC sample entry has no esds AudioSpecificConfig.", "AAC sample entry\uC5D0 esds AudioSpecificConfig\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("scan failed:", "\uC2A4\uCE94 \uC2E4\uD328:");
+    }
+    function exportJson() {
+      if (!state.analysis) return;
+      const payload = {
         file: state.analysis.file,
+        boxes: state.analysis.topBoxes,
         tracks: state.analysis.tracks.map((track) => ({
           trackId: track.trackId,
           handlerType: track.handlerType,
           codec: track.codec,
-          samples: track.sampleCount,
-          avc: Boolean(track.avcConfig),
-          hevc: Boolean(track.hevcConfig),
-          aac: Boolean(track.audioConfig)
+          timescale: track.timescale,
+          duration: track.duration,
+          width: track.width,
+          height: track.height,
+          channelCount: track.channelCount,
+          sampleRate: track.sampleRate,
+          sampleCount: track.sampleCount,
+          avcConfig: track.avcConfig,
+          hevcConfig: track.hevcConfig,
+          audioConfig: track.audioConfig
         })),
-        sampleRows: state.analysis.sampleRows.length,
+        sampleRows: state.analysis.sampleRows,
         warnings: state.analysis.warnings
       };
+      downloadText("mp4-analysis.json", JSON.stringify(payload, safeJsonReplacer, 2), "application/json");
     }
-  };
-  elements.languageSelect.addEventListener("change", () => setLanguage(elements.languageSelect.value));
-  elements.openButton.addEventListener("click", () => elements.fileInput.click());
-  elements.fileInput.addEventListener("change", () => {
-    const file = elements.fileInput.files && elements.fileInput.files[0];
-    if (file) startAnalysis(file);
-  });
-  window.addEventListener("dragenter", handleWindowDragEnter, true);
-  window.addEventListener("dragover", handleWindowDragOver, true);
-  window.addEventListener("dragleave", handleWindowDragLeave, true);
-  window.addEventListener("dragend", hideDropOverlay, true);
-  window.addEventListener("drop", handleWindowDrop, true);
-  for (const tabButton of document.querySelectorAll(".tab")) {
-    tabButton.addEventListener("click", () => setActiveTab(tabButton.dataset.tab));
-  }
-  elements.cancelButton.addEventListener("click", () => {
-    if (state.analysis && state.analysis.reader) state.analysis.reader.cancel();
-    setProgress("Cancelling...", 0);
-  });
-  elements.scanButton.addEventListener("click", async () => {
-    if (!state.analysis) return;
-    await scanCurrentAnalysis();
-  });
-  elements.exportJsonButton.addEventListener("click", exportJson);
-  elements.exportCsvButton.addEventListener("click", exportCsv);
-  elements.frameScroller.addEventListener("scroll", scheduleFrameRender);
-  elements.graphScroller.addEventListener("scroll", scheduleFrameRender);
-  elements.frameSpacer.addEventListener("click", handleFrameRowPointerActivation);
-  elements.graphSpacer.addEventListener("click", handleFrameRowPointerActivation);
-  elements.metricsBody.addEventListener("click", handleFrameRowPointerActivation);
-  elements.frameSpacer.addEventListener("keydown", handleFrameRowKeyboardActivation);
-  elements.graphSpacer.addEventListener("keydown", handleFrameRowKeyboardActivation);
-  elements.metricsBody.addEventListener("keydown", handleFrameRowKeyboardActivation);
-  elements.frameGraphButton.addEventListener("click", () => setFrameViewMode("graph"));
-  elements.frameTableButton.addEventListener("click", () => setFrameViewMode("table"));
-  for (const input of [elements.trackFilter, elements.typeFilter, elements.syncFilter, elements.minSizeFilter, elements.maxSizeFilter, elements.warningOnlyFilter]) {
-    input.addEventListener("input", renderFrames);
-    input.addEventListener("change", renderFrames);
-  }
-  for (const input of [elements.metricsTrackFilter, elements.metricsWindowInput, elements.metricsPointLimitInput]) {
-    input.addEventListener("input", renderMetrics);
-    input.addEventListener("change", renderMetrics);
-  }
-  elements.clearFiltersButton.addEventListener("click", () => {
-    elements.trackFilter.value = "";
-    elements.typeFilter.value = "";
-    elements.syncFilter.value = "";
-    elements.minSizeFilter.value = "";
-    elements.maxSizeFilter.value = "";
-    elements.warningOnlyFilter.checked = false;
-    renderFrames();
-  });
-  setLanguage(elements.languageSelect.value || "en");
-  function setLanguage(language) {
-    activeLanguage = I18N[language] ? language : "en";
-    state.language = activeLanguage;
-    elements.languageSelect.value = activeLanguage;
-    applyStaticTranslations();
-    setProgress(state.progressSourceLabel, state.progressPercentValue);
-    refreshDynamicLanguage();
-  }
-  function applyStaticTranslations() {
-    document.documentElement.lang = activeLanguage === "ko" ? "ko" : "en";
-    document.title = t("app.title");
-    for (const element of document.querySelectorAll("[data-i18n]")) {
-      element.textContent = t(element.dataset.i18n);
-    }
-    for (const element of document.querySelectorAll("[data-i18n-aria-label]")) {
-      element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
-    }
-    for (const element of document.querySelectorAll("[data-i18n-placeholder]")) {
-      element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder));
-    }
-  }
-  function refreshDynamicLanguage() {
-    if (state.analysis) {
-      renderAll();
-      renderSelectedBox();
-    } else {
-      elements.summaryPanel.innerHTML = emptyHtml("empty.summary");
-      elements.boxDetail.innerHTML = emptyHtml("empty.boxDetailInitial");
-      elements.tracksPanel.innerHTML = emptyHtml("empty.noTracks");
-      elements.metricsBody.innerHTML = emptyHtml("empty.metrics");
-      elements.fragmentsPanel.innerHTML = emptyHtml("empty.noFragments");
-      elements.warningsPanel.innerHTML = emptyHtml("empty.noWarnings");
-      elements.frameCountText.textContent = t("count.rows", { count: 0 });
-      elements.graphAxisUnit.textContent = t("unit.bytes");
-      elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + "</option>";
-      elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.noTrack")) + "</option>";
-    }
-  }
-  function emptyHtml(key, values) {
-    return '<div class="empty">' + escapeHtml(t(key, values)) + "</div>";
-  }
-  function handleFrameRowPointerActivation(event) {
-    const rowElement = event.target.closest("[data-frame-key]");
-    if (!rowElement) return;
-    const row = findFrameRowByKey(rowElement.dataset.frameKey);
-    if (row) activateFrameRow(row);
-  }
-  function handleFrameRowKeyboardActivation(event) {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const rowElement = event.target.closest("[data-frame-key]");
-    if (!rowElement) return;
-    event.preventDefault();
-    const row = findFrameRowByKey(rowElement.dataset.frameKey);
-    if (row) activateFrameRow(row);
-  }
-  function findFrameRowByKey(frameKey) {
-    if (!state.analysis || !frameKey) return null;
-    return state.analysis.sampleRows.find((row) => getFrameRowKey(row) === frameKey) || null;
-  }
-  function activateFrameRow(row) {
-    state.selectedFrameKey = getFrameRowKey(row);
-    seekPreviewToFrameRow(row);
-    scheduleFrameRender();
-  }
-  function seekPreviewToFrameRow(row) {
-    if (!elements.filePreview || !elements.filePreview.src) return;
-    const rowTimeSeconds = getRowTimeSeconds(row);
-    if (!Number.isFinite(rowTimeSeconds)) return;
-    const seekSeconds = Math.max(0, rowTimeSeconds);
-    const applySeek = () => {
-      try {
-        const duration = Number(elements.filePreview.duration);
-        const boundedSeekSeconds = Number.isFinite(duration) && duration > 0 ? Math.min(seekSeconds, Math.max(0, duration - 1e-3)) : seekSeconds;
-        elements.filePreview.currentTime = boundedSeekSeconds;
-      } catch (error) {
-        console.warn("Unable to seek preview video", error);
-      }
-    };
-    if (elements.filePreview.readyState < 1) {
-      elements.filePreview.addEventListener("loadedmetadata", applySeek, { once: true });
-      elements.filePreview.load();
-    } else {
-      applySeek();
-    }
-  }
-  function getFrameRowKey(row) {
-    return String(row.trackId) + ":" + String(row.sampleIndex);
-  }
-  function hasDraggedFiles(dataTransfer) {
-    if (!dataTransfer) return false;
-    const types = Array.from(dataTransfer.types || []);
-    if (types.includes("Files")) return true;
-    return Array.from(dataTransfer.items || []).some((item) => item.kind === "file");
-  }
-  function getDroppedMediaFile(fileList) {
-    const files = Array.from(fileList || []);
-    return files.find(isLikelyMediaFile) || files[0] || null;
-  }
-  function isLikelyMediaFile(file) {
-    if (!file) return false;
-    const name = String(file.name || "").toLowerCase();
-    return name.endsWith(".mp4") || name.endsWith(".m4v") || name.endsWith(".mov") || file.type === "video/mp4" || file.type === "video/quicktime";
-  }
-  function handleWindowDragEnter(event) {
-    if (!hasDraggedFiles(event.dataTransfer)) return;
-    event.preventDefault();
-    showDropOverlay();
-  }
-  function handleWindowDragOver(event) {
-    if (!hasDraggedFiles(event.dataTransfer)) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    showDropOverlay();
-  }
-  function handleWindowDragLeave(event) {
-    if (!hasDraggedFiles(event.dataTransfer)) return;
-    const leftWindow = event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
-    if (leftWindow) hideDropOverlay();
-  }
-  function handleWindowDrop(event) {
-    if (!hasDraggedFiles(event.dataTransfer)) return;
-    event.preventDefault();
-    hideDropOverlay();
-    const file = getDroppedMediaFile(event.dataTransfer.files);
-    if (file) startAnalysis(file);
-  }
-  function showDropOverlay() {
-    window.clearTimeout(state.dropHintHideTimer);
-    elements.dropOverlay.classList.add("active");
-    elements.dropOverlay.setAttribute("aria-hidden", "false");
-    state.dropHintHideTimer = window.setTimeout(hideDropOverlay, 1400);
-  }
-  function hideDropOverlay() {
-    window.clearTimeout(state.dropHintHideTimer);
-    state.dropHintHideTimer = 0;
-    elements.dropOverlay.classList.remove("active");
-    elements.dropOverlay.setAttribute("aria-hidden", "true");
-  }
-  async function startAnalysis(file) {
-    setBusy(true);
-    resetView(file);
-    try {
-      const analysis = await Core.analyzeFile(file, { onProgress: setProgress });
-      state.analysis = analysis;
-      updateMediaPreviewMeta(file, analysis);
-      renderAll();
-      setBusy(false);
-      const canScan = analysis.tracks.some((track) => getFrameTypeScanner(track));
-      elements.scanButton.disabled = !canScan;
-      elements.exportJsonButton.disabled = false;
-      elements.exportCsvButton.disabled = false;
-      if (canScan && Core.shouldAutoScan(analysis)) {
-        await scanCurrentAnalysis();
-      }
-    } catch (error) {
-      setBusy(false);
-      setProgress("Failed: " + error.message, 0);
-      elements.summaryPanel.innerHTML = emptyHtml("status.failed", { message: error.message });
-    }
-  }
-  async function scanCurrentAnalysis() {
-    setBusy(true);
-    elements.scanButton.disabled = true;
-    try {
-      await Core.scanFrameTypes(state.analysis, { onProgress: setProgress });
-      setProgress("Frame type scan complete", 100);
-      renderFrames();
-      renderWarnings();
-    } catch (error) {
-      setProgress("Scan stopped: " + error.message, 0);
-    } finally {
-      setBusy(false);
-      elements.scanButton.disabled = false;
-    }
-  }
-  function setBusy(isBusy) {
-    elements.cancelButton.disabled = !isBusy;
-    elements.openButton.disabled = isBusy;
-  }
-  function resetView(file) {
-    state.analysis = null;
-    state.selectedBox = null;
-    state.selectedFrameKey = "";
-    setFilePreview(file);
-    elements.boxTree.innerHTML = "";
-    elements.summaryPanel.innerHTML = emptyHtml("empty.parsingStructure");
-    elements.boxDetail.innerHTML = emptyHtml("empty.selectBox");
-    elements.tracksPanel.innerHTML = emptyHtml("empty.noTracks");
-    elements.fragmentsPanel.innerHTML = emptyHtml("empty.noFragments");
-    elements.warningsPanel.innerHTML = emptyHtml("empty.noWarnings");
-    elements.metricsBody.innerHTML = emptyHtml("empty.parsingMetrics");
-    elements.frameSpacer.innerHTML = "";
-    elements.frameSpacer.style.height = "0px";
-    elements.graphSpacer.innerHTML = "";
-    elements.graphSpacer.style.height = "0px";
-    elements.graphAxisScale.innerHTML = "";
-    elements.graphAxisUnit.textContent = t("unit.bytes");
-    elements.frameCountText.textContent = t("count.rows", { count: 0 });
-    elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + "</option>";
-    elements.metricsTrackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.noTrack")) + "</option>";
-    elements.scanButton.disabled = true;
-    elements.exportJsonButton.disabled = true;
-    elements.exportCsvButton.disabled = true;
-    setProgress("Reading " + file.name, 0);
-  }
-  function setFilePreview(file) {
-    if (state.filePreviewUrl) URL.revokeObjectURL(state.filePreviewUrl);
-    state.filePreviewUrl = URL.createObjectURL(file);
-    elements.filePreview.src = state.filePreviewUrl;
-    elements.filePreview.load();
-    elements.mediaPreviewName.textContent = file.name || "Unnamed media";
-    updateMediaPreviewMeta(file, null);
-    elements.mediaPreviewBar.hidden = false;
-  }
-  function updateMediaPreviewMeta(file, analysis) {
-    const parts = [formatBytes(file.size)];
-    const durationSeconds = analysis ? getAnalysisDurationSeconds(analysis) : 0;
-    if (durationSeconds > 0) {
-      parts.push(formatPreviewBitrate(file.size * 8 / durationSeconds));
-    }
-    parts.push(file.type || t("value.unknownMime"));
-    elements.mediaPreviewMeta.textContent = parts.filter(Boolean).join(" \xB7 ");
-  }
-  function getAnalysisDurationSeconds(analysis) {
-    let maxDurationSeconds = 0;
-    for (const track of analysis.tracks || []) {
-      const duration = Number(track.duration);
-      const timescale = Number(track.timescale);
-      if (Number.isFinite(duration) && duration > 0 && timescale > 0) {
-        maxDurationSeconds = Math.max(maxDurationSeconds, duration / timescale);
-      }
-    }
-    if (maxDurationSeconds > 0) return maxDurationSeconds;
-    const trackById = new Map((analysis.tracks || []).map((track) => [track.trackId, track]));
-    for (const row of analysis.sampleRows || []) {
-      const track = trackById.get(row.trackId);
-      const timescale = Number(track && track.timescale);
-      if (!timescale) continue;
-      const rowEnd = (Number(row.pts || row.dts || 0) + Number(row.duration || 0)) / timescale;
-      if (Number.isFinite(rowEnd)) maxDurationSeconds = Math.max(maxDurationSeconds, rowEnd);
-    }
-    return maxDurationSeconds;
-  }
-  function setProgress(label, percent) {
-    const bounded = clamp(Number(percent) || 0, 0, 100);
-    state.progressSourceLabel = label;
-    state.progressRawLabel = translateRuntimeLabel(label);
-    state.progressPercentValue = bounded;
-    elements.progressText.textContent = state.progressRawLabel;
-    elements.progressPercent.textContent = Math.round(bounded) + "%";
-    elements.progressFill.style.width = bounded + "%";
-  }
-  function translateRuntimeLabel(label) {
-    if (label === "Parsing boxes") return t("status.parsingBoxes");
-    if (label === "Building track model") return t("status.buildingTrackModel");
-    if (label === "Structure parsed") return t("status.structureParsed");
-    if (label === "Scanning video samples") return t("status.scanningVideoSamples");
-    if (label === "Cancelling...") return t("status.cancelling");
-    if (label === "Frame type scan complete") return t("status.scanComplete");
-    if (label.startsWith("Reading ")) return t("status.reading", { name: label.slice("Reading ".length) });
-    if (label.startsWith("Failed: ")) return t("status.failed", { message: label.slice("Failed: ".length) });
-    if (label.startsWith("Scan stopped: ")) return t("status.scanStopped", { message: label.slice("Scan stopped: ".length) });
-    return label;
-  }
-  function setActiveTab(tabName) {
-    state.activeTab = tabName;
-    for (const button of document.querySelectorAll(".tab")) button.classList.toggle("active", button.dataset.tab === tabName);
-    for (const panel of document.querySelectorAll(".panel")) panel.classList.remove("active");
-    document.getElementById(tabName + "Panel").classList.add("active");
-    if (tabName === "frames") renderFrames();
-    if (tabName === "metrics") renderMetrics();
-  }
-  function setFrameViewMode(mode) {
-    state.frameViewMode = mode;
-    elements.frameGraphButton.classList.toggle("active", mode === "graph");
-    elements.frameTableButton.classList.toggle("active", mode === "table");
-    elements.frameGraphView.classList.toggle("active", mode === "graph");
-    elements.frameTableView.classList.toggle("active", mode === "table");
-    scheduleFrameRender();
-  }
-  function renderAll() {
-    renderSummary();
-    renderBoxTree();
-    renderTracks();
-    renderFrames();
-    renderMetrics();
-    renderFragments();
-    renderWarnings();
-  }
-  function renderSummary() {
-    const analysis = state.analysis;
-    const videoTracks = analysis.tracks.filter((track) => track.handlerType === "vide").length;
-    const fragments = analysis.topBoxes.filter((box) => box.type === "moof").length;
-    const avcTracks = analysis.tracks.filter((track) => track.codec === "avc1" || track.codec === "avc3").length;
-    const hevcTracks = analysis.tracks.filter((track) => track.codec === "hvc1" || track.codec === "hev1").length;
-    const aacTracks = analysis.tracks.filter((track) => track.codec === "mp4a").length;
-    elements.summaryPanel.innerHTML = [
-      '<div class="summary-grid">',
-      summaryCard(t("summary.fileSize"), formatBytes(analysis.file.size)),
-      summaryCard(t("summary.tracks"), String(analysis.tracks.length)),
-      summaryCard(t("summary.videoTracks"), String(videoTracks)),
-      summaryCard(t("summary.fragments"), String(fragments)),
-      summaryCard(t("summary.samples"), String(analysis.sampleRows.length)),
-      summaryCard(t("summary.avcTracks"), String(avcTracks)),
-      summaryCard(t("summary.hevcTracks"), String(hevcTracks)),
-      summaryCard(t("summary.aacTracks"), String(aacTracks)),
-      summaryCard(t("summary.warnings"), String(analysis.warnings.length)),
-      "</div>",
-      '<p class="split-note">' + escapeHtml(t("summary.note")) + "</p>",
-      renderTrackTable(analysis.tracks)
-    ].join("");
-  }
-  function summaryCard(label, value) {
-    return '<div class="card"><span>' + escapeHtml(label) + "</span><strong>" + escapeHtml(value) + "</strong></div>";
-  }
-  function renderBoxTree() {
-    const analysis = state.analysis;
-    elements.boxTree.innerHTML = analysis.topBoxes.map((node) => renderBoxNode(node)).join("");
-  }
-  function renderBoxNode(node) {
-    const childHtml = node.children && node.children.length ? '<div class="tree-children">' + node.children.map(renderBoxNode).join("") + "</div>" : "";
-    return '<div class="tree-node"><button class="tree-row" data-path="' + escapeHtml(node.path) + '" title="' + escapeHtml(formatBoxTypeLabel(node.type)) + '"><span class="type">' + escapeHtml(node.type) + '</span><span class="size">' + formatBytes(Number(node.size)) + " @ " + escapeHtml(node.offset) + "</span></button>" + childHtml + "</div>";
-  }
-  elements.boxTree.addEventListener("click", (event) => {
-    const row = event.target.closest(".tree-row");
-    if (!row || !state.analysis) return;
-    const path = row.dataset.path;
-    state.selectedBox = state.analysis.allBoxes.find((box) => box.path === path) || null;
-    for (const node of elements.boxTree.querySelectorAll(".tree-row")) node.classList.toggle("selected", node === row);
-    renderSelectedBox();
-    setActiveTab("boxes");
-  });
-  function renderSelectedBox() {
-    if (!state.selectedBox) {
-      elements.boxDetail.innerHTML = emptyHtml("empty.selectBox");
-      return;
-    }
-    const node = state.selectedBox;
-    elements.boxDetail.innerHTML = '<div class="detail-grid"><div><h2>' + escapeHtml(t("boxes.detailTitle")) + "</h2>" + renderKv([
-      [t("box.field.type"), formatBoxTypeLabel(node.type)],
-      [t("box.field.description"), getBoxTypeDescription(node.type)],
-      [t("box.field.path"), node.path],
-      [t("box.field.offset"), node.offset],
-      [t("box.field.size"), node.size + " (" + formatBytes(Number(node.size)) + ")"],
-      [t("box.field.headerSize"), node.headerSize],
-      [t("box.field.children"), node.children.length],
-      [t("box.field.warnings"), node.warnings.length ? node.warnings.join("; ") : t("value.none")]
-    ]) + "</div><div><h2>" + escapeHtml(t("boxes.parsedFields")) + '</h2><pre class="code">' + escapeHtml(JSON.stringify(node.fields, safeJsonReplacer, 2)) + "</pre></div></div>";
-  }
-  function formatBoxTypeLabel(type) {
-    const info = BOX_TYPE_INFO[type];
-    const localized = getLocalizedBoxInfo(type);
-    return info ? type + " (" + localized.name + ")" : type + " (" + t("boxes.unknownType") + ")";
-  }
-  function getBoxTypeDescription(type) {
-    return getLocalizedBoxInfo(type).description;
-  }
-  function getLocalizedBoxInfo(type) {
-    const info = BOX_TYPE_INFO[type];
-    if (!info) return { name: t("boxes.unknownType"), description: t("boxes.noDescription") };
-    const localized = BOX_TYPE_I18N[activeLanguage] && BOX_TYPE_I18N[activeLanguage][type];
-    if (!localized) return info;
-    return { name: localized[0], description: localized[1] };
-  }
-  function renderTracks() {
-    const analysis = state.analysis;
-    if (!analysis.tracks.length) {
-      elements.tracksPanel.innerHTML = emptyHtml("empty.noTracks");
-      return;
-    }
-    elements.tracksPanel.innerHTML = renderTrackTable(analysis.tracks);
-    elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + "</option>" + analysis.tracks.map((track) => '<option value="' + track.trackId + '">' + escapeHtml(formatTrackLabel(track)) + "</option>").join("");
-    populateMetricsTrackFilter(analysis.tracks);
-  }
-  function renderTrackTable(tracks) {
-    return '<table class="table"><thead><tr><th>' + escapeHtml(t("column.track")) + "</th><th>" + escapeHtml(t("column.handler")) + "</th><th>" + escapeHtml(t("column.codec")) + "</th><th>" + escapeHtml(t("column.duration")) + "</th><th>" + escapeHtml(t("column.media")) + "</th><th>" + escapeHtml(t("column.samples")) + "</th><th>" + escapeHtml(t("column.avgBitrate")) + "</th><th>" + escapeHtml(t("column.fpsSamples")) + "</th><th>" + escapeHtml(t("column.avgSample")) + "</th><th>" + escapeHtml(t("column.codecConfig")) + "</th></tr></thead><tbody>" + tracks.map((track) => {
-      const summaryMetrics = getTrackSummaryMetrics(track);
-      return "<tr><td>" + track.trackId + "</td><td>" + escapeHtml(track.handlerType) + "</td><td>" + escapeHtml(track.codec) + "</td><td>" + escapeHtml(formatTime(track.duration, track.timescale)) + "</td><td>" + escapeHtml(formatTrackMedia(track)) + "</td><td>" + track.sampleCount + "</td><td>" + escapeHtml(summaryMetrics ? formatBitsPerSecond(summaryMetrics.averageBitrate) : t("value.notAvailable")) + "</td><td>" + escapeHtml(summaryMetrics ? formatMetricNumber(summaryMetrics.sampleRate, 2) : t("value.notAvailable")) + "</td><td>" + escapeHtml(summaryMetrics ? formatBytes(summaryMetrics.averageSampleSize) : t("value.notAvailable")) + "</td><td>" + escapeHtml(formatTrackCodecConfig(track)) + "</td></tr>";
-    }).join("") + "</tbody></table>";
-  }
-  function formatTrackLabel(track) {
-    return t("field.track") + " " + track.trackId + " (" + track.handlerType + ")";
-  }
-  function formatTrackMedia(track) {
-    if (track.handlerType === "vide") return track.width + "x" + track.height;
-    if (track.handlerType === "soun") {
-      const sampleRate = track.audioConfig && track.audioConfig.samplingFrequency ? track.audioConfig.samplingFrequency : track.sampleRate;
-      const channels = track.audioConfig && track.audioConfig.channelDescription ? track.audioConfig.channelDescription : track.channelCount ? track.channelCount + " channels" : "audio";
-      return channels + (sampleRate ? " @ " + sampleRate + " Hz" : "");
-    }
-    return t("value.notAvailable");
-  }
-  function formatTrackCodecConfig(track) {
-    if (track.avcConfig) return track.avcConfig.codecString + ", NAL length " + track.avcConfig.nalLengthSize;
-    if (track.hevcConfig) return track.hevcConfig.codecString + ", NAL length " + track.hevcConfig.nalLengthSize + ", " + track.hevcConfig.bitDepthLuma + "-bit";
-    if (track.audioConfig) {
-      const codecString = track.audioConfig.codecString || "mp4a";
-      return codecString + ", " + track.audioConfig.audioObjectTypeName + ", " + track.audioConfig.channelDescription;
-    }
-    return t("value.notAvailable");
-  }
-  function populateMetricsTrackFilter(tracks) {
-    const currentValue = elements.metricsTrackFilter.value;
-    const preferredTracks = tracks.filter((track) => track.handlerType === "vide");
-    const optionTracks = preferredTracks.length ? preferredTracks : tracks;
-    elements.metricsTrackFilter.innerHTML = optionTracks.length ? optionTracks.map((track) => '<option value="' + track.trackId + '">' + escapeHtml(formatTrackLabel(track) + " / " + track.codec) + "</option>").join("") : '<option value="">' + escapeHtml(t("option.noTrack")) + "</option>";
-    if (currentValue && optionTracks.some((track) => String(track.trackId) === currentValue)) {
-      elements.metricsTrackFilter.value = currentValue;
-    } else if (optionTracks.length) {
-      elements.metricsTrackFilter.value = String(optionTracks[0].trackId);
-    }
-  }
-  function renderMetrics() {
-    if (!state.analysis) return;
-    const track = getSelectedMetricsTrack();
-    if (!track) {
-      elements.metricsBody.innerHTML = emptyHtml("empty.noTrackMetrics");
-      return;
-    }
-    const rows = getRowsForTrack(track.trackId);
-    if (!rows.length) {
-      elements.metricsBody.innerHTML = emptyHtml("empty.noSamplesForTrack", { trackId: track.trackId });
-      return;
-    }
-    const windowSize = getMetricsWindowSize();
-    const pointLimit = getMetricsPointLimit();
-    const metrics = buildTrackMetrics(track, rows, windowSize);
-    elements.metricsBody.innerHTML = renderMetricsBody(track, metrics, pointLimit);
-  }
-  function getSelectedMetricsTrack() {
-    if (!state.analysis) return null;
-    const selectedTrackId = Number(elements.metricsTrackFilter.value);
-    return state.analysis.tracks.find((track) => track.trackId === selectedTrackId) || state.analysis.tracks.find((track) => track.handlerType === "vide") || state.analysis.tracks[0] || null;
-  }
-  function getRowsForTrack(trackId) {
-    if (!state.analysis) return [];
-    return state.analysis.sampleRows.filter((row) => row.trackId === trackId).slice().sort(compareRowsByPresentationTime);
-  }
-  function getMetricsWindowSize() {
-    return Math.max(1, Math.min(5e3, Math.floor(Number(elements.metricsWindowInput.value) || 1)));
-  }
-  function getMetricsPointLimit() {
-    return Math.max(120, Math.min(2e3, Math.floor(Number(elements.metricsPointLimitInput.value) || 900)));
-  }
-  function getTrackSummaryMetrics(track) {
-    if (!state.analysis || !track) return null;
-    const rows = getRowsForTrack(track.trackId);
-    if (!rows.length) return null;
-    const totalBytes = rows.reduce((sum, row) => sum + (Number(row.size) || 0), 0);
-    const totalDuration = getRowsDurationSeconds(track, rows);
-    if (!totalDuration) return null;
-    return {
-      averageBitrate: totalBytes * 8 / totalDuration,
-      sampleRate: rows.length / totalDuration,
-      averageSampleSize: totalBytes / rows.length
-    };
-  }
-  function buildTrackMetrics(track, rows, windowSize) {
-    const totalBytes = rows.reduce((sum, row) => sum + (Number(row.size) || 0), 0);
-    const totalDuration = getRowsDurationSeconds(track, rows);
-    const sizes = rows.map((row) => Number(row.size) || 0).sort((left, right) => left - right);
-    const frameTypeCounts = /* @__PURE__ */ new Map();
-    for (const row of rows) {
-      const frameType = row.frameType || getDefaultSampleFrameType(track) || "sample";
-      frameTypeCounts.set(frameType, (frameTypeCounts.get(frameType) || 0) + 1);
-    }
-    const movingAveragePoints = buildMovingAveragePoints(track, rows, windowSize);
-    const bitrateValues = movingAveragePoints.map((point) => point.bitrate).filter(Number.isFinite);
-    const fpsValues = movingAveragePoints.map((point) => point.fps).filter(Number.isFinite);
-    const syncRows = rows.filter((row) => row.isSync);
-    const keyframeIntervals = [];
-    for (let index = 1; index < syncRows.length; index += 1) {
-      keyframeIntervals.push(Math.max(0, getRowTimeSeconds(syncRows[index]) - getRowTimeSeconds(syncRows[index - 1])));
-    }
-    return {
-      rows,
-      movingAveragePoints,
-      summary: {
-        durationSeconds: totalDuration,
-        totalBytes,
-        averageBitrate: totalDuration ? totalBytes * 8 / totalDuration : 0,
-        averageFps: totalDuration ? rows.length / totalDuration : 0,
-        averageSampleSize: rows.length ? totalBytes / rows.length : 0,
-        minSampleSize: sizes.length ? sizes[0] : 0,
-        medianSampleSize: getMedian(sizes),
-        maxSampleSize: sizes.length ? sizes[sizes.length - 1] : 0,
-        syncSamples: syncRows.length,
-        averageKeyframeInterval: keyframeIntervals.length ? keyframeIntervals.reduce((sum, value) => sum + value, 0) / keyframeIntervals.length : 0,
-        peakMovingBitrate: bitrateValues.length ? Math.max.apply(null, bitrateValues) : 0,
-        peakMovingFps: fpsValues.length ? Math.max.apply(null, fpsValues) : 0
-      },
-      frameTypeCounts,
-      topSizeRows: rows.slice().sort((left, right) => (right.size || 0) - (left.size || 0)).slice(0, 10)
-    };
-  }
-  function buildMovingAveragePoints(track, rows, windowSize) {
-    const points = [];
-    const windowRows = [];
-    let windowBytes = 0;
-    let windowDuration = 0;
-    for (let index = 0; index < rows.length; index += 1) {
-      const row = rows[index];
-      const durationSeconds = getSampleDurationSeconds(row, track, rows, index);
-      const size = Number(row.size) || 0;
-      windowRows.push({ row, size, durationSeconds });
-      windowBytes += size;
-      windowDuration += durationSeconds;
-      while (windowRows.length > windowSize) {
-        const removed = windowRows.shift();
-        windowBytes -= removed.size;
-        windowDuration -= removed.durationSeconds;
-      }
-      const pointCount = windowRows.length;
-      points.push({
-        time: getRowTimeSeconds(row),
-        bitrate: windowDuration > 0 ? windowBytes * 8 / windowDuration : 0,
-        fps: windowDuration > 0 ? pointCount / windowDuration : 0,
-        row
-      });
-    }
-    return points;
-  }
-  function getSampleDurationSeconds(row, track, rows, index) {
-    const timescale = Number(track && track.timescale);
-    const duration = Number(row.duration);
-    if (timescale > 0 && duration > 0) return duration / timescale;
-    if (rows && index < rows.length - 1) {
-      const diff = getRowTimeSeconds(rows[index + 1]) - getRowTimeSeconds(row);
-      if (diff > 0) return diff;
-    }
-    return 0;
-  }
-  function getRowsDurationSeconds(track, rows) {
-    const durationSum = rows.reduce((sum, row, index) => sum + getSampleDurationSeconds(row, track, rows, index), 0);
-    if (durationSum > 0) return durationSum;
-    const trackDuration = Number(track && track.duration);
-    const timescale = Number(track && track.timescale);
-    return trackDuration > 0 && timescale > 0 ? trackDuration / timescale : 0;
-  }
-  function getMedian(sortedValues) {
-    if (!sortedValues.length) return 0;
-    const middle = Math.floor(sortedValues.length / 2);
-    return sortedValues.length % 2 ? sortedValues[middle] : (sortedValues[middle - 1] + sortedValues[middle]) / 2;
-  }
-  function renderMetricsBody(track, metrics, pointLimit) {
-    const summary = metrics.summary;
-    return [
-      '<div class="metrics-summary-grid">',
-      summaryCard(t("metrics.track"), formatTrackLabel(track) + " / " + track.codec),
-      summaryCard(t("column.duration"), formatMetricNumber(summary.durationSeconds, 3) + "s"),
-      summaryCard(t("column.avgBitrate"), formatBitsPerSecond(summary.averageBitrate)),
-      summaryCard(track.handlerType === "vide" ? t("metrics.avgFps") : t("metrics.samplesPerSecond"), formatMetricNumber(summary.averageFps, 3)),
-      summaryCard(t("metrics.peakMaBitrate"), formatBitsPerSecond(summary.peakMovingBitrate)),
-      summaryCard(t("metrics.peakMaFps"), formatMetricNumber(summary.peakMovingFps, 3)),
-      summaryCard(t("metrics.medianSample"), formatBytes(summary.medianSampleSize)),
-      summaryCard(t("metrics.syncSamples"), String(summary.syncSamples)),
-      "</div>",
-      '<div class="metrics-chart-grid">',
-      renderMetricChart(t("metrics.bitrateMovingAverage"), metrics.movingAveragePoints, "bitrate", pointLimit, formatBitsPerSecond, "bitrate"),
-      renderMetricChart(track.handlerType === "vide" ? t("metrics.fpsMovingAverage") : t("metrics.sampleRateMovingAverage"), metrics.movingAveragePoints, "fps", pointLimit, (value) => formatMetricNumber(value, 3), "fps"),
-      "</div>",
-      '<div class="metrics-insights">',
-      renderFrameTypeDistribution(metrics.frameTypeCounts, metrics.rows.length),
-      renderTopSampleRows(metrics.topSizeRows),
-      "</div>"
-    ].join("");
-  }
-  function renderMetricChart(title, points, valueKey, pointLimit, formatter, className) {
-    if (!points.length) return '<div class="metric-chart-card">' + emptyHtml("empty.noChartPoints") + "</div>";
-    const chartPoints = downsamplePoints(points, pointLimit);
-    const values = chartPoints.map((point) => Number(point[valueKey]) || 0);
-    const maxValue = Math.max(1, Math.max.apply(null, values));
-    const minTime = chartPoints[0].time;
-    const maxTime = chartPoints[chartPoints.length - 1].time;
-    const timeSpan = Math.max(1e-6, maxTime - minTime);
-    const innerWidth = METRIC_CHART_WIDTH - METRIC_CHART_PADDING.left - METRIC_CHART_PADDING.right;
-    const innerHeight = METRIC_CHART_HEIGHT - METRIC_CHART_PADDING.top - METRIC_CHART_PADDING.bottom;
-    const polylinePoints = chartPoints.map((point) => {
-      const x = METRIC_CHART_PADDING.left + (point.time - minTime) / timeSpan * innerWidth;
-      const y = METRIC_CHART_PADDING.top + innerHeight - (Number(point[valueKey]) || 0) / maxValue * innerHeight;
-      return x.toFixed(2) + "," + y.toFixed(2);
-    }).join(" ");
-    const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-      const y = METRIC_CHART_PADDING.top + innerHeight - ratio * innerHeight;
-      const label = formatter(maxValue * ratio);
-      return '<line class="metric-grid-line" x1="' + METRIC_CHART_PADDING.left + '" x2="' + (METRIC_CHART_WIDTH - METRIC_CHART_PADDING.right) + '" y1="' + y.toFixed(2) + '" y2="' + y.toFixed(2) + '"></line><text class="metric-axis-label" x="8" y="' + (y + 4).toFixed(2) + '">' + escapeHtml(label) + "</text>";
-    }).join("");
-    return '<section class="metric-chart-card"><div class="metric-chart-head"><strong>' + escapeHtml(title) + "</strong><span>" + escapeHtml(t("metrics.chartMax", { value: formatter(maxValue), count: chartPoints.length })) + '</span></div><svg class="metric-chart" viewBox="0 0 ' + METRIC_CHART_WIDTH + " " + METRIC_CHART_HEIGHT + '" preserveAspectRatio="none" aria-label="' + escapeHtml(title) + '">' + gridLines + '<text class="metric-axis-label" x="' + METRIC_CHART_PADDING.left + '" y="' + (METRIC_CHART_HEIGHT - 8) + '">' + escapeHtml(formatMetricNumber(minTime, 2)) + 's</text><text class="metric-axis-label" text-anchor="end" x="' + (METRIC_CHART_WIDTH - METRIC_CHART_PADDING.right) + '" y="' + (METRIC_CHART_HEIGHT - 8) + '">' + escapeHtml(formatMetricNumber(maxTime, 2)) + 's</text><polyline class="metric-line ' + escapeHtml(className) + '" points="' + polylinePoints + '"></polyline></svg></section>';
-  }
-  function downsamplePoints(points, limit) {
-    if (points.length <= limit) return points;
-    const result = [];
-    const step = points.length / limit;
-    for (let index = 0; index < limit; index += 1) {
-      result.push(points[Math.min(points.length - 1, Math.floor(index * step))]);
-    }
-    return result;
-  }
-  function renderFrameTypeDistribution(frameTypeCounts, totalRows) {
-    const entries = Array.from(frameTypeCounts.entries()).sort((left, right) => right[1] - left[1]);
-    if (!entries.length) return '<section class="metric-section"><h3>' + escapeHtml(t("metrics.frameTypeDistribution")) + "</h3>" + emptyHtml("empty.noFrameTypeData") + "</section>";
-    return '<section class="metric-section"><h3>' + escapeHtml(t("metrics.frameTypeDistribution")) + '</h3><div class="metric-type-list">' + entries.map(([frameType, count]) => {
-      const ratio = totalRows ? count * 100 / totalRows : 0;
-      return '<div class="metric-type-row"><span>' + escapeHtml(frameType) + '</span><div class="metric-type-bar"><span style="width:' + clamp(ratio, 0, 100).toFixed(2) + '%"></span></div><strong>' + count + "</strong></div>";
-    }).join("") + "</div></section>";
-  }
-  function renderTopSampleRows(rows) {
-    if (!rows.length) return '<section class="metric-section"><h3>' + escapeHtml(t("metrics.largestSamples")) + "</h3>" + emptyHtml("empty.noSamples") + "</section>";
-    return '<section class="metric-section"><h3>' + escapeHtml(t("metrics.largestSamples")) + '</h3><table class="table"><thead><tr><th>' + escapeHtml(t("value.sample")) + "</th><th>" + escapeHtml(t("column.time")) + "</th><th>" + escapeHtml(t("column.size")) + "</th><th>" + escapeHtml(t("column.type")) + "</th></tr></thead><tbody>" + rows.map((row) => {
-      const frameRowKey = getFrameRowKey(row);
-      return '<tr class="metric-click-row" role="button" tabindex="0" data-frame-key="' + escapeHtml(frameRowKey) + '"><td>#' + row.sampleIndex + "</td><td>" + escapeHtml(formatGraphTime(row)) + "</td><td>" + escapeHtml(formatBytes(row.size || 0)) + "</td><td>" + escapeHtml(formatFrameTypeLabel(row.frameType || "sample")) + "</td></tr>";
-    }).join("") + "</tbody></table></section>";
-  }
-  function renderFrames() {
-    if (!state.analysis) return;
-    const rows = applyFrameFilters(state.analysis.sampleRows);
-    state.filteredRows = rows;
-    state.graphRows = rows.slice().sort(compareRowsByPresentationTime);
-    state.graphMaxSize = Math.max(1, ...state.graphRows.map((row) => row.size || 0));
-    elements.frameCountText.textContent = t("count.rows", { count: rows.length });
-    elements.frameSpacer.style.height = Math.max(1, rows.length * ROW_HEIGHT) + "px";
-    elements.graphSpacer.style.height = Math.max(1, state.graphRows.length * GRAPH_ROW_HEIGHT) + "px";
-    renderGraphAxis();
-    scheduleFrameRender();
-  }
-  function compareRowsByPresentationTime(left, right) {
-    const leftTime = getRowTimeSeconds(left);
-    const rightTime = getRowTimeSeconds(right);
-    if (leftTime !== rightTime) return leftTime - rightTime;
-    if (left.trackId !== right.trackId) return left.trackId - right.trackId;
-    return left.sampleIndex - right.sampleIndex;
-  }
-  function getRowTrack(row) {
-    if (!state.analysis) return null;
-    return state.analysis.tracks.find((track) => track.trackId === row.trackId) || null;
-  }
-  function getRowTimeSeconds(row) {
-    const track = getRowTrack(row);
-    if (!track || !track.timescale) return Number(row.pts || row.dts || row.sampleIndex || 0);
-    return Number(row.pts || row.dts || 0) / Number(track.timescale);
-  }
-  function renderGraphAxis() {
-    const maxSize = state.graphMaxSize || 1;
-    const ticks = [0, 0.25, 0.5, 0.75, 1];
-    elements.graphAxisScale.innerHTML = ticks.map((ratio) => {
-      const value = Math.round(maxSize * ratio);
-      return '<span class="axis-tick" style="left:' + ratio * 100 + '%">' + escapeHtml(formatBytes(value)) + "</span>";
-    }).join("");
-    elements.graphAxisUnit.textContent = t("unit.max", { value: formatBytes(maxSize) });
-  }
-  function applyFrameFilters(rows) {
-    const trackValue = elements.trackFilter.value;
-    const typeValue = elements.typeFilter.value;
-    const syncValue = elements.syncFilter.value;
-    const minSize = elements.minSizeFilter.value === "" ? null : Number(elements.minSizeFilter.value);
-    const maxSize = elements.maxSizeFilter.value === "" ? null : Number(elements.maxSizeFilter.value);
-    const warningOnly = elements.warningOnlyFilter.checked;
-    return rows.filter((row) => {
-      if (trackValue && String(row.trackId) !== trackValue) return false;
-      if (typeValue) {
-        if (typeValue === "mixed") {
-          if (!String(row.frameType).startsWith("mixed")) return false;
-        } else if ((row.frameType || "unknown") !== typeValue) return false;
-      }
-      if (syncValue === "yes" && !row.isSync) return false;
-      if (syncValue === "no" && row.isSync) return false;
-      if (minSize !== null && row.size < minSize) return false;
-      if (maxSize !== null && row.size > maxSize) return false;
-      if (warningOnly && (!row.warnings || !row.warnings.length)) return false;
-      return true;
-    });
-  }
-  function scheduleFrameRender() {
-    cancelAnimationFrame(state.renderFrameRequest);
-    state.renderFrameRequest = requestAnimationFrame(() => {
-      if (state.frameViewMode === "graph") renderVisibleGraphRows();
-      else renderVisibleFrameRows();
-    });
-  }
-  function renderVisibleFrameRows() {
-    const rows = state.filteredRows;
-    const scrollTop = elements.frameScroller.scrollTop;
-    const height = elements.frameScroller.clientHeight || 400;
-    const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
-    const last = Math.min(rows.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + 8);
-    const html = [];
-    for (let index = first; index < last; index += 1) {
-      html.push(renderFrameRow(rows[index], index));
-    }
-    elements.frameSpacer.innerHTML = html.join("");
-  }
-  function renderVisibleGraphRows() {
-    const rows = state.graphRows;
-    const scrollTop = elements.graphScroller.scrollTop;
-    const height = elements.graphScroller.clientHeight || 400;
-    const first = Math.max(0, Math.floor(scrollTop / GRAPH_ROW_HEIGHT) - 10);
-    const last = Math.min(rows.length, Math.ceil((scrollTop + height) / GRAPH_ROW_HEIGHT) + 10);
-    const html = [];
-    for (let index = first; index < last; index += 1) {
-      html.push(renderGraphRow(rows[index], index));
-    }
-    elements.graphSpacer.innerHTML = html.join("");
-  }
-  function renderFrameRow(row, visualIndex) {
-    const type = row.frameType || "unknown";
-    const typeClass = getFrameTypeClass(type);
-    const chunkOrFragment = row.fragmentIndex ? "frag " + row.fragmentIndex : row.chunkIndex ? "chunk " + row.chunkIndex : "";
-    const frameRowKey = getFrameRowKey(row);
-    const selectedClass = frameRowKey === state.selectedFrameKey ? " selected" : "";
-    const ariaLabel = t("aria.seekFrame", { trackId: row.trackId, sampleIndex: row.sampleIndex, time: formatGraphTime(row) });
-    return '<div class="frame-row' + selectedClass + '" role="button" tabindex="0" data-frame-key="' + escapeHtml(frameRowKey) + '" aria-label="' + escapeHtml(ariaLabel) + '" style="top:' + visualIndex * ROW_HEIGHT + 'px"><div>' + row.sampleIndex + "</div><div>" + row.trackId + '</div><div title="' + escapeHtml(row.offset) + '">' + escapeHtml(row.offset) + "</div><div>" + row.size + "</div><div>" + row.dts + "</div><div>" + row.pts + "</div><div>" + row.duration + "</div><div>" + (row.isSync ? t("value.yes") : t("value.no")) + '</div><div><span class="pill ' + typeClass + '">' + escapeHtml(formatFrameTypeLabel(type)) + '</span></div><div title="' + escapeHtml(row.nalTypes.join(", ")) + '">' + escapeHtml(row.nalTypes.join(",")) + "</div><div>" + escapeHtml(chunkOrFragment) + "</div></div>";
-  }
-  function renderGraphRow(row, visualIndex) {
-    const type = row.frameType || "unknown";
-    const typeClass = getFrameTypeClass(type);
-    const widthPercent = state.graphMaxSize ? clamp((row.size || 0) * 100 / state.graphMaxSize, 0, 100) : 0;
-    const timeLabel = formatGraphTime(row);
-    const frameRowKey = getFrameRowKey(row);
-    const selectedClass = frameRowKey === state.selectedFrameKey ? " selected" : "";
-    const ariaLabel = t("aria.seekFrame", { trackId: row.trackId, sampleIndex: row.sampleIndex, time: timeLabel });
-    const title = [
-      "track " + row.trackId + " sample " + row.sampleIndex,
-      "PTS " + row.pts,
-      "DTS " + row.dts,
-      "size " + row.size + " bytes",
-      "type " + type,
-      "offset " + row.offset
-    ].join(" | ");
-    return '<div class="graph-row' + selectedClass + '" role="button" tabindex="0" data-frame-key="' + escapeHtml(frameRowKey) + '" aria-label="' + escapeHtml(ariaLabel) + '" style="top:' + visualIndex * GRAPH_ROW_HEIGHT + 'px" title="' + escapeHtml(title) + '"><div class="graph-time"><span>' + escapeHtml(timeLabel) + "</span><strong>#" + row.sampleIndex + " T" + row.trackId + '</strong></div><div class="graph-plot"><span class="graph-bar ' + typeClass + '" style="width:' + widthPercent.toFixed(4) + '%"></span></div><div class="graph-size">' + escapeHtml(formatBytes(row.size || 0)) + "</div></div>";
-  }
-  function getFrameTypeClass(type) {
-    if (type === "I" || type === "IDR") return "i";
-    if (type === "P") return "p";
-    if (type === "B") return "b";
-    if (type === "AAC" || type === "audio") return "aac";
-    if (type === "unknown") return "warn";
-    if (String(type).startsWith("mixed")) return "err";
-    return "";
-  }
-  function formatFrameTypeLabel(type) {
-    if (type === "unknown") return t("value.unknown");
-    if (type === "audio") return t("value.audio");
-    if (type === "sample") return t("value.sample");
-    if (String(type).startsWith("mixed") && activeLanguage === "ko") return type.replace("mixed", "\uD63C\uD569");
-    return type;
-  }
-  function formatGraphTime(row) {
-    const track = getRowTrack(row);
-    if (!track || !track.timescale) return String(row.pts || row.dts || row.sampleIndex);
-    return formatTime(row.pts, track.timescale);
-  }
-  function renderFragments() {
-    const analysis = state.analysis;
-    const moofs = analysis.topBoxes.filter((box) => box.type === "moof");
-    if (!moofs.length) {
-      elements.fragmentsPanel.innerHTML = emptyHtml("empty.noMoof");
-      return;
-    }
-    elements.fragmentsPanel.innerHTML = '<table class="table"><thead><tr><th>#</th><th>' + escapeHtml(t("column.offset")) + "</th><th>" + escapeHtml(t("column.size")) + "</th><th>traf</th><th>trun</th><th>" + escapeHtml(t("column.samples")) + "</th></tr></thead><tbody>" + moofs.map((moof, index) => {
-      const trafs = (moof.children || []).filter((child) => child.type === "traf");
-      const truns = findDescendants(moof, "trun", []);
-      const samples = truns.reduce((sum, trun) => sum + (trun.fields.sampleCount || 0), 0);
-      return "<tr><td>" + (index + 1) + "</td><td>" + escapeHtml(moof.offset) + "</td><td>" + escapeHtml(moof.size) + "</td><td>" + trafs.length + "</td><td>" + truns.length + "</td><td>" + samples + "</td></tr>";
-    }).join("") + "</tbody></table>";
-  }
-  function renderWarnings() {
-    const warnings = [];
-    if (state.analysis) {
-      warnings.push.apply(warnings, state.analysis.warnings.map(localizeWarning));
-      for (const box of state.analysis.allBoxes) {
-        for (const warning of box.warnings || []) warnings.push(box.path + ": " + localizeWarning(warning));
-      }
+    function exportCsv() {
+      if (!state.analysis) return;
+      const header = ["trackId", "sampleIndex", "offset", "size", "dts", "pts", "duration", "isSync", "frameType", "nalTypes", "chunkIndex", "fragmentIndex", "warnings"];
+      const lines = [header.join(",")];
       for (const row of state.analysis.sampleRows) {
-        for (const warning of row.warnings || []) warnings.push(t("warning.prefixTrackSample", { trackId: row.trackId, sampleIndex: row.sampleIndex, warning: localizeWarning(warning) }));
+        lines.push(header.map((key) => csvCell(Array.isArray(row[key]) ? row[key].join("|") : row[key])).join(","));
       }
+      downloadText("mp4-samples.csv", lines.join("\n"), "text/csv");
     }
-    if (!warnings.length) {
-      elements.warningsPanel.innerHTML = emptyHtml("empty.noWarnings");
-      return;
+    function csvCell(value) {
+      const text = value === void 0 || value === null ? "" : String(value);
+      if (/[",\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+      return text;
     }
-    elements.warningsPanel.innerHTML = '<div class="warning-list">' + warnings.map((warning) => '<div class="warning-item">' + escapeHtml(warning) + "</div>").join("") + "</div>";
-  }
-  function renderKv(values) {
-    const entries = Array.isArray(values) ? values : Object.entries(values);
-    return '<div class="kv">' + entries.map(([key, value]) => "<div>" + escapeHtml(key) + "</div><div>" + escapeHtml(String(value)) + "</div>").join("") + "</div>";
-  }
-  function localizeWarning(warning) {
-    if (activeLanguage !== "ko") return warning;
-    return String(warning).replace("Sample offset missing.", "\uC0D8\uD50C \uC624\uD504\uC14B\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("Fragment sample size is missing.", "\uD504\uB798\uADF8\uBA3C\uD2B8 \uC0D8\uD50C \uD06C\uAE30\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("Payload too large to parse inline:", "payload\uAC00 \uB108\uBB34 \uCEE4\uC11C inline \uD30C\uC2F1\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4:").replace("Could not parse fields:", "\uD544\uB4DC\uB97C \uD30C\uC2F1\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4:").replace("No moov box found. Fragment-only streams without init segment are not supported.", "moov \uBC15\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. init segment \uC5C6\uB294 fragment-only stream\uC740 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.").replace("AVC sample entry has no avcC box.", "AVC sample entry\uC5D0 avcC \uBC15\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("HEVC sample entry has no hvcC box.", "HEVC sample entry\uC5D0 hvcC \uBC15\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("AAC sample entry has no esds AudioSpecificConfig.", "AAC sample entry\uC5D0 esds AudioSpecificConfig\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.").replace("scan failed:", "\uC2A4\uCE94 \uC2E4\uD328:");
-  }
-  function exportJson() {
-    if (!state.analysis) return;
-    const payload = {
-      file: state.analysis.file,
-      boxes: state.analysis.topBoxes,
-      tracks: state.analysis.tracks.map((track) => ({
-        trackId: track.trackId,
-        handlerType: track.handlerType,
-        codec: track.codec,
-        timescale: track.timescale,
-        duration: track.duration,
-        width: track.width,
-        height: track.height,
-        channelCount: track.channelCount,
-        sampleRate: track.sampleRate,
-        sampleCount: track.sampleCount,
-        avcConfig: track.avcConfig,
-        hevcConfig: track.hevcConfig,
-        audioConfig: track.audioConfig
-      })),
-      sampleRows: state.analysis.sampleRows,
-      warnings: state.analysis.warnings
-    };
-    downloadText("mp4-analysis.json", JSON.stringify(payload, safeJsonReplacer, 2), "application/json");
-  }
-  function exportCsv() {
-    if (!state.analysis) return;
-    const header = ["trackId", "sampleIndex", "offset", "size", "dts", "pts", "duration", "isSync", "frameType", "nalTypes", "chunkIndex", "fragmentIndex", "warnings"];
-    const lines = [header.join(",")];
-    for (const row of state.analysis.sampleRows) {
-      lines.push(header.map((key) => csvCell(Array.isArray(row[key]) ? row[key].join("|") : row[key])).join(","));
+    function downloadText(filename, text, type) {
+      const blob = new Blob([text], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
     }
-    downloadText("mp4-samples.csv", lines.join("\n"), "text/csv");
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[char]);
+    }
   }
-  function csvCell(value) {
-    const text = value === void 0 || value === null ? "" : String(value);
-    if (/[",\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
-    return text;
+
+  // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\main.js
+  if (typeof window !== "undefined") {
+    window.MP4AnalyzerCore = Core;
   }
-  function downloadText(filename, text, type) {
-    const blob = new Blob([text], { type });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
-  function escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, (char) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    })[char]);
-  }
+  startUserInterface(Core);
 })();
 </script>
 </body>

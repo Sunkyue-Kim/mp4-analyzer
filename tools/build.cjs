@@ -7,6 +7,7 @@ const rootDirectory = path.resolve(__dirname, "..");
 const sourceDirectory = path.join(rootDirectory, "src");
 const outputHtmlPath = path.join(rootDirectory, "mp4-analyzer.html");
 const outputMinifiedHtmlPath = path.join(rootDirectory, "mp4-analyzer.min.html");
+const outputPagesHtmlPath = path.join(rootDirectory, "index.html");
 
 async function build() {
   const templateHtml = await fs.readFile(path.join(sourceDirectory, "index.html"), "utf8");
@@ -40,12 +41,15 @@ async function build() {
 
   await fs.writeFile(outputHtmlPath, normalHtml, "utf8");
   await fs.writeFile(outputMinifiedHtmlPath, minifiedHtml, "utf8");
+  await fs.writeFile(outputPagesHtmlPath, minifiedHtml, "utf8");
 
   verifyHtml(outputHtmlPath, normalHtml);
   verifyHtml(outputMinifiedHtmlPath, minifiedHtml);
+  verifyHtml(outputPagesHtmlPath, minifiedHtml);
 
   console.log(`Built ${path.basename(outputHtmlPath)} (${normalHtml.length} bytes)`);
   console.log(`Built ${path.basename(outputMinifiedHtmlPath)} (${minifiedHtml.length} bytes)`);
+  console.log(`Built ${path.basename(outputPagesHtmlPath)} (${minifiedHtml.length} bytes)`);
 }
 
 async function buildCss({ minify }) {
@@ -59,13 +63,44 @@ async function buildCss({ minify }) {
 }
 
 async function buildJavaScript({ minify }) {
-  const source = await fs.readFile(path.join(sourceDirectory, "app.js"), "utf8");
-  const result = await esbuild.transform(source, {
-    loader: "js",
+  const entrySource = await fs.readFile(path.join(sourceDirectory, "app.js"), "utf8");
+  const result = await esbuild.build({
+    stdin: {
+      contents: entrySource,
+      resolveDir: sourceDirectory,
+      sourcefile: "app.js",
+      loader: "js"
+    },
+    plugins: [localSourcePlugin()],
+    bundle: true,
+    write: false,
+    format: "iife",
     minify,
     target: ["chrome115", "edge115", "firefox115", "safari16"]
   });
-  return result.code.trim();
+  return result.outputFiles[0].text.trim();
+}
+
+function localSourcePlugin() {
+  return {
+    name: "local-source",
+    setup(build) {
+      build.onResolve({ filter: /^\./ }, (args) => {
+        return {
+          path: path.resolve(args.resolveDir || sourceDirectory, args.path),
+          namespace: "local-source"
+        };
+      });
+
+      build.onLoad({ filter: /.*/, namespace: "local-source" }, async (args) => {
+        return {
+          contents: await fs.readFile(args.path, "utf8"),
+          loader: "js",
+          resolveDir: path.dirname(args.path)
+        };
+      });
+    }
+  };
 }
 
 function inlineAssets({ templateHtml, css, js }) {
