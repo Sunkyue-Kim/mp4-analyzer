@@ -49,6 +49,9 @@ export function startUserInterface(Core, options = {}) {
   if (typeof document === "undefined" || !document.getElementById) return;
 const FRAME_TABLE_HEADER_HEIGHT = 34;
 const FRAME_TABLE_MINIMUM_WIDTH = "1048px";
+const SAMPLE_ENTRY_DERIVED_FIELD_NAMES = new Set(["codecDescriptor", "codecConfig", "esds"]);
+const JSON_BYTE_PREVIEW_COUNT = 16;
+const JSON_BYTE_EXPANDED_LIMIT = 2048;
 const state = {
   analysis: null,
   language: options.initialLanguage || getLanguage(),
@@ -1204,9 +1207,12 @@ function renderBoxTree() {
 }
 
 function renderBoxNode(node) {
-  const childHtml = node.children && node.children.length ? '<div class="tree-children">' + node.children.map(renderBoxNode).join("") + '</div>' : "";
-  return '<div class="tree-node"><button type="button" class="tree-row" data-path="' + escapeHtml(node.path) + '" title="' + escapeHtml(formatBoxTypeLabel(node.type)) + '">' +
-    '<span class="type">' + escapeHtml(node.type) + '</span><span class="size">' + formatBytes(Number(node.size)) + ' @ ' + escapeHtml(node.offset) + '</span></button>' + childHtml + '</div>';
+  const children = getBoxNodeChildren(node);
+  const childHtml = children.length ? '<div class="tree-children">' + children.map(renderBoxNode).join("") + '</div>' : "";
+  const syntheticClassName = node.synthetic ? " synthetic" : "";
+  const syntheticAttribute = node.synthetic ? ' data-synthetic-box="true"' : "";
+  return '<div class="tree-node"><button type="button" class="tree-row' + syntheticClassName + '" data-path="' + escapeHtml(node.path) + '"' + syntheticAttribute + ' title="' + escapeHtml(formatBoxTypeLabel(node.type)) + '">' +
+    '<span class="type">' + escapeHtml(node.type) + '</span><span class="size">' + escapeHtml(formatBoxNodeSize(node)) + '</span></button>' + childHtml + '</div>';
 }
 
 function handleBoxTreeClick(event) {
@@ -1278,7 +1284,7 @@ function findBoxByPath(path) {
 function findBoxByPathInTree(nodes, path) {
   for (const node of nodes || []) {
     if (node.path === path) return node;
-    const childMatch = findBoxByPathInTree(node.children, path);
+    const childMatch = findBoxByPathInTree(getBoxNodeChildren(node), path);
     if (childMatch) return childMatch;
   }
   return null;
@@ -1308,18 +1314,230 @@ function renderSelectedBox() {
     return;
   }
   const node = state.selectedBox;
+  const actualFields = getActualBoxFields(node);
+  const derivedFields = getDerivedBoxFields(node);
+  const derivedHtml = derivedFields ? [
+    '<section class="detail-section derived-section">',
+    '<h3>' + escapeHtml(t("boxes.derivedFields")) + '</h3>',
+    '<p class="detail-note">' + escapeHtml(t("boxes.derivedNotice")) + '</p>',
+    renderJsonViewer(derivedFields, { rootLabel: t("boxes.derivedFields"), defaultOpenDepth: 1 }),
+    '</section>'
+  ].join("") : "";
+  const syntheticNoticeHtml = node.synthetic ? '<p class="detail-note synthetic-note">' + escapeHtml(t("boxes.syntheticNotice")) + '</p>' : "";
   elements.boxDetail.innerHTML = '<div class="detail-grid"><div>' +
-    '<h2>' + escapeHtml(t("boxes.detailTitle")) + '</h2>' + renderKv([
+    '<h2>' + escapeHtml(t("boxes.detailTitle")) + (node.synthetic ? ' <span class="synthetic-badge">' + escapeHtml(t("boxes.synthetic")) + '</span>' : "") + '</h2>' +
+    syntheticNoticeHtml +
+    renderKv([
       [t("box.field.type"), formatBoxTypeLabel(node.type)],
       [t("box.field.description"), getBoxTypeDescription(node.type)],
       [t("box.field.path"), node.path],
-      [t("box.field.offset"), node.offset],
-      [t("box.field.size"), node.size + " (" + formatBytes(Number(node.size)) + ")"],
-      [t("box.field.headerSize"), node.headerSize],
-      [t("box.field.children"), node.children.length],
-      [t("box.field.warnings"), node.warnings.length ? node.warnings.join("; ") : t("value.none")]
-    ]) + '</div><div><h2>' + escapeHtml(t("boxes.parsedFields")) + '</h2><pre class="code">' +
-    escapeHtml(JSON.stringify(node.fields, safeJsonReplacer, 2)) + '</pre></div></div>';
+      [t("box.field.offset"), node.offset || t("value.notAvailable")],
+      [t("box.field.size"), formatBoxNodeSize(node).replace(" @ " + String(node.offset || ""), "")],
+      [t("box.field.headerSize"), node.headerSize === undefined ? t("value.notAvailable") : node.headerSize],
+      [t("box.field.children"), getBoxNodeChildren(node).length],
+      [t("box.field.warnings"), node.warnings && node.warnings.length ? node.warnings.join("; ") : t("value.none")]
+    ]) + '</div><div class="field-viewer-column"><section class="detail-section">' +
+    '<h2>' + escapeHtml(t("boxes.actualFields")) + '</h2>' +
+    '<p class="detail-note">' + escapeHtml(t("boxes.actualFieldsNotice")) + '</p>' +
+    renderJsonViewer(actualFields, { rootLabel: t("boxes.actualFields"), defaultOpenDepth: 2 }) +
+    '</section>' + derivedHtml + '</div></div>';
+}
+
+function getBoxNodeChildren(node) {
+  return [...(node && node.children || []), ...getSyntheticBoxChildren(node)];
+}
+
+function getSyntheticBoxChildren(node) {
+  if (!node || node.synthetic || node.type !== "stsd" || !node.fields || !Array.isArray(node.fields.entries)) return [];
+  return node.fields.entries.map((entry) => createSyntheticSampleEntryNode(node, entry));
+}
+
+function createSyntheticSampleEntryNode(parentNode, entry) {
+  const path = parentNode.path + "/entry[" + entry.index + "]:" + entry.format;
+  return {
+    type: entry.format,
+    path,
+    offset: parentNode.offset || "",
+    size: entry.size,
+    headerSize: 0,
+    children: (entry.boxes || []).map((childBox, childIndex) => createSyntheticSampleEntryChildNode(path, parentNode, childBox, childIndex)),
+    fields: createActualSampleEntryFields(entry),
+    warnings: [],
+    synthetic: true,
+    syntheticKind: "sample-entry",
+    sourceBoxPath: parentNode.path,
+    sourceEntry: entry
+  };
+}
+
+function createSyntheticSampleEntryChildNode(sampleEntryPath, parentNode, childBox, childIndex) {
+  return {
+    type: childBox.type,
+    path: sampleEntryPath + "/" + childBox.type + "[" + (childIndex + 1) + "]",
+    offset: parentNode.offset || "",
+    size: childBox.size,
+    headerSize: 8,
+    children: [],
+    fields: childBox.fields || {},
+    warnings: [],
+    synthetic: true,
+    syntheticKind: "sample-entry-child-box",
+    sourceBoxPath: parentNode.path
+  };
+}
+
+function formatBoxNodeSize(node) {
+  const formattedSize = Number.isFinite(Number(node.size)) ? String(node.size) + " (" + formatBytes(Number(node.size)) + ")" : t("value.notAvailable");
+  if (node.synthetic) return formattedSize + " · " + t("boxes.synthetic");
+  return formattedSize + " @ " + String(node.offset || "");
+}
+
+function getActualBoxFields(node) {
+  if (!node || !node.fields) return {};
+  if (node.syntheticKind === "sample-entry" && node.sourceEntry) return createActualSampleEntryFields(node.sourceEntry);
+  if (node.type === "stsd") return createActualStsdFields(node.fields);
+  return node.fields;
+}
+
+function createActualStsdFields(fields) {
+  return {
+    version: fields.version,
+    flags: fields.flags,
+    entryCount: fields.entryCount,
+    entries: Array.isArray(fields.entries) ? fields.entries.map(createActualSampleEntryFields) : []
+  };
+}
+
+function createActualSampleEntryFields(entry) {
+  const actualFields = {};
+  for (const [fieldName, value] of Object.entries(entry || {})) {
+    if (SAMPLE_ENTRY_DERIVED_FIELD_NAMES.has(fieldName)) continue;
+    if (fieldName === "boxes") {
+      actualFields.boxes = (value || []).map((childBox, childIndex) => ({
+        index: childIndex + 1,
+        type: childBox.type,
+        size: childBox.size,
+        parsedFieldKeys: childBox.fields ? Object.keys(childBox.fields) : []
+      }));
+    } else {
+      actualFields[fieldName] = value;
+    }
+  }
+  return actualFields;
+}
+
+function getDerivedBoxFields(node) {
+  if (!node) return null;
+  if (node.syntheticKind === "sample-entry" && node.sourceEntry) {
+    const sampleEntryDerivedFields = createSampleEntryDerivedFields(node.sourceEntry);
+    return sampleEntryDerivedFields ? { sourceBoxPath: node.sourceBoxPath, sampleEntry: sampleEntryDerivedFields } : null;
+  }
+  if (node.type !== "stsd" || !node.fields || !Array.isArray(node.fields.entries)) return null;
+  const sampleEntries = node.fields.entries
+    .map(createSampleEntryDerivedFields)
+    .filter(Boolean);
+  return sampleEntries.length ? { sourceBoxPath: node.path, sampleEntries } : null;
+}
+
+function createSampleEntryDerivedFields(entry) {
+  const derivedFields = { index: entry.index, format: entry.format };
+  let hasDerivedFields = false;
+  for (const fieldName of SAMPLE_ENTRY_DERIVED_FIELD_NAMES) {
+    if (entry && entry[fieldName] !== undefined) {
+      derivedFields[fieldName] = entry[fieldName];
+      hasDerivedFields = true;
+    }
+  }
+  return hasDerivedFields ? derivedFields : null;
+}
+
+function renderJsonViewer(value, options = {}) {
+  const normalizedValue = normalizeJsonValue(value);
+  if (isEmptyJsonValue(normalizedValue)) {
+    return '<div class="json-empty">' + escapeHtml(t("boxes.emptyFields")) + '</div>';
+  }
+  return '<div class="json-view">' + renderJsonValue(normalizedValue, {
+    key: options.rootLabel || "root",
+    depth: 0,
+    isRoot: true,
+    defaultOpenDepth: options.defaultOpenDepth || 1
+  }) + '</div>';
+}
+
+function renderJsonValue(value, context) {
+  if (Array.isArray(value)) return renderJsonArray(value, context);
+  if (value && typeof value === "object") return renderJsonObject(value, context);
+  return renderJsonScalar(value);
+}
+
+function renderJsonObject(value, context) {
+  const entries = Object.entries(value);
+  if (context.isRoot) {
+    return entries.map(([fieldName, fieldValue]) => renderJsonEntry(fieldName, fieldValue, context.depth, context.defaultOpenDepth)).join("");
+  }
+  const openAttribute = context.depth < context.defaultOpenDepth ? " open" : "";
+  return '<details class="json-node json-object"' + openAttribute + '><summary><span class="json-summary-type">{ }</span><span class="json-preview">' +
+    escapeHtml(t("boxes.jsonProperties", { count: entries.length })) + '</span></summary><div class="json-children">' +
+    entries.map(([fieldName, fieldValue]) => renderJsonEntry(fieldName, fieldValue, context.depth + 1, context.defaultOpenDepth)).join("") +
+    '</div></details>';
+}
+
+function renderJsonArray(value, context) {
+  if (isByteArrayField(context.key, value)) return renderJsonByteArray(value);
+  const openAttribute = context.depth < context.defaultOpenDepth && value.length <= 20 ? " open" : "";
+  return '<details class="json-node json-array"' + openAttribute + '><summary><span class="json-summary-type">[ ]</span><span class="json-preview">' +
+    escapeHtml(t("boxes.jsonItems", { count: value.length })) + createJsonArrayPreview(value) + '</span></summary><div class="json-children">' +
+    value.map((item, index) => renderJsonEntry(String(index), item, context.depth + 1, context.defaultOpenDepth)).join("") +
+    '</div></details>';
+}
+
+function renderJsonEntry(fieldName, fieldValue, depth, defaultOpenDepth) {
+  return '<div class="json-entry" style="--json-depth:' + depth + '"><span class="json-key">' + escapeHtml(fieldName) + '</span><div class="json-value">' +
+    renderJsonValue(fieldValue, { key: fieldName, depth, isRoot: false, defaultOpenDepth }) + '</div></div>';
+}
+
+function renderJsonScalar(value) {
+  const type = value === null ? "null" : typeof value;
+  return '<span class="json-scalar ' + escapeHtml(type) + '">' + escapeHtml(formatJsonScalar(value)) + '</span>';
+}
+
+function renderJsonByteArray(value) {
+  const preview = value.slice(0, JSON_BYTE_PREVIEW_COUNT).map(formatByteAsHex).join(" ");
+  const expandedValues = value.slice(0, JSON_BYTE_EXPANDED_LIMIT).map(formatByteAsHex).join(" ");
+  const truncatedHtml = value.length > JSON_BYTE_EXPANDED_LIMIT ? '<div class="json-byte-truncation">' +
+    escapeHtml(t("boxes.bytesTruncated", { shown: JSON_BYTE_EXPANDED_LIMIT, count: value.length })) + '</div>' : "";
+  return '<details class="json-node json-byte-array"><summary><span class="json-summary-type">bytes</span><span class="json-preview">' +
+    escapeHtml(t("boxes.bytesPreview", { count: value.length, preview })) + '</span></summary><code class="json-byte-dump">' +
+    escapeHtml(expandedValues) + '</code>' + truncatedHtml + '</details>';
+}
+
+function normalizeJsonValue(value) {
+  return JSON.parse(JSON.stringify(value === undefined ? null : value, safeJsonReplacer));
+}
+
+function isEmptyJsonValue(value) {
+  if (value === null || value === undefined) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  return typeof value === "object" && Object.keys(value).length === 0;
+}
+
+function isByteArrayField(fieldName, value) {
+  return fieldName === "bytes" && value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
+}
+
+function createJsonArrayPreview(value) {
+  if (!value.length || value.length > 6 || value.some((item) => item && typeof item === "object")) return "";
+  return ' · <span class="json-inline-preview">' + escapeHtml(value.map(formatJsonScalar).join(", ")) + '</span>';
+}
+
+function formatJsonScalar(value) {
+  if (typeof value === "string") return '"' + value + '"';
+  if (value === null) return "null";
+  return String(value);
+}
+
+function formatByteAsHex(value) {
+  return Number(value).toString(16).padStart(2, "0").toUpperCase();
 }
 
 function formatBoxTypeLabel(type) {

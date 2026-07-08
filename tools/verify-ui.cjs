@@ -108,7 +108,7 @@ class FakeTreeRow extends FakeElement {
 
 function createFakeTreeRows(html) {
   const rows = [];
-  const pattern = /class="tree-row"[^>]*data-path="([^"]+)"/g;
+  const pattern = /class="[^"]*\btree-row\b[^"]*"[^>]*data-path="([^"]+)"/g;
   let match = pattern.exec(html);
   while (match) {
     rows.push(new FakeTreeRow(decodeHtmlAttribute(match[1])));
@@ -525,11 +525,17 @@ async function main() {
   if (/block-cell [^"']+["'][\s\S]{0,200}title=/.test(sourceUi) || /audio-band-row["'][\s\S]{0,200}title=/.test(sourceUi)) {
     throw new Error("Frame internals must not fall back to OS title tooltips for block or band details.");
   }
-  if (!/tree-row" data-path=/.test(sourceUi) && !/tree-row"[^>]*data-path=/.test(sourceUi)) {
+  if (!/tree-row/.test(sourceUi) || !/data-path=/.test(sourceUi)) {
     throw new Error("Box tree rows must carry a data-path for selection.");
   }
-  if (!/type="button" class="tree-row"/.test(sourceUi)) {
+  if (!/type="button" class="tree-row/.test(sourceUi)) {
     throw new Error("Box tree rows must be explicit buttons.");
+  }
+  if (!/renderJsonViewer/.test(sourceUi) || !/getDerivedBoxFields/.test(sourceUi) || !/getSyntheticBoxChildren/.test(sourceUi)) {
+    throw new Error("Box details must use the collapsible JSON viewer and synthetic stsd child model.");
+  }
+  if (!/SAMPLE_ENTRY_DERIVED_FIELD_NAMES/.test(sourceUi) || !/JSON_BYTE_PREVIEW_COUNT/.test(sourceUi)) {
+    throw new Error("Box details must separate derived sample-entry fields and collapse bytes arrays.");
   }
   if (!/boxTree\.addEventListener\("click", handleBoxTreeClick\)/.test(sourceUi) || !/boxTree\.addEventListener\("pointerup", handleBoxTreePointerUp\)/.test(sourceUi)) {
     throw new Error("Box tree must bind robust pointer and click selection handlers.");
@@ -691,11 +697,37 @@ async function main() {
   }
   if (!preventedDefault) throw new Error("Box tree click should prevent default button behavior.");
   const boxDetailHtml = fakeDocument.getElementById("boxDetail").innerHTML;
-  if (!boxDetailHtml.includes(selectedBox.path) || !boxDetailHtml.includes("Parsed fields")) {
+  if (
+    !boxDetailHtml.includes(selectedBox.path) ||
+    !boxDetailHtml.includes("Actual parsed fields") ||
+    (!boxDetailHtml.includes("json-view") && !boxDetailHtml.includes("json-empty"))
+  ) {
     throw new Error("Clicking a box tree row did not render box details.");
   }
   if (!firstBoxRow.classList.contains("selected")) {
     throw new Error("Clicking a box tree row did not mark the row as selected.");
+  }
+
+  const syntheticRows = boxTree.querySelectorAll(".tree-row").filter((row) => /entry\[1\]:/.test(row.dataset.path));
+  if (!syntheticRows.length) {
+    throw new Error("stsd sample entries should be rendered as selectable synthetic tree children.");
+  }
+  fakeDocument.dispatchEvent({
+    type: "click",
+    target: syntheticRows[0],
+    preventDefault() {}
+  });
+  const selectedSyntheticBox = window.MP4AnalyzerDevTools.getSelectedBox();
+  if (!selectedSyntheticBox || !selectedSyntheticBox.synthetic || selectedSyntheticBox.syntheticKind !== "sample-entry") {
+    throw new Error("Clicking a synthetic stsd sample entry did not select the synthetic node.");
+  }
+  const syntheticDetailHtml = fakeDocument.getElementById("boxDetail").innerHTML;
+  if (
+    !syntheticDetailHtml.includes("Linked convenience data") ||
+    !syntheticDetailHtml.includes("not an independent physical box") ||
+    syntheticDetailHtml.includes('"esds":')
+  ) {
+    throw new Error("Synthetic sample-entry detail should separate linked convenience data from actual fields.");
   }
 
   const frameTypes = new Set(window.MP4AnalyzerDevTools.getAnalysis().sampleRows.map((row) => row.frameType));

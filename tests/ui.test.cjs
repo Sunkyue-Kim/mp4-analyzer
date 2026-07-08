@@ -625,6 +625,11 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /requestAnimationFrame\(runPlaybackSynchronizationStep\)/);
   assert.match(sourceUi, /synchronizeFragmentSelectionToPlayback/);
   assert.match(sourceUi, /handleFragmentRowPointerActivation/);
+  assert.match(sourceUi, /renderJsonViewer/);
+  assert.match(sourceUi, /getSyntheticBoxChildren/);
+  assert.match(sourceUi, /getDerivedBoxFields/);
+  assert.match(sourceUi, /SAMPLE_ENTRY_DERIVED_FIELD_NAMES/);
+  assert.match(sourceUi, /JSON_BYTE_PREVIEW_COUNT/);
   assert.match(sourceUi, /createRecyclerView/);
   assert.match(sourceUi, /buildFrameInternalsModel/);
   assert.match(sourceUi, /buildFrameInternalsColorScale/);

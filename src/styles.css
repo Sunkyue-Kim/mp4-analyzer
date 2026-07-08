@@ -409,6 +409,11 @@
       border: 0;
     }
 
+    .tree-row.synthetic {
+      color: #245b66;
+      background: #f3fbfc;
+    }
+
     .tree-row .type {
       font-weight: 700;
       min-width: 38px;
@@ -818,6 +823,60 @@
       gap: 14px;
     }
 
+    .field-viewer-column {
+      min-width: 0;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .detail-section {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .detail-section h2,
+    .detail-section h3 {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+      font-size: 13px;
+    }
+
+    .detail-note {
+      margin: 0;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    .synthetic-note {
+      margin: 0 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .synthetic-badge {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 6px;
+      padding: 2px 7px;
+      border: 1px solid #9ed8dd;
+      border-radius: 999px;
+      background: #e9f9fb;
+      color: #176a78;
+      font-size: 11px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+
     .kv {
       display: grid;
       grid-template-columns: minmax(145px, 0.38fr) 1fr;
@@ -843,6 +902,133 @@
       font-size: 12px;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
+    }
+
+    .json-view {
+      min-width: 0;
+      overflow: auto;
+      padding: 10px 0 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.55;
+      color: #0f2340;
+      background: #fff;
+    }
+
+    .json-entry {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.32fr) minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      padding: 3px 12px 3px calc(12px + var(--json-depth) * 14px);
+      min-width: 0;
+    }
+
+    .json-entry:hover {
+      background: #f7fbfd;
+    }
+
+    .json-key {
+      color: #24527a;
+      font-weight: 700;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .json-value {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .json-node {
+      min-width: 0;
+    }
+
+    .json-node > summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      cursor: pointer;
+      color: #203955;
+      list-style: none;
+    }
+
+    .json-node > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .json-node > summary::before {
+      content: ">";
+      display: inline-grid;
+      place-items: center;
+      width: 14px;
+      height: 14px;
+      border: 1px solid #b9c9d8;
+      border-radius: 4px;
+      color: #4d6f8d;
+      font-size: 10px;
+      transform: rotate(0deg);
+      transition: transform 120ms ease;
+      flex: 0 0 auto;
+    }
+
+    .json-node[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    .json-summary-type {
+      color: #0f766e;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .json-preview,
+    .json-inline-preview,
+    .json-byte-truncation {
+      color: var(--muted);
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .json-children {
+      margin-top: 3px;
+      border-left: 1px solid #e4edf5;
+      margin-left: 7px;
+    }
+
+    .json-scalar.string { color: #7c3aed; }
+    .json-scalar.number { color: #0f766e; }
+    .json-scalar.boolean { color: #b45309; }
+    .json-scalar.null { color: #64748b; }
+
+    .json-byte-array {
+      border: 1px solid #dbe7ef;
+      border-radius: 6px;
+      background: #f8fbfd;
+      padding: 5px 7px;
+    }
+
+    .json-byte-dump {
+      display: block;
+      margin: 8px 0 0 22px;
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: #334155;
+    }
+
+    .json-byte-truncation {
+      margin: 6px 0 0 22px;
+      font-family: var(--sans);
+      font-size: 12px;
+    }
+
+    .json-empty {
+      padding: 12px;
+      color: var(--muted);
+      font-size: 12px;
     }
 
     .table {

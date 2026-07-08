@@ -385,6 +385,10 @@ button:disabled {
   background: #e9f5f7;
   border: 0;
 }
+.tree-row.synthetic {
+  color: #245b66;
+  background: #f3fbfc;
+}
 .tree-row .type {
   font-weight: 700;
   min-width: 38px;
@@ -746,6 +750,54 @@ button:disabled {
   grid-template-columns: minmax(260px, 0.85fr) minmax(320px, 1.15fr);
   gap: 14px;
 }
+.field-viewer-column {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.detail-section {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+.detail-section h2,
+.detail-section h3 {
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+  font-size: 13px;
+}
+.detail-note {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  border-bottom: 1px solid var(--line);
+  background: #fbfdff;
+}
+.synthetic-note {
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.synthetic-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border: 1px solid #9ed8dd;
+  border-radius: 999px;
+  background: #e9f9fb;
+  color: #176a78;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
 .kv {
   display: grid;
   grid-template-columns: minmax(145px, 0.38fr) 1fr;
@@ -768,6 +820,123 @@ button:disabled {
   font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.json-view {
+  min-width: 0;
+  overflow: auto;
+  padding: 10px 0 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: #0f2340;
+  background: #fff;
+}
+.json-entry {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.32fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 3px 12px 3px calc(12px + var(--json-depth) * 14px);
+  min-width: 0;
+}
+.json-entry:hover {
+  background: #f7fbfd;
+}
+.json-key {
+  color: #24527a;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.json-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.json-node {
+  min-width: 0;
+}
+.json-node > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+  color: #203955;
+  list-style: none;
+}
+.json-node > summary::-webkit-details-marker {
+  display: none;
+}
+.json-node > summary::before {
+  content: ">";
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #b9c9d8;
+  border-radius: 4px;
+  color: #4d6f8d;
+  font-size: 10px;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+  flex: 0 0 auto;
+}
+.json-node[open] > summary::before {
+  transform: rotate(90deg);
+}
+.json-summary-type {
+  color: #0f766e;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.json-preview,
+.json-inline-preview,
+.json-byte-truncation {
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.json-children {
+  margin-top: 3px;
+  border-left: 1px solid #e4edf5;
+  margin-left: 7px;
+}
+.json-scalar.string {
+  color: #7c3aed;
+}
+.json-scalar.number {
+  color: #0f766e;
+}
+.json-scalar.boolean {
+  color: #b45309;
+}
+.json-scalar.null {
+  color: #64748b;
+}
+.json-byte-array {
+  border: 1px solid #dbe7ef;
+  border-radius: 6px;
+  background: #f8fbfd;
+  padding: 5px 7px;
+}
+.json-byte-dump {
+  display: block;
+  margin: 8px 0 0 22px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #334155;
+}
+.json-byte-truncation {
+  margin: 6px 0 0 22px;
+  font-family: var(--sans);
+  font-size: 12px;
+}
+.json-empty {
+  padding: 12px;
+  color: var(--muted);
+  font-size: 12px;
 }
 .table {
   width: 100%;
@@ -6403,6 +6572,17 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "boxes.treeTitle": "Box Tree",
           "boxes.detailTitle": "Box detail",
           "boxes.parsedFields": "Parsed fields",
+          "boxes.actualFields": "Actual parsed fields",
+          "boxes.actualFieldsNotice": "This view shows the selected box or synthetic sample-entry chunk itself. Linked convenience data is separated below when available.",
+          "boxes.derivedFields": "Linked convenience data",
+          "boxes.derivedNotice": "These values are derived or duplicated for easier track analysis. They are not independent fields physically stored at the selected box level.",
+          "boxes.synthetic": "synthetic",
+          "boxes.syntheticNotice": "This tree item is a synthetic view built from stsd sample-entry bytes. It is selectable for convenience, but it is not an independent physical box at this path.",
+          "boxes.emptyFields": "No parsed fields.",
+          "boxes.jsonItems": "{count} items",
+          "boxes.jsonProperties": "{count} properties",
+          "boxes.bytesPreview": "{count} bytes \xB7 preview {preview}",
+          "boxes.bytesTruncated": "Showing first {shown} of {count} bytes.",
           "boxes.unknownType": "Unknown or unregistered box type",
           "boxes.noDescription": "No built-in description is available for this box type. It may be vendor-specific, private, or not yet mapped by this analyzer.",
           "field.track": "Track",
@@ -6602,6 +6782,17 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "boxes.treeTitle": "\uBC15\uC2A4 \uD2B8\uB9AC",
           "boxes.detailTitle": "\uBC15\uC2A4 \uC0C1\uC138",
           "boxes.parsedFields": "\uD30C\uC2F1\uB41C \uD544\uB4DC",
+          "boxes.actualFields": "\uC2E4\uC81C \uD30C\uC2F1 \uD544\uB4DC",
+          "boxes.actualFieldsNotice": "\uC120\uD0DD\uD55C \uBC15\uC2A4 \uB610\uB294 synthetic sample-entry chunk \uC790\uCCB4\uC758 \uD544\uB4DC\uB9CC \uD45C\uC2DC\uD569\uB2C8\uB2E4. \uD3B8\uC758\uC0C1 \uC5F0\uACB0\uB41C \uB370\uC774\uD130\uB294 \uC788\uC73C\uBA74 \uC544\uB798\uC5D0 \uBD84\uB9AC\uD574 \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
+          "boxes.derivedFields": "\uC5F0\uACB0\uB41C \uD3B8\uC758 \uB370\uC774\uD130",
+          "boxes.derivedNotice": "\uC774 \uAC12\uB4E4\uC740 \uD2B8\uB799 \uBD84\uC11D\uC744 \uC27D\uAC8C \uD558\uAE30 \uC704\uD574 \uD30C\uC0DD\uB418\uC5C8\uAC70\uB098 \uBCF5\uC81C\uB41C \uB370\uC774\uD130\uC785\uB2C8\uB2E4. \uC120\uD0DD\uD55C \uBC15\uC2A4 \uB808\uBCA8\uC5D0 \uB3C5\uB9BD \uD544\uB4DC\uB85C \uBB3C\uB9AC\uC801\uC73C\uB85C \uC800\uC7A5\uB41C \uB370\uC774\uD130\uAC00 \uC544\uB2D9\uB2C8\uB2E4.",
+          "boxes.synthetic": "synthetic",
+          "boxes.syntheticNotice": "\uC774 \uD2B8\uB9AC \uD56D\uBAA9\uC740 stsd sample-entry bytes\uC5D0\uC11C \uB9CC\uB4E0 synthetic view\uC785\uB2C8\uB2E4. \uC0AC\uC6A9 \uD3B8\uC758\uB97C \uC704\uD574 \uC120\uD0DD \uAC00\uB2A5\uD558\uC9C0\uB9CC, \uC774 \uACBD\uB85C\uC5D0 \uB3C5\uB9BD\uC801\uC778 \uBB3C\uB9AC box\uAC00 \uC788\uB294 \uAC83\uC740 \uC544\uB2D9\uB2C8\uB2E4.",
+          "boxes.emptyFields": "\uD30C\uC2F1\uB41C \uD544\uB4DC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+          "boxes.jsonItems": "{count}\uAC1C \uD56D\uBAA9",
+          "boxes.jsonProperties": "{count}\uAC1C \uC18D\uC131",
+          "boxes.bytesPreview": "{count} bytes \xB7 preview {preview}",
+          "boxes.bytesTruncated": "{count} bytes \uC911 \uCC98\uC74C {shown} bytes\uB9CC \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
           "boxes.unknownType": "\uC54C \uC218 \uC5C6\uAC70\uB098 \uB4F1\uB85D\uB418\uC9C0 \uC54A\uC740 \uBC15\uC2A4 \uD0C0\uC785",
           "boxes.noDescription": "\uC774 \uBC15\uC2A4 \uD0C0\uC785\uC5D0 \uB300\uD55C \uB0B4\uC7A5 \uC124\uBA85\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uBCA4\uB354 \uC804\uC6A9, private, \uB610\uB294 \uC544\uC9C1 \uB9E4\uD551\uB418\uC9C0 \uC54A\uC740 \uD0C0\uC785\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
           "field.track": "\uD2B8\uB799",
@@ -7751,6 +7942,9 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     if (typeof document === "undefined" || !document.getElementById) return;
     const FRAME_TABLE_HEADER_HEIGHT = 34;
     const FRAME_TABLE_MINIMUM_WIDTH = "1048px";
+    const SAMPLE_ENTRY_DERIVED_FIELD_NAMES = /* @__PURE__ */ new Set(["codecDescriptor", "codecConfig", "esds"]);
+    const JSON_BYTE_PREVIEW_COUNT = 16;
+    const JSON_BYTE_EXPANDED_LIMIT = 2048;
     const state = {
       analysis: null,
       language: options.initialLanguage || getLanguage(),
@@ -8805,8 +8999,11 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       elements.boxTree.innerHTML = analysis.topBoxes.map((node) => renderBoxNode(node)).join("");
     }
     function renderBoxNode(node) {
-      const childHtml = node.children && node.children.length ? '<div class="tree-children">' + node.children.map(renderBoxNode).join("") + "</div>" : "";
-      return '<div class="tree-node"><button type="button" class="tree-row" data-path="' + escapeHtml2(node.path) + '" title="' + escapeHtml2(formatBoxTypeLabel(node.type)) + '"><span class="type">' + escapeHtml2(node.type) + '</span><span class="size">' + formatBytes(Number(node.size)) + " @ " + escapeHtml2(node.offset) + "</span></button>" + childHtml + "</div>";
+      const children = getBoxNodeChildren(node);
+      const childHtml = children.length ? '<div class="tree-children">' + children.map(renderBoxNode).join("") + "</div>" : "";
+      const syntheticClassName = node.synthetic ? " synthetic" : "";
+      const syntheticAttribute = node.synthetic ? ' data-synthetic-box="true"' : "";
+      return '<div class="tree-node"><button type="button" class="tree-row' + syntheticClassName + '" data-path="' + escapeHtml2(node.path) + '"' + syntheticAttribute + ' title="' + escapeHtml2(formatBoxTypeLabel(node.type)) + '"><span class="type">' + escapeHtml2(node.type) + '</span><span class="size">' + escapeHtml2(formatBoxNodeSize(node)) + "</span></button>" + childHtml + "</div>";
     }
     function handleBoxTreeClick(event) {
       activateBoxTreeEvent(event);
@@ -8867,7 +9064,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     function findBoxByPathInTree(nodes, path) {
       for (const node of nodes || []) {
         if (node.path === path) return node;
-        const childMatch = findBoxByPathInTree(node.children, path);
+        const childMatch = findBoxByPathInTree(getBoxNodeChildren(node), path);
         if (childMatch) return childMatch;
       }
       return null;
@@ -8895,16 +9092,188 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         return;
       }
       const node = state.selectedBox;
-      elements.boxDetail.innerHTML = '<div class="detail-grid"><div><h2>' + escapeHtml2(t("boxes.detailTitle")) + "</h2>" + renderKv([
+      const actualFields = getActualBoxFields(node);
+      const derivedFields = getDerivedBoxFields(node);
+      const derivedHtml = derivedFields ? [
+        '<section class="detail-section derived-section">',
+        "<h3>" + escapeHtml2(t("boxes.derivedFields")) + "</h3>",
+        '<p class="detail-note">' + escapeHtml2(t("boxes.derivedNotice")) + "</p>",
+        renderJsonViewer(derivedFields, { rootLabel: t("boxes.derivedFields"), defaultOpenDepth: 1 }),
+        "</section>"
+      ].join("") : "";
+      const syntheticNoticeHtml = node.synthetic ? '<p class="detail-note synthetic-note">' + escapeHtml2(t("boxes.syntheticNotice")) + "</p>" : "";
+      elements.boxDetail.innerHTML = '<div class="detail-grid"><div><h2>' + escapeHtml2(t("boxes.detailTitle")) + (node.synthetic ? ' <span class="synthetic-badge">' + escapeHtml2(t("boxes.synthetic")) + "</span>" : "") + "</h2>" + syntheticNoticeHtml + renderKv([
         [t("box.field.type"), formatBoxTypeLabel(node.type)],
         [t("box.field.description"), getBoxTypeDescription(node.type)],
         [t("box.field.path"), node.path],
-        [t("box.field.offset"), node.offset],
-        [t("box.field.size"), node.size + " (" + formatBytes(Number(node.size)) + ")"],
-        [t("box.field.headerSize"), node.headerSize],
-        [t("box.field.children"), node.children.length],
-        [t("box.field.warnings"), node.warnings.length ? node.warnings.join("; ") : t("value.none")]
-      ]) + "</div><div><h2>" + escapeHtml2(t("boxes.parsedFields")) + '</h2><pre class="code">' + escapeHtml2(JSON.stringify(node.fields, safeJsonReplacer, 2)) + "</pre></div></div>";
+        [t("box.field.offset"), node.offset || t("value.notAvailable")],
+        [t("box.field.size"), formatBoxNodeSize(node).replace(" @ " + String(node.offset || ""), "")],
+        [t("box.field.headerSize"), node.headerSize === void 0 ? t("value.notAvailable") : node.headerSize],
+        [t("box.field.children"), getBoxNodeChildren(node).length],
+        [t("box.field.warnings"), node.warnings && node.warnings.length ? node.warnings.join("; ") : t("value.none")]
+      ]) + '</div><div class="field-viewer-column"><section class="detail-section"><h2>' + escapeHtml2(t("boxes.actualFields")) + '</h2><p class="detail-note">' + escapeHtml2(t("boxes.actualFieldsNotice")) + "</p>" + renderJsonViewer(actualFields, { rootLabel: t("boxes.actualFields"), defaultOpenDepth: 2 }) + "</section>" + derivedHtml + "</div></div>";
+    }
+    function getBoxNodeChildren(node) {
+      return [...node && node.children || [], ...getSyntheticBoxChildren(node)];
+    }
+    function getSyntheticBoxChildren(node) {
+      if (!node || node.synthetic || node.type !== "stsd" || !node.fields || !Array.isArray(node.fields.entries)) return [];
+      return node.fields.entries.map((entry) => createSyntheticSampleEntryNode(node, entry));
+    }
+    function createSyntheticSampleEntryNode(parentNode, entry) {
+      const path = parentNode.path + "/entry[" + entry.index + "]:" + entry.format;
+      return {
+        type: entry.format,
+        path,
+        offset: parentNode.offset || "",
+        size: entry.size,
+        headerSize: 0,
+        children: (entry.boxes || []).map((childBox, childIndex) => createSyntheticSampleEntryChildNode(path, parentNode, childBox, childIndex)),
+        fields: createActualSampleEntryFields(entry),
+        warnings: [],
+        synthetic: true,
+        syntheticKind: "sample-entry",
+        sourceBoxPath: parentNode.path,
+        sourceEntry: entry
+      };
+    }
+    function createSyntheticSampleEntryChildNode(sampleEntryPath, parentNode, childBox, childIndex) {
+      return {
+        type: childBox.type,
+        path: sampleEntryPath + "/" + childBox.type + "[" + (childIndex + 1) + "]",
+        offset: parentNode.offset || "",
+        size: childBox.size,
+        headerSize: 8,
+        children: [],
+        fields: childBox.fields || {},
+        warnings: [],
+        synthetic: true,
+        syntheticKind: "sample-entry-child-box",
+        sourceBoxPath: parentNode.path
+      };
+    }
+    function formatBoxNodeSize(node) {
+      const formattedSize = Number.isFinite(Number(node.size)) ? String(node.size) + " (" + formatBytes(Number(node.size)) + ")" : t("value.notAvailable");
+      if (node.synthetic) return formattedSize + " \xB7 " + t("boxes.synthetic");
+      return formattedSize + " @ " + String(node.offset || "");
+    }
+    function getActualBoxFields(node) {
+      if (!node || !node.fields) return {};
+      if (node.syntheticKind === "sample-entry" && node.sourceEntry) return createActualSampleEntryFields(node.sourceEntry);
+      if (node.type === "stsd") return createActualStsdFields(node.fields);
+      return node.fields;
+    }
+    function createActualStsdFields(fields) {
+      return {
+        version: fields.version,
+        flags: fields.flags,
+        entryCount: fields.entryCount,
+        entries: Array.isArray(fields.entries) ? fields.entries.map(createActualSampleEntryFields) : []
+      };
+    }
+    function createActualSampleEntryFields(entry) {
+      const actualFields = {};
+      for (const [fieldName, value] of Object.entries(entry || {})) {
+        if (SAMPLE_ENTRY_DERIVED_FIELD_NAMES.has(fieldName)) continue;
+        if (fieldName === "boxes") {
+          actualFields.boxes = (value || []).map((childBox, childIndex) => ({
+            index: childIndex + 1,
+            type: childBox.type,
+            size: childBox.size,
+            parsedFieldKeys: childBox.fields ? Object.keys(childBox.fields) : []
+          }));
+        } else {
+          actualFields[fieldName] = value;
+        }
+      }
+      return actualFields;
+    }
+    function getDerivedBoxFields(node) {
+      if (!node) return null;
+      if (node.syntheticKind === "sample-entry" && node.sourceEntry) {
+        const sampleEntryDerivedFields = createSampleEntryDerivedFields(node.sourceEntry);
+        return sampleEntryDerivedFields ? { sourceBoxPath: node.sourceBoxPath, sampleEntry: sampleEntryDerivedFields } : null;
+      }
+      if (node.type !== "stsd" || !node.fields || !Array.isArray(node.fields.entries)) return null;
+      const sampleEntries = node.fields.entries.map(createSampleEntryDerivedFields).filter(Boolean);
+      return sampleEntries.length ? { sourceBoxPath: node.path, sampleEntries } : null;
+    }
+    function createSampleEntryDerivedFields(entry) {
+      const derivedFields = { index: entry.index, format: entry.format };
+      let hasDerivedFields = false;
+      for (const fieldName of SAMPLE_ENTRY_DERIVED_FIELD_NAMES) {
+        if (entry && entry[fieldName] !== void 0) {
+          derivedFields[fieldName] = entry[fieldName];
+          hasDerivedFields = true;
+        }
+      }
+      return hasDerivedFields ? derivedFields : null;
+    }
+    function renderJsonViewer(value, options2 = {}) {
+      const normalizedValue = normalizeJsonValue(value);
+      if (isEmptyJsonValue(normalizedValue)) {
+        return '<div class="json-empty">' + escapeHtml2(t("boxes.emptyFields")) + "</div>";
+      }
+      return '<div class="json-view">' + renderJsonValue(normalizedValue, {
+        key: options2.rootLabel || "root",
+        depth: 0,
+        isRoot: true,
+        defaultOpenDepth: options2.defaultOpenDepth || 1
+      }) + "</div>";
+    }
+    function renderJsonValue(value, context) {
+      if (Array.isArray(value)) return renderJsonArray(value, context);
+      if (value && typeof value === "object") return renderJsonObject(value, context);
+      return renderJsonScalar(value);
+    }
+    function renderJsonObject(value, context) {
+      const entries = Object.entries(value);
+      if (context.isRoot) {
+        return entries.map(([fieldName, fieldValue]) => renderJsonEntry(fieldName, fieldValue, context.depth, context.defaultOpenDepth)).join("");
+      }
+      const openAttribute = context.depth < context.defaultOpenDepth ? " open" : "";
+      return '<details class="json-node json-object"' + openAttribute + '><summary><span class="json-summary-type">{ }</span><span class="json-preview">' + escapeHtml2(t("boxes.jsonProperties", { count: entries.length })) + '</span></summary><div class="json-children">' + entries.map(([fieldName, fieldValue]) => renderJsonEntry(fieldName, fieldValue, context.depth + 1, context.defaultOpenDepth)).join("") + "</div></details>";
+    }
+    function renderJsonArray(value, context) {
+      if (isByteArrayField(context.key, value)) return renderJsonByteArray(value);
+      const openAttribute = context.depth < context.defaultOpenDepth && value.length <= 20 ? " open" : "";
+      return '<details class="json-node json-array"' + openAttribute + '><summary><span class="json-summary-type">[ ]</span><span class="json-preview">' + escapeHtml2(t("boxes.jsonItems", { count: value.length })) + createJsonArrayPreview(value) + '</span></summary><div class="json-children">' + value.map((item, index) => renderJsonEntry(String(index), item, context.depth + 1, context.defaultOpenDepth)).join("") + "</div></details>";
+    }
+    function renderJsonEntry(fieldName, fieldValue, depth, defaultOpenDepth) {
+      return '<div class="json-entry" style="--json-depth:' + depth + '"><span class="json-key">' + escapeHtml2(fieldName) + '</span><div class="json-value">' + renderJsonValue(fieldValue, { key: fieldName, depth, isRoot: false, defaultOpenDepth }) + "</div></div>";
+    }
+    function renderJsonScalar(value) {
+      const type = value === null ? "null" : typeof value;
+      return '<span class="json-scalar ' + escapeHtml2(type) + '">' + escapeHtml2(formatJsonScalar(value)) + "</span>";
+    }
+    function renderJsonByteArray(value) {
+      const preview = value.slice(0, JSON_BYTE_PREVIEW_COUNT).map(formatByteAsHex).join(" ");
+      const expandedValues = value.slice(0, JSON_BYTE_EXPANDED_LIMIT).map(formatByteAsHex).join(" ");
+      const truncatedHtml = value.length > JSON_BYTE_EXPANDED_LIMIT ? '<div class="json-byte-truncation">' + escapeHtml2(t("boxes.bytesTruncated", { shown: JSON_BYTE_EXPANDED_LIMIT, count: value.length })) + "</div>" : "";
+      return '<details class="json-node json-byte-array"><summary><span class="json-summary-type">bytes</span><span class="json-preview">' + escapeHtml2(t("boxes.bytesPreview", { count: value.length, preview })) + '</span></summary><code class="json-byte-dump">' + escapeHtml2(expandedValues) + "</code>" + truncatedHtml + "</details>";
+    }
+    function normalizeJsonValue(value) {
+      return JSON.parse(JSON.stringify(value === void 0 ? null : value, safeJsonReplacer));
+    }
+    function isEmptyJsonValue(value) {
+      if (value === null || value === void 0) return true;
+      if (Array.isArray(value)) return value.length === 0;
+      return typeof value === "object" && Object.keys(value).length === 0;
+    }
+    function isByteArrayField(fieldName, value) {
+      return fieldName === "bytes" && value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
+    }
+    function createJsonArrayPreview(value) {
+      if (!value.length || value.length > 6 || value.some((item) => item && typeof item === "object")) return "";
+      return ' \xB7 <span class="json-inline-preview">' + escapeHtml2(value.map(formatJsonScalar).join(", ")) + "</span>";
+    }
+    function formatJsonScalar(value) {
+      if (typeof value === "string") return '"' + value + '"';
+      if (value === null) return "null";
+      return String(value);
+    }
+    function formatByteAsHex(value) {
+      return Number(value).toString(16).padStart(2, "0").toUpperCase();
     }
     function formatBoxTypeLabel(type) {
       const info = BOX_TYPE_INFO[type];
