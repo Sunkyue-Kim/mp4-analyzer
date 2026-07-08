@@ -294,6 +294,21 @@ function verifyResponsiveLayoutCss() {
   );
   assertCssRule(
     sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.fragments-panel\.active\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(320px,\s*1fr\);[\s\S]*?overflow:\s*hidden;/,
+    "Mobile fragments panel must constrain the body row instead of expanding the page height."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.fragments-controls \.checkbox-field span\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/,
+    "Mobile fragments synchronization label must stay one line so the controls row stays compact."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.fragments-body\s*\{[\s\S]*?min-height:\s*320px;[\s\S]*?overflow:\s*auto;/,
+    "Mobile fragments body must own scrolling instead of letting the page grow beyond the tab surface."
+  );
+  assertCssRule(
+    sourceCss,
     /\.data-grid-header,[\s\S]*?\.data-grid-row\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*var\(--data-grid-columns\);/,
     "Reusable data grid must share grid row/header layout rules."
   );
