@@ -375,27 +375,37 @@ function verifyResponsiveLayoutCss() {
   );
   assertCssRule(
     sourceCss,
-    /\.frames-panel\.active\s*\{[\s\S]*?--frames-controls-min-height:\s*76px;[\s\S]*?--frames-list-min-height:\s*280px;[\s\S]*?--frames-internals-min-height:\s*220px;[\s\S]*?grid-template-rows:[\s\S]*?minmax\(var\(--frames-controls-min-height\),\s*max-content\)[\s\S]*?minmax\(var\(--frames-list-min-height\),\s*1fr\)[\s\S]*?auto;[\s\S]*?overflow-y:\s*auto;/,
-    "Frame panel must reserve separate minimum areas for controls, the list, and selected-frame internals."
+    /\.frames-panel\.active\s*\{[\s\S]*?--frames-controls-min-height:\s*76px;[\s\S]*?--frames-list-min-height:\s*280px;[\s\S]*?--frames-internals-min-height:\s*220px;[\s\S]*?display:\s*flex;[\s\S]*?flex-direction:\s*column;[\s\S]*?overflow-y:\s*auto;/,
+    "Frame panel must stack controls, the list, and selected-frame internals without collapsing controls."
   );
   assertCssRule(
     sourceCss,
-    /\.frame-view\.active\s*\{[\s\S]*?min-height:\s*var\(--frames-list-min-height,\s*0\);/,
+    /\.filters\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?min-height:\s*var\(--frames-controls-min-height,\s*0\);/,
+    "Frame filters must keep their full wrapped content height so synchronization controls remain visible."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.frame-view\.active\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?height:\s*clamp\(var\(--frames-list-min-height,\s*280px\),\s*44vh,\s*520px\);[\s\S]*?min-height:\s*var\(--frames-list-min-height,\s*0\);/,
     "Frame graph/table view must keep a minimum list area before the internals panel."
   );
   assertCssRule(
     sourceCss,
-    /\.frame-internals-panel\s*\{[\s\S]*?display:\s*grid;[\s\S]*?min-height:\s*var\(--frames-internals-min-height,\s*220px\);[\s\S]*?height:\s*clamp\([\s\S]*?var\(--frames-internals-min-height,\s*220px\),[\s\S]*?34vh,[\s\S]*?var\(--frames-internals-max-height,\s*300px\)[\s\S]*?\);/,
-    "Selected-frame internals must have a bounded minimum area with its own body scroll."
+    /\.frame-internals-panel\s*\{[\s\S]*?display:\s*grid;[\s\S]*?flex:\s*0 0 auto;[\s\S]*?min-height:\s*var\(--frames-internals-min-height,\s*220px\);[\s\S]*?overflow:\s*visible;/,
+    "Selected-frame internals must sit in the outer frame panel scroll flow."
   );
   assertCssRule(
     sourceCss,
-    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frames-panel\.active\s*\{[\s\S]*?--frames-controls-min-height:\s*152px;[\s\S]*?--frames-list-min-height:\s*320px;[\s\S]*?--frames-internals-min-height:\s*240px;[\s\S]*?grid-template-rows:[\s\S]*?minmax\(var\(--frames-list-min-height\),\s*auto\)/,
+    /\.frame-internals-body\s*\{[\s\S]*?max-width:\s*100%;[\s\S]*?overflow-x:\s*auto;[\s\S]*?overflow-y:\s*clip;[\s\S]*?scrollbar-gutter:\s*stable;/,
+    "Selected-frame internals body must allow horizontal overflow without creating an internal vertical scrollbar."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frames-panel\.active\s*\{[\s\S]*?--frames-controls-min-height:\s*152px;[\s\S]*?--frames-list-min-height:\s*320px;[\s\S]*?--frames-internals-min-height:\s*240px;/,
     "Mobile frame panel must preserve separate minimum control, list, and internals areas."
   );
   assertCssRule(
     sourceCss,
-    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frame-wrap,\s*[\s\S]*?\.graph-wrap\s*\{[\s\S]*?height:\s*clamp\(320px,\s*58dvh,\s*520px\);[\s\S]*?min-height:\s*320px;/,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.frame-wrap,\s*[\s\S]*?\.graph-wrap\s*\{[\s\S]*?height:\s*100%;[\s\S]*?min-height:\s*320px;/,
     "Mobile frame table and graph must keep a scrollable minimum height."
   );
   if (/--frame-table-width/.test(sourceCss)) {

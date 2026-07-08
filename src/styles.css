@@ -533,11 +533,8 @@
       --frames-list-min-height: 280px;
       --frames-internals-min-height: 220px;
       --frames-internals-max-height: 300px;
-      display: grid;
-      grid-template-rows:
-        minmax(var(--frames-controls-min-height), max-content)
-        minmax(var(--frames-list-min-height), 1fr)
-        auto;
+      display: flex;
+      flex-direction: column;
       min-width: 0;
       padding: 0;
       overflow-x: hidden;
@@ -956,6 +953,7 @@
       flex-wrap: wrap;
       align-items: end;
       gap: 10px;
+      flex: 0 0 auto;
       width: 100%;
       max-width: 100%;
       min-height: var(--frames-controls-min-height, 0);
@@ -1071,6 +1069,8 @@
 
     .frame-view.active {
       display: block;
+      flex: 0 0 auto;
+      height: clamp(var(--frames-list-min-height, 280px), 44vh, 520px);
       min-height: var(--frames-list-min-height, 0);
     }
 
@@ -1296,18 +1296,13 @@
 
     .frame-internals-panel {
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      flex: 0 0 auto;
       min-width: 0;
       min-height: var(--frames-internals-min-height, 220px);
-      height: clamp(
-        var(--frames-internals-min-height, 220px),
-        34vh,
-        var(--frames-internals-max-height, 300px)
-      );
-      max-height: var(--frames-internals-max-height, 300px);
       border-top: 1px solid var(--line);
       background: #fff;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .frame-internals-head {
@@ -1334,9 +1329,12 @@
     }
 
     .frame-internals-body {
+      max-width: 100%;
       min-height: 0;
-      overflow: auto;
+      overflow-x: auto;
+      overflow-y: clip;
       padding: 12px;
+      scrollbar-gutter: stable;
     }
 
     .frame-internals-tooltip {
@@ -1733,10 +1731,6 @@
         --frames-list-min-height: 320px;
         --frames-internals-min-height: 240px;
         --frames-internals-max-height: 360px;
-        grid-template-rows:
-          minmax(var(--frames-controls-min-height), max-content)
-          minmax(var(--frames-list-min-height), auto)
-          auto;
       }
       .filters {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1837,15 +1831,8 @@
       }
       .frame-wrap,
       .graph-wrap {
-        height: clamp(320px, 58dvh, 520px);
+        height: 100%;
         min-height: 320px;
-      }
-      .frame-internals-panel {
-        height: clamp(
-          var(--frames-internals-min-height),
-          42dvh,
-          var(--frames-internals-max-height)
-        );
       }
       .frame-internals-body {
         padding: 10px;
