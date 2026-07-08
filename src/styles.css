@@ -423,6 +423,7 @@
     .frames-panel.active {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
       padding: 0;
       overflow: hidden;
     }
@@ -720,6 +721,8 @@
       flex-wrap: wrap;
       align-items: end;
       gap: 10px;
+      width: 100%;
+      max-width: 100%;
       padding: 12px;
       border-bottom: 1px solid var(--line);
       background: #f8fafc;
@@ -809,7 +812,11 @@
     .frame-view {
       display: none;
       height: 100%;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       min-height: 0;
+      overflow: hidden;
     }
 
     .frame-view.active {
@@ -817,12 +824,16 @@
     }
 
     .frame-wrap {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       height: 100%;
       min-height: 0;
       display: grid;
       grid-template-rows: 34px 1fr;
       overflow-x: auto;
       overflow-y: hidden;
+      contain: inline-size;
     }
 
     .frame-header, .frame-row {

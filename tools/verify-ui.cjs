@@ -121,7 +121,17 @@ function verifyResponsiveLayoutCss() {
   );
   assertCssRule(
     sourceCss,
-    /\.frame-wrap\s*\{[\s\S]*?overflow-x:\s*auto;/,
+    /\.filters\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;/,
+    "Frame filters must stay constrained to the panel width."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.frame-view\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;/,
+    "Frame view must not let the table intrinsic width expand the filter row."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.frame-wrap\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?overflow-x:\s*auto;[\s\S]*?contain:\s*inline-size;/,
     "Frame table wrapper must own horizontal scrolling."
   );
   assertCssRule(
