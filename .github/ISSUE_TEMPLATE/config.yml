@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Sunkyue-Kim/standalone-web-media-analyzer/security/policy
+    about: Please do not disclose malicious samples or exploit details in a public issue.

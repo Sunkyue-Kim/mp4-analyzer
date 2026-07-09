@@ -2,6 +2,7 @@
   "name": "standalone-web-media-analyzer",
   "version": "1.0.0",
   "private": true,
+  "license": "Beerware",
   "type": "commonjs",
   "scripts": {
     "extract:source": "node tools/extract-source.cjs",

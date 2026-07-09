@@ -1,0 +1,40 @@
+name: Parser regression
+description: Report a media file that used to work or should be covered by validation.
+title: "[Regression]: "
+labels: ["bug", "parser"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Parser regressions are most useful when they include a reproducible sample or an ffmpeg command that generates one. Do not attach security-sensitive or private media to a public issue.
+  - type: input
+    id: file
+    attributes:
+      label: File or generated sample
+      placeholder: "Example: validation/generated/example.mp4 or ffmpeg command"
+    validations:
+      required: true
+  - type: input
+    id: container
+    attributes:
+      label: Container and codecs
+      placeholder: "Example: MP4 + avc1 + mp4a"
+    validations:
+      required: true
+  - type: textarea
+    id: mismatch
+    attributes:
+      label: Mismatch
+      description: Describe sample count, offsets, frame types, fragments, metrics, or UI behavior that looks wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: comparison
+    attributes:
+      label: Comparison output
+      description: Include ffprobe, MediaInfo, MP4Box, exported JSON, or screenshots when relevant.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      placeholder: "Example: Chrome 126 on Windows 11"

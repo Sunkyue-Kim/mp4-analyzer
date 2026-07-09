@@ -21,6 +21,7 @@ This project is a local-first inspection tool. It opens files with standard brow
 | Exports | JSON and CSV |
 | Languages | English and Korean |
 | Output builds | Single-file HTML and chunked lazy-load HTML |
+| License | Beerware |
 
 ## What It Shows
 
@@ -95,6 +96,14 @@ Remote URLs are different because the app must fetch bytes from the remote serve
 - If the user later plays or seeks a large remote preview, the browser may issue additional media requests.
 - `Response.blob()` is only available after a full download completes. Partial response chunks cannot become a normal Blob-backed `<video>` source before the full resource is loaded.
 - MediaSource-based reuse is not implemented because it would require a separate segmenting and playback pipeline and would not cover all supported inputs uniformly.
+
+## Security
+
+This project parses untrusted media bytes in the browser. The local-first model avoids server uploads for local files, but parser bugs, malformed binary input, excessive CPU/memory use, and metadata injection issues are still possible.
+
+Please do not publish exploit details, malicious samples, or crash repro payloads in public issues. Use GitHub private vulnerability reporting or another private maintainer contact path when available. If no private channel is available, open a minimal public issue that says security contact is needed, without attaching exploit details.
+
+See [SECURITY.md](SECURITY.md) for scope and reporting guidance.
 
 ## Architecture
 
@@ -191,6 +200,20 @@ Current coverage snapshot from `npm run test:coverage`:
 - Strong coverage areas: binary readers, HTTP range readers and range failures, remote URL fallback/progress/abort handling, shared media-source preview/download policy, browser worker client message flow, bitstream helpers, formatting edge cases, AAC/MP3/Opus parser branches, MP3 ID3v2/ID3v1/Info frame handling, nominal frame internals models, codec registry, i18n, data grid/recycler helpers, UI box-detail/json-viewer/frame-internals/media-row/metrics model boundaries, ISO BMFF sample modeling, ISO BMFF rare/private box parsing, WebM Xiph/fixed/EBML lacing, source-map build wiring, and bundled sample container integration
 - Lower branch coverage remains mainly in browser-worker runtime branches and malformed/edge container branches such as oversized/invalid MP4 boxes, Ogg page edge cases, and uncommon WebM element variants
 
+## Contribution Policy
+
+This project accepts bug reports, feature requests, parser regressions, and reproducible test cases through GitHub Issues.
+
+Pull requests are not accepted at this time. The maintainer implements and commits all code changes directly to keep the parser architecture, validation samples, generated build artifacts, and GitHub Pages output consistent.
+
+Helpful issues include:
+
+- sample media file, public URL, or minimal ffmpeg reproduction command
+- browser and OS information
+- expected result vs actual result
+- exported JSON, console logs, screenshots, ffprobe output, or MediaInfo/MP4Box comparison when relevant
+- whether the issue affects local files, remote URLs, hosted samples, or all input paths
+
 ## Export Model
 
 JSON export is intended to be stable enough for debugging and regression comparison, but not a formal public API yet. The core records are:
@@ -219,3 +242,7 @@ This project is intentionally smaller and more specialized than mature media too
 - MP4Box.js demonstrates progressive MP4 parsing, sample extraction, and browser demos for file inspection.
 - mediainfo.js demonstrates browser-compatible media metadata extraction through WebAssembly.
 - CyberChef is a useful reference for clear client-side privacy messaging and local/offline browser-tool positioning.
+
+## License
+
+Standalone Web Media Analyzer is licensed under the [Beerware License](LICENSE). Retain the license notice, do what you want with the project, and buy the maintainer a beer if you meet someday and think the project was worth it.

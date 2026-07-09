@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a new parser, visualization, format, or workflow.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to inspect or understand?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the UI, parser output, export field, or workflow you want.
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample media or reference
+      description: Share a non-private sample, ffmpeg generation command, spec reference, or exported JSON when relevant.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Container parser
+        - Codec parser
+        - Frame internals visualization
+        - Metrics visualization
+        - UI/UX
+        - Export
+        - Build or hosting
+        - Documentation
