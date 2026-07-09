@@ -6684,9 +6684,11 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   function buildVideoInternalsModel(row, track, options = {}) {
     const descriptor = VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
     const dimensions = getVideoTrackDimensions(track);
-    const width = dimensions.displayWidth;
-    const height = dimensions.displayHeight;
-    if (!descriptor || !width || !height) {
+    const width = dimensions.encodedWidth;
+    const height = dimensions.encodedHeight;
+    const displayWidth = dimensions.displayWidth;
+    const displayHeight = dimensions.displayHeight;
+    if (!descriptor || !width || !height || !displayWidth || !displayHeight) {
       return {
         kind: "unsupported",
         title: "Video block view unavailable",
@@ -6703,6 +6705,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       height,
       maxCells: MAX_VIDEO_DISPLAY_CELLS
     });
+    orientVideoPartitionCells(cells, dimensions);
     const partitionSummary = summarizePartitionCells(cells);
     const colorScale = options.colorScale || buildFrameInternalsColorScale(track, options.sampleRows, {
       descriptor,
@@ -6721,8 +6724,8 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       unitName: descriptor.unitName,
       unitWidth: descriptor.unitWidth,
       unitHeight: descriptor.unitHeight,
-      mediaWidth: width,
-      mediaHeight: height,
+      mediaWidth: displayWidth,
+      mediaHeight: displayHeight,
       encodedWidth: dimensions.encodedWidth,
       encodedHeight: dimensions.encodedHeight,
       displayRotationDegrees: dimensions.displayRotationDegrees,
@@ -6747,12 +6750,12 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     if (!track || track.handlerType !== "vide") return buildValueDistribution([], "unavailable", 0);
     const descriptor = options.descriptor || VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
     const dimensions = getVideoTrackDimensions(track);
-    const width = options.width || dimensions.displayWidth;
-    const height = options.height || dimensions.displayHeight;
+    const width = options.width || dimensions.encodedWidth;
+    const height = options.height || dimensions.encodedHeight;
     if (!descriptor || !width || !height) return buildValueDistribution([], "unavailable", 0);
     const rows = getVideoScaleRows(track, sampleRows);
     if (!rows.length) {
-      const fallbackValues = (options.fallbackCells || []).map((cell) => Number(cell.estimatedBytes) || 0).filter((value) => value >= 0);
+      const fallbackValues = (options.fallbackCells || []).map((cell) => getCellHeatValue(cell)).filter((value) => value >= 0);
       return buildValueDistribution(fallbackValues, "selected-frame-percentile", fallbackValues.length ? 1 : 0);
     }
     const scaleOptions = {
@@ -6776,7 +6779,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       });
       const cellStride = Math.max(1, Math.ceil(cells.length / Math.max(1, Math.floor(MAX_GLOBAL_DISTRIBUTION_VALUES / Math.ceil(rows.length / rowStride)))));
       for (let cellIndex = 0; cellIndex < cells.length; cellIndex += cellStride) {
-        sampledValues.push(cells[cellIndex].estimatedBytes);
+        sampledValues.push(getCellHeatValue(cells[cellIndex]));
       }
     }
     return buildValueDistribution(sampledValues, "global-track-percentile", rows.length);
@@ -6784,14 +6787,18 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   function getVideoTrackDimensions(track) {
     const encodedWidth = positiveRoundedDimension(track.encodedWidth) || positiveRoundedDimension(track.width);
     const encodedHeight = positiveRoundedDimension(track.encodedHeight) || positiveRoundedDimension(track.height);
-    const displayWidth = positiveRoundedDimension(track.displayWidth) || encodedWidth;
-    const displayHeight = positiveRoundedDimension(track.displayHeight) || encodedHeight;
+    const displayRotationDegrees = normalizeRotationDegrees3(track.displayRotationDegrees);
+    const quarterTurn = Math.abs(displayRotationDegrees) === 90;
+    const fallbackDisplayWidth = quarterTurn ? encodedHeight : encodedWidth;
+    const fallbackDisplayHeight = quarterTurn ? encodedWidth : encodedHeight;
+    const displayWidth = positiveRoundedDimension(track.displayWidth) || fallbackDisplayWidth;
+    const displayHeight = positiveRoundedDimension(track.displayHeight) || fallbackDisplayHeight;
     return {
       encodedWidth,
       encodedHeight,
       displayWidth,
       displayHeight,
-      displayRotationDegrees: normalizeRotationDegrees3(track.displayRotationDegrees)
+      displayRotationDegrees
     };
   }
   function positiveRoundedDimension(value) {
@@ -7068,6 +7075,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   }
   function assignPartitionByteEstimates(cells, options) {
     let totalWeight = 0;
+    const frameArea = Math.max(1, options.width * options.height);
     for (const cell of cells) {
       const centerColumn = (cell.pixelLeft + cell.pixelRight) / 2 / Math.max(1, options.width);
       const centerRow = (cell.pixelTop + cell.pixelBottom) / 2 / Math.max(1, options.height);
@@ -7079,13 +7087,67 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       totalWeight += cell.weight;
     }
     const sampleSize = Math.max(0, Number(options.row.size) || 0);
+    const frameAverageBytesPerPixel = sampleSize / frameArea;
     for (const cell of cells) {
       const byteEstimate = totalWeight > 0 ? sampleSize * cell.weight / totalWeight : 0;
+      const cellArea = Math.max(1, cell.blockWidth * cell.blockHeight);
+      const estimatedBytesPerPixel = byteEstimate / cellArea;
       cell.estimatedBytes = byteEstimate;
+      cell.estimatedBytesPerPixel = estimatedBytesPerPixel;
+      cell.normalizedByteDensity = frameAverageBytesPerPixel > 0 ? estimatedBytesPerPixel / frameAverageBytesPerPixel : 0;
       cell.localRatio = sampleSize > 0 ? byteEstimate * cells.length / sampleSize : 0;
       delete cell.weight;
     }
     return cells;
+  }
+  function orientVideoPartitionCells(cells, dimensions) {
+    for (const cell of cells) {
+      const displayBounds = transformEncodedRectangleToDisplay(cell, dimensions);
+      cell.displayPixelLeft = displayBounds.left;
+      cell.displayPixelTop = displayBounds.top;
+      cell.displayPixelRight = displayBounds.right;
+      cell.displayPixelBottom = displayBounds.bottom;
+      cell.displayBlockWidth = displayBounds.right - displayBounds.left;
+      cell.displayBlockHeight = displayBounds.bottom - displayBounds.top;
+    }
+    return cells;
+  }
+  function transformEncodedRectangleToDisplay(cell, dimensions) {
+    const encodedWidth = Math.max(1, dimensions.encodedWidth);
+    const encodedHeight = Math.max(1, dimensions.encodedHeight);
+    const displayWidth = Math.max(1, dimensions.displayWidth);
+    const displayHeight = Math.max(1, dimensions.displayHeight);
+    const rotation = dimensions.displayRotationDegrees || 0;
+    const rotatedWidth = Math.abs(rotation) === 90 ? encodedHeight : encodedWidth;
+    const rotatedHeight = Math.abs(rotation) === 90 ? encodedWidth : encodedHeight;
+    const corners = [
+      rotateEncodedPointToDisplay(cell.pixelLeft, cell.pixelTop, rotation, encodedWidth, encodedHeight),
+      rotateEncodedPointToDisplay(cell.pixelRight, cell.pixelTop, rotation, encodedWidth, encodedHeight),
+      rotateEncodedPointToDisplay(cell.pixelLeft, cell.pixelBottom, rotation, encodedWidth, encodedHeight),
+      rotateEncodedPointToDisplay(cell.pixelRight, cell.pixelBottom, rotation, encodedWidth, encodedHeight)
+    ];
+    const left = Math.min(...corners.map((point) => point.x));
+    const top = Math.min(...corners.map((point) => point.y));
+    const right = Math.max(...corners.map((point) => point.x));
+    const bottom = Math.max(...corners.map((point) => point.y));
+    const scaleX = displayWidth / Math.max(1, rotatedWidth);
+    const scaleY = displayHeight / Math.max(1, rotatedHeight);
+    return {
+      left: clampDisplayCoordinate(left * scaleX, displayWidth),
+      top: clampDisplayCoordinate(top * scaleY, displayHeight),
+      right: clampDisplayCoordinate(right * scaleX, displayWidth),
+      bottom: clampDisplayCoordinate(bottom * scaleY, displayHeight)
+    };
+  }
+  function rotateEncodedPointToDisplay(x, y, rotation, encodedWidth, encodedHeight) {
+    if (rotation === 90) return { x: encodedHeight - y, y: x };
+    if (rotation === -90) return { x: y, y: encodedWidth - x };
+    if (Math.abs(rotation) === 180) return { x: encodedWidth - x, y: encodedHeight - y };
+    return { x, y };
+  }
+  function clampDisplayCoordinate(value, maximum) {
+    if (!Number.isFinite(value)) return 0;
+    return clamp(value, 0, maximum);
   }
   function getPartitionModeWeight(mode) {
     if (mode === "split") return 1.08;
@@ -7123,12 +7185,19 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   function applyVideoColorScale(cells, colorScale) {
     const values = colorScale && colorScale.values || [];
     for (const cell of cells) {
-      const percentile = getPercentileRank(values, cell.estimatedBytes);
+      const percentile = getPercentileRank(values, getCellHeatValue(cell));
       const color = getPercentileHeatColor(percentile);
       cell.globalPercentile = percentile;
       cell.intensity = getPercentileAlpha(percentile);
       cell.color = color;
     }
+  }
+  function getCellHeatValue(cell) {
+    const value = Number(cell && cell.estimatedBytesPerPixel);
+    if (Number.isFinite(value) && value >= 0) return value;
+    const bytes = Number(cell && cell.estimatedBytes) || 0;
+    const area = Math.max(1, Number(cell && cell.blockWidth) * Number(cell && cell.blockHeight) || 1);
+    return bytes / area;
   }
   function buildValueDistribution(values, mode, sampleCount) {
     const sortedValues = values.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0).sort((left, right) => left - right);
@@ -7646,13 +7715,16 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.activeBandwidth": "Active bandwidth",
           "frameInternals.channels": "Channels",
           "frameInternals.audioBands": "Audio band budget",
-          "frameInternals.videoEstimateNote": "Color uses this partition-ready block estimate's percentile within the whole selected video track's estimated block-byte distribution. Rectangle layout supports codec partition shapes, including non-square AV1-style splits, but it is not decoded per-block entropy or exact syntax data yet.",
+          "frameInternals.videoEstimateNote": "Color uses this partition-ready block estimate's percentile within the whole selected video track's area-normalized estimated byte-density distribution. Rectangle layout supports codec partition shapes, including non-square AV1-style splits, but it is not decoded per-block entropy or exact syntax data yet.",
           "frameInternals.audioEstimateNote": "Band sizes are estimated from packet size and codec metadata; scalefactor or spectral payload decoding is not implemented.",
           "frameInternals.tooltip.pixelRange": "Pixel range",
+          "frameInternals.tooltip.encodedPixelRange": "Encoded pixel range",
+          "frameInternals.tooltip.displayPixelRange": "Display pixel range",
           "frameInternals.tooltip.blockSize": "Block size",
           "frameInternals.tooltip.partition": "Partition",
           "frameInternals.tooltip.depth": "Depth",
           "frameInternals.tooltip.estimatedBytes": "Estimated bytes",
+          "frameInternals.tooltip.byteDensity": "Byte density",
           "frameInternals.tooltip.globalPercentile": "Global percentile",
           "frameInternals.tooltip.nominalUnits": "Nominal units",
           "frameInternals.tooltip.frequencyRange": "Frequency range",
@@ -7867,13 +7939,16 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.activeBandwidth": "\uD65C\uC131 \uB300\uC5ED\uD3ED",
           "frameInternals.channels": "\uCC44\uB110",
           "frameInternals.audioBands": "\uC624\uB514\uC624 \uB300\uC5ED\uBCC4 byte \uCD94\uC815",
-          "frameInternals.videoEstimateNote": "\uC0C9\uC0C1\uC740 \uC120\uD0DD\uB41C \uC804\uCCB4 video track\uC758 estimated block-byte \uBD84\uD3EC\uC5D0\uC11C \uC774 partition-ready block \uCD94\uC815\uCE58\uAC00 \uC704\uCE58\uD55C percentile\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4. Rectangle layout\uC740 \uBE44\uC815\uC0AC\uAC01 AV1-style split\uC744 \uD3EC\uD568\uD55C codec partition \uD615\uD0DC\uB97C \uD45C\uD604\uD560 \uC218 \uC788\uC9C0\uB9CC, \uC544\uC9C1 decoded per-block entropy \uB610\uB294 \uC815\uD655\uD55C syntax \uB370\uC774\uD130\uB294 \uC544\uB2D9\uB2C8\uB2E4.",
+          "frameInternals.videoEstimateNote": "\uC0C9\uC0C1\uC740 \uC120\uD0DD\uB41C \uC804\uCCB4 video track\uC758 \uBA74\uC801 \uC815\uADDC\uD654 estimated byte-density \uBD84\uD3EC\uC5D0\uC11C \uC774 partition-ready block \uCD94\uC815\uCE58\uAC00 \uC704\uCE58\uD55C percentile\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4. Rectangle layout\uC740 \uBE44\uC815\uC0AC\uAC01 AV1-style split\uC744 \uD3EC\uD568\uD55C codec partition \uD615\uD0DC\uB97C \uD45C\uD604\uD560 \uC218 \uC788\uC9C0\uB9CC, \uC544\uC9C1 decoded per-block entropy \uB610\uB294 \uC815\uD655\uD55C syntax \uB370\uC774\uD130\uB294 \uC544\uB2D9\uB2C8\uB2E4.",
           "frameInternals.audioEstimateNote": "\uB300\uC5ED\uBCC4 \uD06C\uAE30\uB294 packet size\uC640 codec metadata \uAE30\uBC18 \uCD94\uC815\uCE58\uC785\uB2C8\uB2E4. scalefactor \uB610\uB294 spectral payload decode\uB294 \uAD6C\uD604\uB418\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
           "frameInternals.tooltip.pixelRange": "\uD53D\uC140 \uBC94\uC704",
+          "frameInternals.tooltip.encodedPixelRange": "Encoded \uD53D\uC140 \uBC94\uC704",
+          "frameInternals.tooltip.displayPixelRange": "Display \uD53D\uC140 \uBC94\uC704",
           "frameInternals.tooltip.blockSize": "Block \uD06C\uAE30",
           "frameInternals.tooltip.partition": "Partition",
           "frameInternals.tooltip.depth": "Depth",
           "frameInternals.tooltip.estimatedBytes": "\uCD94\uC815 byte",
+          "frameInternals.tooltip.byteDensity": "Byte density",
           "frameInternals.tooltip.globalPercentile": "\uC804\uCCB4 percentile",
           "frameInternals.tooltip.nominalUnits": "Nominal \uB2E8\uC704 \uC218",
           "frameInternals.tooltip.frequencyRange": "\uC8FC\uD30C\uC218 \uBC94\uC704",
@@ -9411,13 +9486,16 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     return details.length ? displaySize + " (" + details.join(", ") + ")" : displaySize;
   }
   function renderVideoBlockCell(cell, model, frameClass) {
+    const displayBounds = getDisplayCellBounds(cell);
     const title = model.unitName + " " + (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0) + " @ " + cell.pixelLeft + "," + cell.pixelTop;
     const tooltipRows = [
-      [t("frameInternals.tooltip.pixelRange"), cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom],
+      [t("frameInternals.tooltip.encodedPixelRange"), cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom],
+      [t("frameInternals.tooltip.displayPixelRange"), formatCellBounds(displayBounds)],
       [t("frameInternals.tooltip.blockSize"), (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)],
       [t("frameInternals.tooltip.partition"), cell.partitionMode || t("value.notAvailable")],
       [t("frameInternals.tooltip.depth"), cell.depth || 0],
       [t("frameInternals.tooltip.estimatedBytes"), formatBytes(cell.estimatedBytes)],
+      [t("frameInternals.tooltip.byteDensity"), formatByteDensity(cell.estimatedBytesPerPixel, cell.normalizedByteDensity)],
       [t("frameInternals.tooltip.globalPercentile"), formatMetricNumber((cell.globalPercentile || 0) * 100, 1) + "%"],
       [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
       [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
@@ -9431,6 +9509,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   function renderVideoBlockCellStyle(cell, model) {
     const color = cell.color || { red: 31, green: 122, blue: 140 };
     const alpha = Number.isFinite(cell.intensity) ? cell.intensity : 0.75;
+    const displayBounds = getDisplayCellBounds(cell);
     const mediaWidth = Math.max(1, Number(model.mediaWidth) || 1);
     const mediaHeight = Math.max(1, Number(model.mediaHeight) || 1);
     return [
@@ -9438,12 +9517,41 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       "--cell-green:" + color.green,
       "--cell-blue:" + color.blue,
       "--cell-alpha:" + alpha.toFixed(3),
-      "--cell-left:" + (cell.pixelLeft * 100 / mediaWidth).toFixed(5) + "%",
-      "--cell-top:" + (cell.pixelTop * 100 / mediaHeight).toFixed(5) + "%",
-      "--cell-width:" + ((cell.pixelRight - cell.pixelLeft) * 100 / mediaWidth).toFixed(5) + "%",
-      "--cell-height:" + ((cell.pixelBottom - cell.pixelTop) * 100 / mediaHeight).toFixed(5) + "%",
+      "--cell-left:" + (displayBounds.left * 100 / mediaWidth).toFixed(5) + "%",
+      "--cell-top:" + (displayBounds.top * 100 / mediaHeight).toFixed(5) + "%",
+      "--cell-width:" + ((displayBounds.right - displayBounds.left) * 100 / mediaWidth).toFixed(5) + "%",
+      "--cell-height:" + ((displayBounds.bottom - displayBounds.top) * 100 / mediaHeight).toFixed(5) + "%",
       "--cell-depth:" + (cell.depth || 0)
     ].join(";");
+  }
+  function getDisplayCellBounds(cell) {
+    return {
+      left: getFiniteNumber(cell.displayPixelLeft, cell.pixelLeft),
+      top: getFiniteNumber(cell.displayPixelTop, cell.pixelTop),
+      right: getFiniteNumber(cell.displayPixelRight, cell.pixelRight),
+      bottom: getFiniteNumber(cell.displayPixelBottom, cell.pixelBottom)
+    };
+  }
+  function formatCellBounds(bounds) {
+    return formatCellCoordinate(bounds.left) + "," + formatCellCoordinate(bounds.top) + " - " + formatCellCoordinate(bounds.right) + "," + formatCellCoordinate(bounds.bottom);
+  }
+  function formatCellCoordinate(value) {
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return "0";
+    return Math.abs(numberValue - Math.round(numberValue)) < 1e-3 ? String(Math.round(numberValue)) : formatMetricNumber(numberValue, 2);
+  }
+  function formatByteDensity(bytesPerPixel, normalizedByteDensity) {
+    const density = Number(bytesPerPixel);
+    const normalized = Number(normalizedByteDensity);
+    if (!Number.isFinite(density) || density < 0) return t("value.notAvailable");
+    const normalizedText = Number.isFinite(normalized) && normalized >= 0 ? ", " + formatMetricNumber(normalized, 2) + "x" : "";
+    return formatMetricNumber(density, density < 0.01 ? 4 : 3) + " B/px" + normalizedText;
+  }
+  function getFiniteNumber(primaryValue, fallbackValue) {
+    const primaryNumber = Number(primaryValue);
+    if (Number.isFinite(primaryNumber)) return primaryNumber;
+    const fallbackNumber = Number(fallbackValue);
+    return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
   }
   function formatFrameInternalsColorScale(colorScale) {
     if (!colorScale) return t("value.notAvailable");

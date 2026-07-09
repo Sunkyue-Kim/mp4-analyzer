@@ -235,6 +235,8 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.ok(videoModel.cells.length <= 9000);
   assert.equal(Math.round(sum(videoModel.cells.map((cell) => cell.estimatedBytes))), 120000);
   assert.ok(videoModel.cells.every((cell) => cell.pixelRight <= 1920 && cell.pixelBottom <= 1080));
+  assert.ok(videoModel.cells.every((cell) => cell.displayPixelRight <= 1920 && cell.displayPixelBottom <= 1080));
+  assert.ok(videoModel.cells.every((cell) => Number.isFinite(cell.estimatedBytesPerPixel) && Number.isFinite(cell.normalizedByteDensity)));
   assert.ok(videoModel.cells.some((cell) => cell.blockWidth !== cell.blockHeight));
   assert.equal(videoModel.colorScale.mode, "global-track-percentile");
   assert.ok(videoModel.cells.some((cell) => cell.globalPercentile > 0.5));
@@ -261,7 +263,12 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.equal(rotatedVideoModel.encodedWidth, 1920);
   assert.equal(rotatedVideoModel.encodedHeight, 1080);
   assert.equal(rotatedVideoModel.displayRotationDegrees, -90);
-  assert.ok(rotatedVideoModel.cells.every((cell) => cell.pixelRight <= 1080 && cell.pixelBottom <= 1920));
+  assert.equal(rotatedVideoModel.nominalColumns, 30);
+  assert.equal(rotatedVideoModel.nominalRows, 17);
+  assert.ok(rotatedVideoModel.cells.every((cell) => cell.pixelRight <= 1920 && cell.pixelBottom <= 1080));
+  assert.ok(rotatedVideoModel.cells.every((cell) => cell.displayPixelRight <= 1080 && cell.displayPixelBottom <= 1920));
+  assert.ok(rotatedVideoModel.cells.some((cell) => cell.pixelRight !== cell.displayPixelRight || cell.pixelBottom !== cell.displayPixelBottom));
+  assert.ok(rotatedVideoModel.cells.every((cell) => Number.isFinite(cell.displayBlockWidth) && Number.isFinite(cell.displayBlockHeight)));
 
   const hevcModel = buildFrameInternalsModel(
     { trackId: 2, sampleIndex: 1, size: 90000, frameType: "P" },

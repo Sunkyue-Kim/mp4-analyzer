@@ -418,11 +418,17 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
         pixelTop: 0,
         pixelRight: 16,
         pixelBottom: 16,
+        displayPixelLeft: 0,
+        displayPixelTop: 16,
+        displayPixelRight: 16,
+        displayPixelBottom: 32,
         blockWidth: 16,
         blockHeight: 16,
         depth: 1,
         partitionMode: "vertical",
         estimatedBytes: 500,
+        estimatedBytesPerPixel: 1.953125,
+        normalizedByteDensity: 2,
         globalPercentile: 0.75,
         nominalUnits: 1,
         color: { red: 1, green: 2, blue: 3 },
@@ -455,7 +461,11 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   assert.match(videoHtml, /--frame-aspect-ratio:16 \/ 32/);
   assert.match(videoHtml, /--frame-map-max-width:140px/);
   assert.match(videoHtml, /--cell-left:0\.00000%/);
+  assert.match(videoHtml, /--cell-top:50\.00000%/);
   assert.match(videoHtml, /16x32 \(rotated -90 deg, encoded 32x16\)/);
+  assert.match(videoHtml, /Encoded pixel range/);
+  assert.match(videoHtml, /Display pixel range/);
+  assert.match(videoHtml, /Byte density/);
   assert.match(videoHtml, /data-inspection-tooltip=/);
   assert.match(videoHtml, /--cell-red:1;--cell-green:2;--cell-blue:3;--cell-alpha:0\.500/);
   assert.match(audioHtml, /audio-band-row/);

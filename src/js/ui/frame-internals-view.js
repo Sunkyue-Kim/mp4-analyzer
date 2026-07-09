@@ -79,13 +79,16 @@ function formatVideoMediaSize(model) {
 }
 
 function renderVideoBlockCell(cell, model, frameClass) {
+  const displayBounds = getDisplayCellBounds(cell);
   const title = model.unitName + " " + (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0) + " @ " + cell.pixelLeft + "," + cell.pixelTop;
   const tooltipRows = [
-    [t("frameInternals.tooltip.pixelRange"), cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom],
+    [t("frameInternals.tooltip.encodedPixelRange"), cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom],
+    [t("frameInternals.tooltip.displayPixelRange"), formatCellBounds(displayBounds)],
     [t("frameInternals.tooltip.blockSize"), (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)],
     [t("frameInternals.tooltip.partition"), cell.partitionMode || t("value.notAvailable")],
     [t("frameInternals.tooltip.depth"), cell.depth || 0],
     [t("frameInternals.tooltip.estimatedBytes"), formatBytes(cell.estimatedBytes)],
+    [t("frameInternals.tooltip.byteDensity"), formatByteDensity(cell.estimatedBytesPerPixel, cell.normalizedByteDensity)],
     [t("frameInternals.tooltip.globalPercentile"), formatMetricNumber((cell.globalPercentile || 0) * 100, 1) + "%"],
     [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
     [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
@@ -102,6 +105,7 @@ function renderVideoBlockCell(cell, model, frameClass) {
 function renderVideoBlockCellStyle(cell, model) {
   const color = cell.color || { red: 31, green: 122, blue: 140 };
   const alpha = Number.isFinite(cell.intensity) ? cell.intensity : 0.75;
+  const displayBounds = getDisplayCellBounds(cell);
   const mediaWidth = Math.max(1, Number(model.mediaWidth) || 1);
   const mediaHeight = Math.max(1, Number(model.mediaHeight) || 1);
   return [
@@ -109,12 +113,51 @@ function renderVideoBlockCellStyle(cell, model) {
     '--cell-green:' + color.green,
     '--cell-blue:' + color.blue,
     '--cell-alpha:' + alpha.toFixed(3),
-    '--cell-left:' + (cell.pixelLeft * 100 / mediaWidth).toFixed(5) + '%',
-    '--cell-top:' + (cell.pixelTop * 100 / mediaHeight).toFixed(5) + '%',
-    '--cell-width:' + ((cell.pixelRight - cell.pixelLeft) * 100 / mediaWidth).toFixed(5) + '%',
-    '--cell-height:' + ((cell.pixelBottom - cell.pixelTop) * 100 / mediaHeight).toFixed(5) + '%',
+    '--cell-left:' + (displayBounds.left * 100 / mediaWidth).toFixed(5) + '%',
+    '--cell-top:' + (displayBounds.top * 100 / mediaHeight).toFixed(5) + '%',
+    '--cell-width:' + ((displayBounds.right - displayBounds.left) * 100 / mediaWidth).toFixed(5) + '%',
+    '--cell-height:' + ((displayBounds.bottom - displayBounds.top) * 100 / mediaHeight).toFixed(5) + '%',
     '--cell-depth:' + (cell.depth || 0)
   ].join(";");
+}
+
+function getDisplayCellBounds(cell) {
+  return {
+    left: getFiniteNumber(cell.displayPixelLeft, cell.pixelLeft),
+    top: getFiniteNumber(cell.displayPixelTop, cell.pixelTop),
+    right: getFiniteNumber(cell.displayPixelRight, cell.pixelRight),
+    bottom: getFiniteNumber(cell.displayPixelBottom, cell.pixelBottom)
+  };
+}
+
+function formatCellBounds(bounds) {
+  return formatCellCoordinate(bounds.left) + "," + formatCellCoordinate(bounds.top) +
+    " - " + formatCellCoordinate(bounds.right) + "," + formatCellCoordinate(bounds.bottom);
+}
+
+function formatCellCoordinate(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return "0";
+  return Math.abs(numberValue - Math.round(numberValue)) < 0.001
+    ? String(Math.round(numberValue))
+    : formatMetricNumber(numberValue, 2);
+}
+
+function formatByteDensity(bytesPerPixel, normalizedByteDensity) {
+  const density = Number(bytesPerPixel);
+  const normalized = Number(normalizedByteDensity);
+  if (!Number.isFinite(density) || density < 0) return t("value.notAvailable");
+  const normalizedText = Number.isFinite(normalized) && normalized >= 0
+    ? ", " + formatMetricNumber(normalized, 2) + "x"
+    : "";
+  return formatMetricNumber(density, density < 0.01 ? 4 : 3) + " B/px" + normalizedText;
+}
+
+function getFiniteNumber(primaryValue, fallbackValue) {
+  const primaryNumber = Number(primaryValue);
+  if (Number.isFinite(primaryNumber)) return primaryNumber;
+  const fallbackNumber = Number(fallbackValue);
+  return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
 }
 
 function formatFrameInternalsColorScale(colorScale) {

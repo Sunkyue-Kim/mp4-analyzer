@@ -126,9 +126,11 @@ function buildFrameInternalsModel(row, track, options = {}) {
 function buildVideoInternalsModel(row, track, options = {}) {
   const descriptor = VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
   const dimensions = getVideoTrackDimensions(track);
-  const width = dimensions.displayWidth;
-  const height = dimensions.displayHeight;
-  if (!descriptor || !width || !height) {
+  const width = dimensions.encodedWidth;
+  const height = dimensions.encodedHeight;
+  const displayWidth = dimensions.displayWidth;
+  const displayHeight = dimensions.displayHeight;
+  if (!descriptor || !width || !height || !displayWidth || !displayHeight) {
     return {
       kind: "unsupported",
       title: "Video block view unavailable",
@@ -146,6 +148,7 @@ function buildVideoInternalsModel(row, track, options = {}) {
     height,
     maxCells: MAX_VIDEO_DISPLAY_CELLS
   });
+  orientVideoPartitionCells(cells, dimensions);
   const partitionSummary = summarizePartitionCells(cells);
   const colorScale = options.colorScale || buildFrameInternalsColorScale(track, options.sampleRows, {
     descriptor,
@@ -165,8 +168,8 @@ function buildVideoInternalsModel(row, track, options = {}) {
     unitName: descriptor.unitName,
     unitWidth: descriptor.unitWidth,
     unitHeight: descriptor.unitHeight,
-    mediaWidth: width,
-    mediaHeight: height,
+    mediaWidth: displayWidth,
+    mediaHeight: displayHeight,
     encodedWidth: dimensions.encodedWidth,
     encodedHeight: dimensions.encodedHeight,
     displayRotationDegrees: dimensions.displayRotationDegrees,
@@ -192,15 +195,15 @@ function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
   if (!track || track.handlerType !== "vide") return buildValueDistribution([], "unavailable", 0);
   const descriptor = options.descriptor || VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
   const dimensions = getVideoTrackDimensions(track);
-  const width = options.width || dimensions.displayWidth;
-  const height = options.height || dimensions.displayHeight;
+  const width = options.width || dimensions.encodedWidth;
+  const height = options.height || dimensions.encodedHeight;
   if (!descriptor || !width || !height) return buildValueDistribution([], "unavailable", 0);
 
   const rows = getVideoScaleRows(track, sampleRows);
 
   if (!rows.length) {
     const fallbackValues = (options.fallbackCells || [])
-      .map((cell) => Number(cell.estimatedBytes) || 0)
+      .map((cell) => getCellHeatValue(cell))
       .filter((value) => value >= 0);
     return buildValueDistribution(fallbackValues, "selected-frame-percentile", fallbackValues.length ? 1 : 0);
   }
@@ -226,7 +229,7 @@ function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
     });
     const cellStride = Math.max(1, Math.ceil(cells.length / Math.max(1, Math.floor(MAX_GLOBAL_DISTRIBUTION_VALUES / Math.ceil(rows.length / rowStride)))));
     for (let cellIndex = 0; cellIndex < cells.length; cellIndex += cellStride) {
-      sampledValues.push(cells[cellIndex].estimatedBytes);
+      sampledValues.push(getCellHeatValue(cells[cellIndex]));
     }
   }
   return buildValueDistribution(sampledValues, "global-track-percentile", rows.length);
@@ -235,14 +238,18 @@ function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
 function getVideoTrackDimensions(track) {
   const encodedWidth = positiveRoundedDimension(track.encodedWidth) || positiveRoundedDimension(track.width);
   const encodedHeight = positiveRoundedDimension(track.encodedHeight) || positiveRoundedDimension(track.height);
-  const displayWidth = positiveRoundedDimension(track.displayWidth) || encodedWidth;
-  const displayHeight = positiveRoundedDimension(track.displayHeight) || encodedHeight;
+  const displayRotationDegrees = normalizeRotationDegrees(track.displayRotationDegrees);
+  const quarterTurn = Math.abs(displayRotationDegrees) === 90;
+  const fallbackDisplayWidth = quarterTurn ? encodedHeight : encodedWidth;
+  const fallbackDisplayHeight = quarterTurn ? encodedWidth : encodedHeight;
+  const displayWidth = positiveRoundedDimension(track.displayWidth) || fallbackDisplayWidth;
+  const displayHeight = positiveRoundedDimension(track.displayHeight) || fallbackDisplayHeight;
   return {
     encodedWidth,
     encodedHeight,
     displayWidth,
     displayHeight,
-    displayRotationDegrees: normalizeRotationDegrees(track.displayRotationDegrees)
+    displayRotationDegrees
   };
 }
 
@@ -542,6 +549,7 @@ function estimateVideoPartitionCellCount(options) {
 
 function assignPartitionByteEstimates(cells, options) {
   let totalWeight = 0;
+  const frameArea = Math.max(1, options.width * options.height);
   for (const cell of cells) {
     const centerColumn = (cell.pixelLeft + cell.pixelRight) / 2 / Math.max(1, options.width);
     const centerRow = (cell.pixelTop + cell.pixelBottom) / 2 / Math.max(1, options.height);
@@ -553,13 +561,71 @@ function assignPartitionByteEstimates(cells, options) {
     totalWeight += cell.weight;
   }
   const sampleSize = Math.max(0, Number(options.row.size) || 0);
+  const frameAverageBytesPerPixel = sampleSize / frameArea;
   for (const cell of cells) {
     const byteEstimate = totalWeight > 0 ? sampleSize * cell.weight / totalWeight : 0;
+    const cellArea = Math.max(1, cell.blockWidth * cell.blockHeight);
+    const estimatedBytesPerPixel = byteEstimate / cellArea;
     cell.estimatedBytes = byteEstimate;
+    cell.estimatedBytesPerPixel = estimatedBytesPerPixel;
+    cell.normalizedByteDensity = frameAverageBytesPerPixel > 0 ? estimatedBytesPerPixel / frameAverageBytesPerPixel : 0;
     cell.localRatio = sampleSize > 0 ? byteEstimate * cells.length / sampleSize : 0;
     delete cell.weight;
   }
   return cells;
+}
+
+function orientVideoPartitionCells(cells, dimensions) {
+  for (const cell of cells) {
+    const displayBounds = transformEncodedRectangleToDisplay(cell, dimensions);
+    cell.displayPixelLeft = displayBounds.left;
+    cell.displayPixelTop = displayBounds.top;
+    cell.displayPixelRight = displayBounds.right;
+    cell.displayPixelBottom = displayBounds.bottom;
+    cell.displayBlockWidth = displayBounds.right - displayBounds.left;
+    cell.displayBlockHeight = displayBounds.bottom - displayBounds.top;
+  }
+  return cells;
+}
+
+function transformEncodedRectangleToDisplay(cell, dimensions) {
+  const encodedWidth = Math.max(1, dimensions.encodedWidth);
+  const encodedHeight = Math.max(1, dimensions.encodedHeight);
+  const displayWidth = Math.max(1, dimensions.displayWidth);
+  const displayHeight = Math.max(1, dimensions.displayHeight);
+  const rotation = dimensions.displayRotationDegrees || 0;
+  const rotatedWidth = Math.abs(rotation) === 90 ? encodedHeight : encodedWidth;
+  const rotatedHeight = Math.abs(rotation) === 90 ? encodedWidth : encodedHeight;
+  const corners = [
+    rotateEncodedPointToDisplay(cell.pixelLeft, cell.pixelTop, rotation, encodedWidth, encodedHeight),
+    rotateEncodedPointToDisplay(cell.pixelRight, cell.pixelTop, rotation, encodedWidth, encodedHeight),
+    rotateEncodedPointToDisplay(cell.pixelLeft, cell.pixelBottom, rotation, encodedWidth, encodedHeight),
+    rotateEncodedPointToDisplay(cell.pixelRight, cell.pixelBottom, rotation, encodedWidth, encodedHeight)
+  ];
+  const left = Math.min(...corners.map((point) => point.x));
+  const top = Math.min(...corners.map((point) => point.y));
+  const right = Math.max(...corners.map((point) => point.x));
+  const bottom = Math.max(...corners.map((point) => point.y));
+  const scaleX = displayWidth / Math.max(1, rotatedWidth);
+  const scaleY = displayHeight / Math.max(1, rotatedHeight);
+  return {
+    left: clampDisplayCoordinate(left * scaleX, displayWidth),
+    top: clampDisplayCoordinate(top * scaleY, displayHeight),
+    right: clampDisplayCoordinate(right * scaleX, displayWidth),
+    bottom: clampDisplayCoordinate(bottom * scaleY, displayHeight)
+  };
+}
+
+function rotateEncodedPointToDisplay(x, y, rotation, encodedWidth, encodedHeight) {
+  if (rotation === 90) return { x: encodedHeight - y, y: x };
+  if (rotation === -90) return { x: y, y: encodedWidth - x };
+  if (Math.abs(rotation) === 180) return { x: encodedWidth - x, y: encodedHeight - y };
+  return { x, y };
+}
+
+function clampDisplayCoordinate(value, maximum) {
+  if (!Number.isFinite(value)) return 0;
+  return clamp(value, 0, maximum);
 }
 
 function getPartitionModeWeight(mode) {
@@ -603,12 +669,20 @@ function normalizeFrameType(frameType) {
 function applyVideoColorScale(cells, colorScale) {
   const values = colorScale && colorScale.values || [];
   for (const cell of cells) {
-    const percentile = getPercentileRank(values, cell.estimatedBytes);
+    const percentile = getPercentileRank(values, getCellHeatValue(cell));
     const color = getPercentileHeatColor(percentile);
     cell.globalPercentile = percentile;
     cell.intensity = getPercentileAlpha(percentile);
     cell.color = color;
   }
+}
+
+function getCellHeatValue(cell) {
+  const value = Number(cell && cell.estimatedBytesPerPixel);
+  if (Number.isFinite(value) && value >= 0) return value;
+  const bytes = Number(cell && cell.estimatedBytes) || 0;
+  const area = Math.max(1, Number(cell && cell.blockWidth) * Number(cell && cell.blockHeight) || 1);
+  return bytes / area;
 }
 
 function buildValueDistribution(values, mode, sampleCount) {
