@@ -116,6 +116,46 @@ test("data grid renderer expands overflow width from headers and cell content", 
   assert.equal(totalGridWidth, headerDrivenWidth + contentDrivenWidth);
 });
 
+test("data grid renderer handles fallback widths, HTML cells, and boolean attributes", async () => {
+  const loader = await createSourceModuleLoader();
+  const { createDataGridLayout, renderDataGridTable } = await loader.import("src/js/ui/data-grid.js");
+  const layout = createDataGridLayout({
+    minimumWidth: "70vw",
+    columns: [
+      { label: "", width: "2fr" },
+      { label: "Flag", width: "0" },
+      { label: "", width: "12.4px" }
+    ],
+    rows: [
+      { cells: ["", { html: "<strong>ready</strong>" }, ""] }
+    ]
+  });
+  const html = renderDataGridTable({
+    columns: [{ label: "A" }],
+    rows: [
+      {
+        attributes: {
+          hidden: false,
+          inert: null,
+          disabled: true,
+          "data-index": 3
+        },
+        cells: [{ html: "<em>raw</em>", title: "\"quoted\"" }]
+      }
+    ]
+  });
+
+  assert.match(layout.minimumWidth, /^max\(70vw, \d+px\)$/);
+  assert.match(layout.gridTemplateColumns, /minmax\(0px, 1fr\)/);
+  assert.match(layout.gridTemplateColumns, /minmax\(13px, 1fr\)/);
+  assert.match(html, / disabled/);
+  assert.match(html, / data-index="3"/);
+  assert.doesNotMatch(html, / hidden/);
+  assert.doesNotMatch(html, / inert/);
+  assert.match(html, /<em>raw<\/em>/);
+  assert.match(html, /title="&quot;quoted&quot;"/);
+});
+
 test("recycler view keeps rendered rows bounded to the visible window", async () => {
   const loader = await createSourceModuleLoader();
   const { calculateRecyclerWindow, createRecyclerView } = await loader.import("src/js/ui/recycler-view.js");
@@ -623,6 +663,51 @@ test("remote loader uses range metadata when HEAD is weak and falls back to blob
   assert.equal(downloadedFile.type, "audio/mpeg");
   assert.deepEqual(progressEvents, [[4, 4]]);
   assert.ok(calls.some((call) => call.method === "HEAD" && call.url.endsWith("movie.webm")));
+});
+
+test("remote loader covers empty input, fetch failures, and stream cancellation", async () => {
+  const makeHeaders = (values) => ({
+    get(name) {
+      return values[String(name).toLowerCase()] || "";
+    }
+  });
+  const abortedSignal = { aborted: true };
+  const loader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: {
+      fetch: async (url, options = {}) => {
+        if (options.method === "HEAD") throw new Error("network down");
+        if (options.headers && options.headers.Range) throw "range blocked";
+        return {
+          ok: true,
+          status: 200,
+          headers: makeHeaders({
+            "content-length": "8",
+            "content-type": "video/mp4"
+          }),
+          body: {
+            getReader() {
+              return {
+                async read() {
+                  return { done: false, value: new Uint8Array([1, 2]) };
+                }
+              };
+            }
+          }
+        };
+      }
+    }
+  });
+  const remoteLoader = await loader.import("src/js/ui/remote-loader.js");
+
+  assert.throws(() => remoteLoader.normalizeRemoteMediaUrl("   "), /empty/);
+  const fallbackPlan = await remoteLoader.probeRemoteMediaResource("https://media.test/fallback.mp4");
+  assert.equal(fallbackPlan.canStream, false);
+  assert.match(fallbackPlan.fallbackReason, /Range probe failed: range blocked/);
+  await assert.rejects(
+    () => remoteLoader.downloadRemoteMediaFile("https://media.test/fallback.mp4", {}, { signal: abortedSignal }),
+    /cancelled/
+  );
 });
 
 test("source HTML has required controls, tabs, and no external runtime assets after build", () => {

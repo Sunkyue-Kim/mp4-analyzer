@@ -118,6 +118,92 @@ test("MP3 container detection accepts ID3, declared MP3 frames, and verified raw
   assert.equal(await mp3Container.canAnalyze(unsupportedFile), false);
 });
 
+test("MP3 analyzer handles ID3 tags, Info frames, trailing ID3v1 tags, and empty streams", async () => {
+  const loader = await createSourceModuleLoader();
+  const { mp3Container } = await loader.import("src/js/core/containers/mp3/analyzer.js");
+  const id3v2Bytes = concatBytes([
+    makeId3v2Header(5),
+    new Uint8Array([1, 2, 3, 4, 5]),
+    makeMp3Frame()
+  ]);
+  const infoFrameBytes = makeMp3Frame();
+  writeAscii(infoFrameBytes, 36, "Info");
+  const infoFileBytes = concatBytes([
+    infoFrameBytes,
+    makeMp3Frame()
+  ]);
+  const id3v1FileBytes = concatBytes([
+    makeMp3Frame(),
+    makeId3v1Tag({ title: "Song", artist: "Artist", album: "Album", year: "2026" })
+  ]);
+
+  const id3v2Analysis = await mp3Container.analyzeFile(new File([id3v2Bytes], "tagged.mp3", { type: "audio/mpeg" }), {});
+  assert.deepEqual(JSON.parse(JSON.stringify(id3v2Analysis.topBoxes.map((box) => box.type))), ["ID3v2", "MPEGAudioStream"]);
+  assert.equal(id3v2Analysis.topBoxes[0].fields.size, 15);
+  assert.equal(id3v2Analysis.sampleRows[0].offset, "15");
+
+  const infoAnalysis = await mp3Container.analyzeFile(new File([infoFileBytes], "info.mp3", { type: "audio/mpeg" }), {});
+  assert.equal(infoAnalysis.sampleRows.length, 1);
+  assert.equal(infoAnalysis.sampleRows[0].offset, "417");
+
+  const id3v1Analysis = await mp3Container.analyzeFile(new File([id3v1FileBytes], "trailing-id3v1.mp3", { type: "audio/mpeg" }), {});
+  assert.deepEqual(JSON.parse(JSON.stringify(id3v1Analysis.topBoxes.map((box) => box.type))), ["MPEGAudioStream", "ID3v1"]);
+  assert.equal(id3v1Analysis.topBoxes[1].fields.title, "Song");
+  assert.equal(id3v1Analysis.topBoxes[1].fields.artist, "Artist");
+
+  const emptyAnalysis = await mp3Container.analyzeFile(new File([new Uint8Array(64)], "empty.mp3", { type: "audio/mpeg" }), {});
+  assert.deepEqual(JSON.parse(JSON.stringify(emptyAnalysis.warnings)), ["No MPEG audio frames found."]);
+  assert.equal(emptyAnalysis.sampleRows.length, 0);
+  assert.equal(emptyAnalysis.tracks[0].codecConfig.averageBitrate, 0);
+});
+
+test("WebM analyzer splits SimpleBlock Xiph, fixed, and EBML lacing", async () => {
+  const loader = await createSourceModuleLoader();
+  const { webmContainer } = await loader.import("src/js/core/containers/webm/analyzer.js");
+  const webmBytes = buildSyntheticWebmFile({
+    tracks: [buildSyntheticVideoTrack()],
+    clusters: [
+      webmElement([0x1f, 0x43, 0xb6, 0x75], concatBytes([
+        webmUnsignedElement([0xe7], 0),
+        webmElement([0xa3], buildSimpleBlock(1, 0, 0x80, new Uint8Array([1, 2]))),
+        webmElement([0xa3], buildSimpleBlock(1, 10, 0x82, new Uint8Array([1, 2, 1, 2, 3, 4, 5]))),
+        webmElement([0xa3], buildSimpleBlock(1, 20, 0x84, new Uint8Array([2, 1, 2, 3, 4, 5, 6]))),
+        webmElement([0xa3], buildSimpleBlock(1, 30, 0x86, new Uint8Array([2, 0x82, 0xbf, 1, 2, 3, 4, 5, 6])))
+      ]))
+    ]
+  });
+
+  assert.equal(await webmContainer.canAnalyze(new File([webmBytes], "synthetic.webm", { type: "video/webm" })), true);
+  const analysis = await webmContainer.analyzeFile(new File([webmBytes], "synthetic.webm", { type: "video/webm" }), {});
+
+  assert.equal(analysis.warnings.length, 0);
+  assert.equal(analysis.tracks.length, 1);
+  assert.equal(analysis.sampleRows.length, 9);
+  assert.deepEqual(JSON.parse(JSON.stringify(analysis.sampleRows.map((row) => row.size))), [2, 2, 3, 2, 2, 2, 2, 2, 2]);
+  assert.deepEqual(JSON.parse(JSON.stringify([...new Set(analysis.sampleRows.map((row) => row.frameType))])), ["I"]);
+  assert.equal(analysis.tracks[0].sampleCount, 9);
+});
+
+test("WebM analyzer reports missing tracks and unknown block references", async () => {
+  const loader = await createSourceModuleLoader();
+  const { webmContainer } = await loader.import("src/js/core/containers/webm/analyzer.js");
+  const webmBytes = buildSyntheticWebmFile({
+    tracks: [],
+    clusters: [
+      webmElement([0x1f, 0x43, 0xb6, 0x75], concatBytes([
+        webmUnsignedElement([0xe7], 0),
+        webmElement([0xa3], buildSimpleBlock(3, 0, 0x80, new Uint8Array([1, 2, 3])))
+      ]))
+    ]
+  });
+  const analysis = await webmContainer.analyzeFile(new File([webmBytes], "missing-track.webm", { type: "video/webm" }), {});
+
+  assert.equal(analysis.tracks.length, 0);
+  assert.equal(analysis.sampleRows.length, 0);
+  assert.ok(analysis.warnings.includes("No WebM TrackEntry elements found."));
+  assert.ok(analysis.warnings.includes("WebM block references unknown track 3."));
+});
+
 test("remote ISO BMFF analysis starts with small exact range probes before large cached reads", async () => {
   const fileSize = 5 * 1024 * 1024;
   const bytes = new Uint8Array(fileSize);
@@ -178,6 +264,124 @@ function writeAscii(bytes, offset, value) {
   for (let index = 0; index < value.length; index += 1) {
     bytes[offset + index] = value.charCodeAt(index);
   }
+}
+
+function asciiBytes(value) {
+  return Uint8Array.from(Buffer.from(value, "ascii"));
+}
+
+function concatBytes(parts) {
+  const length = parts.reduce((sum, part) => sum + part.byteLength, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.byteLength;
+  }
+  return result;
+}
+
+function makeMp3Frame(options = {}) {
+  const frameLength = options.frameLength || 417;
+  const frame = new Uint8Array(frameLength);
+  frame.set(makeMp3HeaderBytes(options), 0);
+  return frame;
+}
+
+function makeId3v2Header(payloadSize) {
+  return new Uint8Array([
+    0x49, 0x44, 0x33,
+    0x04, 0x00, 0x00,
+    (payloadSize >> 21) & 0x7f,
+    (payloadSize >> 14) & 0x7f,
+    (payloadSize >> 7) & 0x7f,
+    payloadSize & 0x7f
+  ]);
+}
+
+function makeId3v1Tag(fields) {
+  const tag = new Uint8Array(128);
+  writeAscii(tag, 0, "TAG");
+  writeAscii(tag, 3, fields.title || "");
+  writeAscii(tag, 33, fields.artist || "");
+  writeAscii(tag, 63, fields.album || "");
+  writeAscii(tag, 93, fields.year || "");
+  return tag;
+}
+
+function buildSyntheticWebmFile(options) {
+  const segmentPayload = concatBytes([
+    webmElement([0x15, 0x49, 0xa9, 0x66], concatBytes([
+      webmUnsignedElement([0x2a, 0xd7, 0xb1], 1000000)
+    ])),
+    webmElement([0x16, 0x54, 0xae, 0x6b], concatBytes(options.tracks || [])),
+    ...(options.clusters || [])
+  ]);
+  return concatBytes([
+    webmElement([0x1a, 0x45, 0xdf, 0xa3], new Uint8Array(0)),
+    webmElement([0x18, 0x53, 0x80, 0x67], segmentPayload)
+  ]);
+}
+
+function buildSyntheticVideoTrack() {
+  return webmElement([0xae], concatBytes([
+    webmUnsignedElement([0xd7], 1),
+    webmUnsignedElement([0x83], 1),
+    webmStringElement([0x86], "V_VP9"),
+    webmUnsignedElement([0x23, 0xe3, 0x83], 33333333),
+    webmElement([0xe0], concatBytes([
+      webmUnsignedElement([0xb0], 320),
+      webmUnsignedElement([0xba], 180)
+    ]))
+  ]));
+}
+
+function buildSimpleBlock(trackNumber, timecode, flags, payload) {
+  return concatBytes([
+    webmUnsignedVint(trackNumber),
+    new Uint8Array([(timecode >> 8) & 0xff, timecode & 0xff, flags]),
+    payload
+  ]);
+}
+
+function webmElement(idBytes, payload) {
+  return concatBytes([
+    new Uint8Array(idBytes),
+    webmSizeVint(payload.byteLength),
+    payload
+  ]);
+}
+
+function webmUnsignedElement(idBytes, value) {
+  return webmElement(idBytes, unsignedBigEndianBytes(value));
+}
+
+function webmStringElement(idBytes, value) {
+  return webmElement(idBytes, asciiBytes(value));
+}
+
+function unsignedBigEndianBytes(value) {
+  if (!value) return new Uint8Array([0]);
+  const bytes = [];
+  let remaining = value;
+  while (remaining > 0) {
+    bytes.unshift(remaining & 0xff);
+    remaining = Math.floor(remaining / 256);
+  }
+  return new Uint8Array(bytes);
+}
+
+function webmSizeVint(value) {
+  if (value <= 0x7f) return new Uint8Array([0x80 | value]);
+  if (value <= 0x3fff) return new Uint8Array([0x40 | ((value >> 8) & 0x3f), value & 0xff]);
+  if (value <= 0x1fffff) return new Uint8Array([0x20 | ((value >> 16) & 0x1f), (value >> 8) & 0xff, value & 0xff]);
+  throw new Error("Synthetic EBML size is too large.");
+}
+
+function webmUnsignedVint(value) {
+  if (value <= 0x7f) return new Uint8Array([0x80 | value]);
+  if (value <= 0x3fff) return new Uint8Array([0x40 | ((value >> 8) & 0x3f), value & 0xff]);
+  throw new Error("Synthetic EBML vint is too large.");
 }
 
 function makeMp3HeaderBytes(options = {}) {

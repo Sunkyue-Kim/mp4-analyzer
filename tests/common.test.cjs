@@ -101,6 +101,60 @@ test("HttpRangeReader reads byte ranges without downloading the full resource", 
   assert.equal(rangeRequests[3].range, "bytes=0-" + (SMALL_RANGE_CHUNK_BYTES - 1));
 });
 
+test("HttpRangeReader reports bad range responses and aborts consistently", async () => {
+  let activeReader = null;
+  const loader = new SourceModuleLoader({
+    rootDirectory,
+    globals: {
+      fetch: async (url) => {
+        if (url.includes("abort")) {
+          activeReader.cancel();
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          throw error;
+        }
+        return {
+          status: 200,
+          async arrayBuffer() {
+            return new Uint8Array([1, 2, 3]).buffer;
+          }
+        };
+      }
+    }
+  });
+  const { HttpRangeReader, createRangeReader, getResourceInfo } = await loader.import("src/js/core/common/binary.js");
+  const badStatusResource = {
+    kind: "remote-url",
+    url: "https://example.test/bad-status.bin",
+    name: "bad-status.bin",
+    size: 16,
+    rangeSupported: true
+  };
+  const abortResource = {
+    kind: "remote-url",
+    url: "https://example.test/abort.bin",
+    name: "abort.bin",
+    size: 16,
+    rangeSupported: true
+  };
+
+  const badStatusReader = new HttpRangeReader(badStatusResource);
+  await assert.rejects(() => badStatusReader.readRange(0n, 1n), /expected 206/);
+  await assert.rejects(() => badStatusReader.readExactRange(0n, 1n), /expected 206/);
+
+  activeReader = new HttpRangeReader(abortResource);
+  await assert.rejects(() => activeReader.readExactRange(0n, 1n), /Analysis cancelled/);
+  assert.equal(createRangeReader(abortResource).constructor.name, "HttpRangeReader");
+  assert.deepEqual(JSON.parse(JSON.stringify(getResourceInfo(abortResource))), {
+    name: "abort.bin",
+    size: 16,
+    type: "",
+    source: "remote-url",
+    url: "https://example.test/abort.bin",
+    rangeSupported: true
+  });
+});
+
 test("bitstream helpers remove emulation-prevention bytes and decode Exp-Golomb", async () => {
   const loader = await createSourceModuleLoader();
   const { BitReader, removeEmulationPreventionBytes } = await loader.import("src/js/core/common/bitstream.js");
