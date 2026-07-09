@@ -772,6 +772,12 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /data-inspection-tooltip/);
   assert.match(sourceUi, /--cell-red:/);
   assert.match(sourceUi, /globalPercentile/);
+  assert.match(sourceCss, /\.graph-bar\.i\s*\{\s*background:\s*#07844a;/);
+  assert.match(sourceCss, /\.graph-bar\.p\s*\{\s*background:\s*#1d4ed8;/);
+  assert.match(sourceCss, /\.graph-bar\.b\s*\{\s*background:\s*#7c3aed;/);
+  assert.match(sourceCss, /\.pill\.i\s*\{\s*color:\s*#067647;/);
+  assert.match(sourceCss, /\.pill\.p\s*\{\s*color:\s*#1d4ed8;/);
+  assert.match(sourceCss, /\.pill\.b\s*\{\s*color:\s*#6d28d9;/);
   assert.doesNotMatch(sourceUi, /block-cell [^"']+["'][\s\S]{0,200}title=/);
   assert.doesNotMatch(sourceUi, /audio-band-row["'][\s\S]{0,200}title=/);
   assert.match(sourceUi, /createDataGridLayout/);

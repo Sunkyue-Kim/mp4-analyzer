@@ -1470,10 +1470,10 @@
       box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.13);
     }
 
-    .graph-bar.i { background: #0f9f5f; }
-    .graph-bar.p { background: #16959a; }
-    .graph-bar.b { background: #7a5af8; }
-    .graph-bar.aac { background: #2e90fa; }
+    .graph-bar.i { background: #07844a; }
+    .graph-bar.p { background: #1d4ed8; }
+    .graph-bar.b { background: #7c3aed; }
+    .graph-bar.aac { background: #0e7490; }
     .graph-bar.warn { background: #d18b19; }
     .graph-bar.err { background: #d92d20; }
 
@@ -1683,9 +1683,9 @@
       outline-offset: -1px;
     }
 
-    .block-cell.i { --cell-red: 15; --cell-green: 159; --cell-blue: 95; }
-    .block-cell.p { --cell-red: 22; --cell-green: 149; --cell-blue: 154; }
-    .block-cell.b { --cell-red: 122; --cell-green: 90; --cell-blue: 248; }
+    .block-cell.i { --cell-red: 7; --cell-green: 132; --cell-blue: 74; }
+    .block-cell.p { --cell-red: 29; --cell-green: 78; --cell-blue: 216; }
+    .block-cell.b { --cell-red: 124; --cell-green: 58; --cell-blue: 237; }
     .block-cell.warn { --cell-red: 181; --cell-green: 71; --cell-blue: 8; }
     .block-cell.err { --cell-red: 217; --cell-green: 45; --cell-blue: 32; }
 
@@ -1750,10 +1750,10 @@
       font-weight: 700;
     }
 
-    .pill.i { color: var(--ok); border-color: #a6d8bd; background: #effaf3; }
-    .pill.p { color: var(--accent-2); border-color: #9ccfcb; background: #edfafa; }
-    .pill.b { color: #6941c6; border-color: #c7b8f2; background: #f4f0ff; }
-    .pill.aac { color: #175cd3; border-color: #b2ddff; background: #eff8ff; }
+    .pill.i { color: #067647; border-color: #8ed9ab; background: #eafaf0; }
+    .pill.p { color: #1d4ed8; border-color: #a9c0ff; background: #eef4ff; }
+    .pill.b { color: #6d28d9; border-color: #c4b5fd; background: #f4f0ff; }
+    .pill.aac { color: #0e7490; border-color: #9ed8e5; background: #ecfeff; }
     .pill.warn { color: var(--warn); border-color: #f5c78b; background: #fff7ed; }
     .pill.err { color: var(--danger); border-color: #f3b8b3; background: #fff1f0; }
 
