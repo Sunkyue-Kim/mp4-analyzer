@@ -33,12 +33,23 @@ export function renderVideoFrameInternals(model, options = {}) {
     renderFrameInternalsStats(stats) +
     '</div>' +
     '<div class="block-heatmap-wrap">' +
-    '<div class="block-map" style="--frame-aspect-ratio:' + model.mediaWidth + ' / ' + model.mediaHeight + '">' +
+    '<div class="block-map" style="' + renderVideoBlockMapStyle(model) + '">' +
     model.cells.map((cell) => renderVideoBlockCell(cell, model, frameClass)).join("") +
     '</div>' +
     '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.videoEstimateNote")) + '</p>' +
     '</div>' +
     '</div>';
+}
+
+function renderVideoBlockMapStyle(model) {
+  const mediaWidth = Math.max(1, Number(model.mediaWidth) || 1);
+  const mediaHeight = Math.max(1, Number(model.mediaHeight) || 1);
+  const maxHeight = Math.max(160, Number(model.mapMaxHeight) || 280);
+  const maxWidth = Math.max(1, Math.round(maxHeight * mediaWidth / mediaHeight));
+  return [
+    "--frame-aspect-ratio:" + mediaWidth + " / " + mediaHeight,
+    "--frame-map-max-width:" + maxWidth + "px"
+  ].join(";");
 }
 
 function formatVideoDisplayedGrid(model) {

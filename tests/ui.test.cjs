@@ -452,6 +452,8 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   assert.match(videoHtml, /block-cell i/);
   assert.match(videoHtml, /block-map/);
   assert.match(videoHtml, /Partition/);
+  assert.match(videoHtml, /--frame-aspect-ratio:16 \/ 32/);
+  assert.match(videoHtml, /--frame-map-max-width:140px/);
   assert.match(videoHtml, /--cell-left:0\.00000%/);
   assert.match(videoHtml, /16x32 \(rotated -90 deg, encoded 32x16\)/);
   assert.match(videoHtml, /data-inspection-tooltip=/);
@@ -969,7 +971,10 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceFrameInternalsView, /--cell-red:/);
   assert.match(sourceFrameInternalsView, /globalPercentile/);
   assert.match(sourceFrameInternalsView, /partitionModes/);
-  assert.match(sourceCss, /\.block-map\s*\{[\s\S]*?position:\s*relative;[\s\S]*?aspect-ratio:\s*var\(--frame-aspect-ratio/);
+  assert.match(sourceCss, /\.block-map\s*\{[\s\S]*?position:\s*relative;[\s\S]*?width:\s*min\(100%,\s*var\(--frame-map-max-width/);
+  assert.match(sourceCss, /\.block-map\s*\{[\s\S]*?aspect-ratio:\s*var\(--frame-aspect-ratio/);
+  assert.doesNotMatch(sourceCss.match(/\.block-map\s*\{[\s\S]*?\}/)?.[0] || "", /max-height:/);
+  assert.doesNotMatch(sourceCss.match(/\.block-map\s*\{[\s\S]*?\}/)?.[0] || "", /min-width:\s*min/);
   assert.match(sourceCss, /\.block-map \.block-cell\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?left:\s*var\(--cell-left\);/);
   assert.match(sourceCss, /--frame-i:\s*oklch\(0\.82 0\.09 145\);/);
   assert.match(sourceCss, /--frame-p:\s*oklch\(0\.80 0\.085 260\);/);

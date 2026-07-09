@@ -1697,10 +1697,10 @@
 
     .block-map {
       position: relative;
-      width: 100%;
-      min-width: min(560px, 100%);
+      width: min(100%, var(--frame-map-max-width, 100%));
+      min-width: 0;
       aspect-ratio: var(--frame-aspect-ratio, 16 / 9);
-      max-height: 280px;
+      margin: 0 auto;
       background:
         linear-gradient(rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.44)),
         #d7e2ea;
