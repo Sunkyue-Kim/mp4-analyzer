@@ -34,9 +34,9 @@ export function renderVideoFrameInternals(model, options = {}) {
     '</div>' +
     '<div class="block-heatmap-wrap">' +
     '<div class="block-map-viewport" tabindex="0" role="region" aria-label="' + escapeHtml(t("frameInternals.zoomPlotAria")) + '" style="' + renderVideoBlockMapStyle(model) + '">' +
-    '<div class="block-map">' +
+    '<svg class="block-map" viewBox="0 0 ' + formatSvgNumber(model.mediaWidth) + ' ' + formatSvgNumber(model.mediaHeight) + '" data-media-width="' + escapeHtml(String(model.mediaWidth)) + '" data-media-height="' + escapeHtml(String(model.mediaHeight)) + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
       model.cells.map((cell) => renderVideoBlockCell(cell, model, frameClass)).join("") +
-    '</div>' +
+    '</svg>' +
     '</div>' +
     '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.videoEstimateNote")) + '</p>' +
     '</div>' +
@@ -52,10 +52,7 @@ function renderVideoBlockMapStyle(model) {
   return [
     "--frame-aspect-ratio:" + mediaWidth + " / " + mediaHeight,
     "--frame-map-width:" + maxWidth + "px",
-    "--frame-map-height:" + maxHeight + "px",
-    "--frame-map-scale:1",
-    "--frame-map-pan-x:0px",
-    "--frame-map-pan-y:0px"
+    "--frame-map-height:" + maxHeight + "px"
   ].join(";");
 }
 
@@ -100,32 +97,37 @@ function renderVideoBlockCell(cell, model, frameClass) {
     [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
     [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
   ];
-  return '<div class="block-cell ' + frameClass + '"' +
+  return '<rect class="block-cell ' + frameClass + '"' +
     renderFrameInternalsTooltipAttributes({
       title,
       rows: tooltipRows,
       note: t("frameInternals.videoEstimateNote")
     }) +
-    ' style="' + renderVideoBlockCellStyle(cell, model) + '"></div>';
+    ' x="' + formatSvgNumber(displayBounds.left) + '"' +
+    ' y="' + formatSvgNumber(displayBounds.top) + '"' +
+    ' width="' + formatSvgNumber(Math.max(0, displayBounds.right - displayBounds.left)) + '"' +
+    ' height="' + formatSvgNumber(Math.max(0, displayBounds.bottom - displayBounds.top)) + '"' +
+    ' style="' + renderVideoBlockCellStyle(cell) + '"></rect>';
 }
 
-function renderVideoBlockCellStyle(cell, model) {
+function renderVideoBlockCellStyle(cell) {
   const color = cell.color || { red: 31, green: 122, blue: 140 };
   const alpha = Number.isFinite(cell.intensity) ? cell.intensity : 0.75;
-  const displayBounds = getDisplayCellBounds(cell);
-  const mediaWidth = Math.max(1, Number(model.mediaWidth) || 1);
-  const mediaHeight = Math.max(1, Number(model.mediaHeight) || 1);
   return [
     '--cell-red:' + color.red,
     '--cell-green:' + color.green,
     '--cell-blue:' + color.blue,
     '--cell-alpha:' + alpha.toFixed(3),
-    '--cell-left:' + (displayBounds.left * 100 / mediaWidth).toFixed(5) + '%',
-    '--cell-top:' + (displayBounds.top * 100 / mediaHeight).toFixed(5) + '%',
-    '--cell-width:' + ((displayBounds.right - displayBounds.left) * 100 / mediaWidth).toFixed(5) + '%',
-    '--cell-height:' + ((displayBounds.bottom - displayBounds.top) * 100 / mediaHeight).toFixed(5) + '%',
     '--cell-depth:' + (cell.depth || 0)
   ].join(";");
+}
+
+function formatSvgNumber(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return "0";
+  return Math.abs(numberValue - Math.round(numberValue)) < 0.001
+    ? String(Math.round(numberValue))
+    : numberValue.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function getDisplayCellBounds(cell) {

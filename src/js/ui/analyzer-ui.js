@@ -78,7 +78,7 @@ export function startUserInterface(Core, options = {}) {
 const FRAME_TABLE_HEADER_HEIGHT = 34;
 const FRAME_TABLE_MINIMUM_WIDTH = "1048px";
 const FRAME_INTERNALS_MAP_MINIMUM_SCALE = 1;
-const FRAME_INTERNALS_MAP_MAXIMUM_SCALE = 8;
+const FRAME_INTERNALS_MAP_MAXIMUM_SCALE = 32;
 const state = {
   analysis: null,
   language: options.initialLanguage || getLanguage(),
@@ -109,6 +109,7 @@ const state = {
   frameInternalsMapDrag: null,
   frameInternalsMapGesture: null,
   frameInternalsMapPointers: new Map(),
+  frameInternalsMapView: createDefaultFrameInternalsMapView(),
   frameInternalsColorScaleCache: new Map()
 };
 
@@ -1095,6 +1096,7 @@ function resetView(file, options = {}) {
   state.lastPlaybackSynchronizationFragmentIndex = 0;
   state.fragmentRows = [];
   state.frameInternalsColorScaleCache = new Map();
+  state.frameInternalsMapView = createDefaultFrameInternalsMapView();
   state.transientWarnings = options.initialWarnings ? options.initialWarnings.slice() : [];
   if (!options.keepSampleSelection && elements.sampleSelect) elements.sampleSelect.value = "";
   setFilePreview(file, options);
@@ -1710,6 +1712,7 @@ function renderFrameInternals() {
   }
   if (model.kind === "video-grid") {
     elements.frameInternalsBody.innerHTML = renderVideoFrameInternals(model, { frameLabel: formatSelectedFrameLabel() });
+    restoreFrameInternalsMapViewport();
     return;
   }
   if (model.kind === "audio-bands") {
@@ -1848,8 +1851,8 @@ function handleFrameInternalsMapPointerDown(event) {
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      startPanX: currentTransform.panX,
-      startPanY: currentTransform.panY
+      startCenterX: currentTransform.centerX,
+      startCenterY: currentTransform.centerY
     };
     viewport.classList.add("dragging");
   }
@@ -1872,10 +1875,12 @@ function handleFrameInternalsMapPointerMove(event) {
   if (!dragState || dragState.pointerId !== event.pointerId) return;
   const deltaX = event.clientX - dragState.startClientX;
   const deltaY = event.clientY - dragState.startClientY;
+  const currentTransform = getFrameInternalsMapTransform(dragState.viewport);
+  const svgRect = getFrameInternalsMapSvgRect(dragState.viewport);
   setFrameInternalsMapTransform(dragState.viewport, {
-    scale: getFrameInternalsMapTransform(dragState.viewport).scale,
-    panX: dragState.startPanX + deltaX,
-    panY: dragState.startPanY + deltaY
+    scale: currentTransform.scale,
+    centerX: dragState.startCenterX - deltaX / Math.max(1, svgRect.width) / currentTransform.scale,
+    centerY: dragState.startCenterY - deltaY / Math.max(1, svgRect.height) / currentTransform.scale
   });
   hideFrameInternalsTooltip();
   event.preventDefault();
@@ -1901,8 +1906,8 @@ function handleFrameInternalsMapPointerUp(event) {
         pointerId: remainingPointer.pointerId,
         startClientX: remainingPointer.clientX,
         startClientY: remainingPointer.clientY,
-        startPanX: currentTransform.panX,
-        startPanY: currentTransform.panY
+        startCenterX: currentTransform.centerX,
+        startCenterY: currentTransform.centerY
       };
       viewport.classList.add("dragging");
     }
@@ -1932,16 +1937,15 @@ function getFrameInternalsWheelScale(event) {
 
 function zoomFrameInternalsMapViewport(viewport, targetScale, clientX, clientY) {
   hideFrameInternalsTooltip();
-  const rect = viewport.getBoundingClientRect();
   const currentTransform = getFrameInternalsMapTransform(viewport);
   const nextScale = clamp(targetScale, FRAME_INTERNALS_MAP_MINIMUM_SCALE, FRAME_INTERNALS_MAP_MAXIMUM_SCALE);
-  const scaleRatio = nextScale / Math.max(FRAME_INTERNALS_MAP_MINIMUM_SCALE, currentTransform.scale);
-  const anchorX = clientX - rect.left - rect.width / 2;
-  const anchorY = clientY - rect.top - rect.height / 2;
+  const anchor = getFrameInternalsMapClientPoint(viewport, clientX, clientY, currentTransform);
+  const nextVisibleWidth = 1 / nextScale;
+  const nextVisibleHeight = 1 / nextScale;
   setFrameInternalsMapTransform(viewport, {
     scale: nextScale,
-    panX: anchorX - (anchorX - currentTransform.panX) * scaleRatio,
-    panY: anchorY - (anchorY - currentTransform.panY) * scaleRatio
+    centerX: anchor.mapX - (anchor.relativeX - 0.5) * nextVisibleWidth,
+    centerY: anchor.mapY - (anchor.relativeY - 0.5) * nextVisibleHeight
   });
 }
 
@@ -1949,8 +1953,8 @@ function resetFrameInternalsMapViewport(viewport) {
   hideFrameInternalsTooltip();
   setFrameInternalsMapTransform(viewport, {
     scale: FRAME_INTERNALS_MAP_MINIMUM_SCALE,
-    panX: 0,
-    panY: 0
+    centerX: 0.5,
+    centerY: 0.5
   });
   viewport.classList.remove("dragging");
 }
@@ -1958,19 +1962,22 @@ function resetFrameInternalsMapViewport(viewport) {
 function getFrameInternalsMapTransform(viewport) {
   return {
     scale: Number(viewport.dataset.mapScale) || FRAME_INTERNALS_MAP_MINIMUM_SCALE,
-    panX: Number(viewport.dataset.mapPanX) || 0,
-    panY: Number(viewport.dataset.mapPanY) || 0
+    centerX: Number(viewport.dataset.mapCenterX) || 0.5,
+    centerY: Number(viewport.dataset.mapCenterY) || 0.5
   };
 }
 
 function setFrameInternalsMapTransform(viewport, transform) {
   const normalizedTransform = normalizeFrameInternalsMapTransform(viewport, transform);
   viewport.dataset.mapScale = normalizedTransform.scale.toFixed(4);
-  viewport.dataset.mapPanX = normalizedTransform.panX.toFixed(3);
-  viewport.dataset.mapPanY = normalizedTransform.panY.toFixed(3);
-  viewport.style.setProperty("--frame-map-scale", normalizedTransform.scale.toFixed(4));
-  viewport.style.setProperty("--frame-map-pan-x", normalizedTransform.panX.toFixed(3) + "px");
-  viewport.style.setProperty("--frame-map-pan-y", normalizedTransform.panY.toFixed(3) + "px");
+  viewport.dataset.mapCenterX = normalizedTransform.centerX.toFixed(6);
+  viewport.dataset.mapCenterY = normalizedTransform.centerY.toFixed(6);
+  state.frameInternalsMapView = {
+    scale: normalizedTransform.scale,
+    centerX: normalizedTransform.centerX,
+    centerY: normalizedTransform.centerY
+  };
+  applyFrameInternalsMapViewBox(viewport, normalizedTransform);
   viewport.classList.toggle("is-scaled", normalizedTransform.scale > FRAME_INTERNALS_MAP_MINIMUM_SCALE + 0.001);
 }
 
@@ -1981,18 +1988,84 @@ function normalizeFrameInternalsMapTransform(viewport, transform) {
     FRAME_INTERNALS_MAP_MAXIMUM_SCALE
   );
   if (scale <= FRAME_INTERNALS_MAP_MINIMUM_SCALE + 0.001) {
-    return { scale: FRAME_INTERNALS_MAP_MINIMUM_SCALE, panX: 0, panY: 0 };
+    return { scale: FRAME_INTERNALS_MAP_MINIMUM_SCALE, centerX: 0.5, centerY: 0.5 };
   }
-  const map = viewport.querySelector(".block-map");
-  const viewportRect = viewport.getBoundingClientRect();
-  const baseWidth = Math.max(1, map?.offsetWidth || viewportRect.width);
-  const baseHeight = Math.max(1, map?.offsetHeight || viewportRect.height);
-  const panLimitX = Math.max(0, (baseWidth * scale - viewportRect.width) / 2);
-  const panLimitY = Math.max(0, (baseHeight * scale - viewportRect.height) / 2);
+  const visibleWidth = 1 / scale;
+  const visibleHeight = 1 / scale;
+  const halfVisibleWidth = visibleWidth / 2;
+  const halfVisibleHeight = visibleHeight / 2;
   return {
     scale,
-    panX: clamp(Number(transform.panX) || 0, -panLimitX, panLimitX),
-    panY: clamp(Number(transform.panY) || 0, -panLimitY, panLimitY)
+    centerX: clamp(Number(transform.centerX) || 0.5, halfVisibleWidth, 1 - halfVisibleWidth),
+    centerY: clamp(Number(transform.centerY) || 0.5, halfVisibleHeight, 1 - halfVisibleHeight)
+  };
+}
+
+function applyFrameInternalsMapViewBox(viewport, transform) {
+  const svg = getFrameInternalsMapSvg(viewport);
+  if (!svg) return;
+  const mediaWidth = getFrameInternalsMapMediaWidth(viewport);
+  const mediaHeight = getFrameInternalsMapMediaHeight(viewport);
+  const viewWidth = mediaWidth / transform.scale;
+  const viewHeight = mediaHeight / transform.scale;
+  const viewLeft = transform.centerX * mediaWidth - viewWidth / 2;
+  const viewTop = transform.centerY * mediaHeight - viewHeight / 2;
+  svg.setAttribute("viewBox", [
+    formatFrameInternalsViewBoxNumber(viewLeft),
+    formatFrameInternalsViewBoxNumber(viewTop),
+    formatFrameInternalsViewBoxNumber(viewWidth),
+    formatFrameInternalsViewBoxNumber(viewHeight)
+  ].join(" "));
+}
+
+function restoreFrameInternalsMapViewport() {
+  const viewport = elements.frameInternalsBody.querySelector(".block-map-viewport");
+  if (!viewport) return;
+  setFrameInternalsMapTransform(viewport, state.frameInternalsMapView || createDefaultFrameInternalsMapView());
+}
+
+function getFrameInternalsMapClientPoint(viewport, clientX, clientY, transform = getFrameInternalsMapTransform(viewport)) {
+  const svgRect = getFrameInternalsMapSvgRect(viewport);
+  const relativeX = clamp((clientX - svgRect.left) / Math.max(1, svgRect.width), 0, 1);
+  const relativeY = clamp((clientY - svgRect.top) / Math.max(1, svgRect.height), 0, 1);
+  return {
+    relativeX,
+    relativeY,
+    mapX: transform.centerX + (relativeX - 0.5) / transform.scale,
+    mapY: transform.centerY + (relativeY - 0.5) / transform.scale
+  };
+}
+
+function getFrameInternalsMapSvg(viewport) {
+  return viewport.querySelector("svg.block-map");
+}
+
+function getFrameInternalsMapSvgRect(viewport) {
+  const svg = getFrameInternalsMapSvg(viewport);
+  return svg ? svg.getBoundingClientRect() : viewport.getBoundingClientRect();
+}
+
+function getFrameInternalsMapMediaWidth(viewport) {
+  return Math.max(1, Number(getFrameInternalsMapSvg(viewport)?.dataset.mediaWidth) || 1);
+}
+
+function getFrameInternalsMapMediaHeight(viewport) {
+  return Math.max(1, Number(getFrameInternalsMapSvg(viewport)?.dataset.mediaHeight) || 1);
+}
+
+function formatFrameInternalsViewBoxNumber(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return "0";
+  return Math.abs(numberValue - Math.round(numberValue)) < 0.001
+    ? String(Math.round(numberValue))
+    : numberValue.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function createDefaultFrameInternalsMapView() {
+  return {
+    scale: FRAME_INTERNALS_MAP_MINIMUM_SCALE,
+    centerX: 0.5,
+    centerY: 0.5
   };
 }
 
@@ -2005,6 +2078,7 @@ function startFrameInternalsMapPinch(viewport) {
   if (pointers.length < 2) return;
   const currentTransform = getFrameInternalsMapTransform(viewport);
   const center = getFrameInternalsMapPointerCenter(pointers[0], pointers[1], viewport);
+  const anchor = getFrameInternalsMapClientPoint(viewport, center.clientX, center.clientY, currentTransform);
   state.frameInternalsMapDrag = null;
   viewport.classList.remove("dragging");
   state.frameInternalsMapGesture = {
@@ -2012,11 +2086,9 @@ function startFrameInternalsMapPinch(viewport) {
     firstPointerId: pointers[0].pointerId,
     secondPointerId: pointers[1].pointerId,
     startDistance: Math.max(1, getFrameInternalsMapPointerDistance(pointers[0], pointers[1])),
-    startCenterX: center.x,
-    startCenterY: center.y,
+    startMapX: anchor.mapX,
+    startMapY: anchor.mapY,
     startScale: currentTransform.scale,
-    startPanX: currentTransform.panX,
-    startPanY: currentTransform.panY
   };
 }
 
@@ -2029,15 +2101,18 @@ function updateFrameInternalsMapPinch(event) {
   const distance = Math.max(1, getFrameInternalsMapPointerDistance(firstPointer, secondPointer));
   const nextScale = gesture.startScale * distance / gesture.startDistance;
   const center = getFrameInternalsMapPointerCenter(firstPointer, secondPointer, gesture.viewport);
-  const nextScaleRatio = clamp(
+  const normalizedScale = clamp(
     nextScale,
     FRAME_INTERNALS_MAP_MINIMUM_SCALE,
     FRAME_INTERNALS_MAP_MAXIMUM_SCALE
-  ) / Math.max(FRAME_INTERNALS_MAP_MINIMUM_SCALE, gesture.startScale);
+  );
+  const svgRect = getFrameInternalsMapSvgRect(gesture.viewport);
+  const relativeX = clamp((center.clientX - svgRect.left) / Math.max(1, svgRect.width), 0, 1);
+  const relativeY = clamp((center.clientY - svgRect.top) / Math.max(1, svgRect.height), 0, 1);
   setFrameInternalsMapTransform(gesture.viewport, {
     scale: nextScale,
-    panX: center.x - (gesture.startCenterX - gesture.startPanX) * nextScaleRatio,
-    panY: center.y - (gesture.startCenterY - gesture.startPanY) * nextScaleRatio
+    centerX: gesture.startMapX - (relativeX - 0.5) / normalizedScale,
+    centerY: gesture.startMapY - (relativeY - 0.5) / normalizedScale
   });
   return true;
 }
@@ -2053,9 +2128,13 @@ function getFrameInternalsMapPointerDistance(firstPointer, secondPointer) {
 
 function getFrameInternalsMapPointerCenter(firstPointer, secondPointer, viewport) {
   const rect = viewport.getBoundingClientRect();
+  const clientX = (firstPointer.clientX + secondPointer.clientX) / 2;
+  const clientY = (firstPointer.clientY + secondPointer.clientY) / 2;
   return {
-    x: (firstPointer.clientX + secondPointer.clientX) / 2 - rect.left - rect.width / 2,
-    y: (firstPointer.clientY + secondPointer.clientY) / 2 - rect.top - rect.height / 2
+    clientX,
+    clientY,
+    x: clientX - rect.left - rect.width / 2,
+    y: clientY - rect.top - rect.height / 2
   };
 }
 

@@ -404,8 +404,13 @@ function verifyResponsiveLayoutCss() {
   );
   assertCssRule(
     sourceCss,
-    /\.block-cell\s*\{[\s\S]*?--cell-red:[\s\S]*?--cell-green:[\s\S]*?--cell-blue:[\s\S]*?background:\s*rgba\(var\(--cell-red\),\s*var\(--cell-green\),\s*var\(--cell-blue\),\s*var\(--cell-alpha\)\);/,
-    "Frame internals block cells must use dynamic RGB heatmap variables."
+    /\.block-cell\s*\{[\s\S]*?--cell-red:[\s\S]*?--cell-green:[\s\S]*?--cell-blue:[\s\S]*?fill:\s*rgba\(var\(--cell-red\),\s*var\(--cell-green\),\s*var\(--cell-blue\),\s*var\(--cell-alpha\)\);/,
+    "Frame internals block cells must use dynamic RGB heatmap variables through SVG fill."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.block-map \.block-cell\s*\{[\s\S]*?vector-effect:\s*non-scaling-stroke;/,
+    "Frame internals block cells must keep vector strokes stable while zooming through SVG viewBox."
   );
   assertCssRule(
     sourceCss,

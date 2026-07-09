@@ -1827,6 +1827,9 @@
 
     .block-map-viewport {
       position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       width: 100%;
       height: var(--frame-map-height, 280px);
       min-width: 0;
@@ -1861,18 +1864,14 @@
     }
 
     .block-map {
-      position: absolute;
-      left: 50%;
-      top: 50%;
+      display: block;
       width: min(100%, var(--frame-map-width, 100%));
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      margin: 0 auto;
       aspect-ratio: var(--frame-aspect-ratio, 16 / 9);
       overflow: hidden;
-      transform:
-        translate(-50%, -50%)
-        translate(var(--frame-map-pan-x, 0px), var(--frame-map-pan-y, 0px))
-        scale(var(--frame-map-scale, 1));
-      transform-origin: center center;
-      will-change: transform;
     }
 
     .block-cell {
@@ -1880,34 +1879,21 @@
       --cell-green: 122;
       --cell-blue: 140;
       --cell-alpha: 0.75;
-      --cell-left: 0%;
-      --cell-top: 0%;
-      --cell-width: 100%;
-      --cell-height: 100%;
       --cell-depth: 0;
-      min-width: 0;
-      min-height: 0;
-      border: 0;
-      padding: 0;
-      background: rgba(var(--cell-red), var(--cell-green), var(--cell-blue), var(--cell-alpha));
+      fill: rgba(var(--cell-red), var(--cell-green), var(--cell-blue), var(--cell-alpha));
       cursor: help;
     }
 
     .block-map .block-cell {
-      position: absolute;
-      left: var(--cell-left);
-      top: var(--cell-top);
-      width: var(--cell-width);
-      height: var(--cell-height);
-      border: 1px solid rgba(255, 255, 255, 0.52);
-      box-shadow:
-        inset 0 0 0 1px rgba(18, 44, 67, 0.12),
-        0 0 0 0.5px rgba(18, 44, 67, 0.06);
+      stroke: rgba(255, 255, 255, 0.56);
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+      shape-rendering: geometricPrecision;
     }
 
-    .block-cell:hover {
-      outline: 1px solid rgba(24, 34, 48, 0.32);
-      outline-offset: -1px;
+    .block-map .block-cell:hover {
+      stroke: rgba(24, 34, 48, 0.5);
+      stroke-width: 2;
     }
 
     .block-cell.i { --cell-red: 142; --cell-green: 216; --cell-blue: 173; }
