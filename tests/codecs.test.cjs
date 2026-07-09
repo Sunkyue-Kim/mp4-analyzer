@@ -180,7 +180,7 @@ test("codec registry provides interchangeable descriptors and scanners", async (
   assert.equal((await scanner.parse(new Uint8Array([0x00, 0x00, 0x00, 0x02, 0x65, 0xb0]))).frameType, "I");
 });
 
-test("frame internals model builds nominal video grids and audio band estimates", async () => {
+test("frame internals model builds partition-ready video maps and audio band estimates", async () => {
   const loader = await createSourceModuleLoader();
   const { buildFrameInternalsColorScale, buildFrameInternalsModel } = await loader.import("src/js/core/codecs/frame-internals.js");
   const videoTrack = { trackId: 1, handlerType: "vide", codec: "avc1", codecDescriptor: "avc", width: 1920, height: 1080 };
@@ -206,10 +206,14 @@ test("frame internals model builds nominal video grids and audio band estimates"
   assert.equal(videoModel.unitName, "macroblock");
   assert.equal(videoModel.nominalColumns, 120);
   assert.equal(videoModel.nominalRows, 68);
-  assert.ok(videoModel.aggregation > 1);
-  assert.ok(videoModel.cells.length <= 1800);
+  assert.equal(videoModel.layout, "partition-map");
+  assert.ok(videoModel.partitionBlockCount > videoModel.nominalColumns * videoModel.nominalRows);
+  assert.ok(videoModel.maxPartitionDepth > 0);
+  assert.ok(videoModel.partitionModes.some((entry) => entry.mode === "split"));
+  assert.ok(videoModel.cells.length <= 9000);
   assert.equal(Math.round(sum(videoModel.cells.map((cell) => cell.estimatedBytes))), 120000);
   assert.ok(videoModel.cells.every((cell) => cell.pixelRight <= 1920 && cell.pixelBottom <= 1080));
+  assert.ok(videoModel.cells.some((cell) => cell.blockWidth !== cell.blockHeight));
   assert.equal(videoModel.colorScale.mode, "global-track-percentile");
   assert.ok(videoModel.cells.some((cell) => cell.globalPercentile > 0.5));
   assert.ok(videoModel.cells.every((cell) => Number.isFinite(cell.color.red) && Number.isFinite(cell.color.green) && Number.isFinite(cell.color.blue)));
@@ -256,6 +260,9 @@ test("frame internals model builds nominal video grids and audio band estimates"
     { trackId: 5, handlerType: "vide", codec: "av01", codecDescriptor: "av1", width: 640, height: 360 }
   );
   assert.equal(av1Model.unitWidth, 128);
+  assert.equal(av1Model.layout, "partition-map");
+  assert.ok(av1Model.partitionModes.some((entry) => ["vertical", "horizontal", "verticalA", "verticalB", "horizontalA", "horizontalB", "vertical4", "horizontal4"].includes(entry.mode)));
+  assert.ok(av1Model.cells.some((cell) => cell.blockWidth !== cell.blockHeight));
 
   assert.equal(buildFrameInternalsModel(
     { trackId: 9, sampleIndex: 1, size: 100 },

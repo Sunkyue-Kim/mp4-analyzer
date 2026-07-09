@@ -399,6 +399,10 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
     displayColumns: 2,
     displayRows: 1,
     aggregation: 1,
+    layout: "partition-map",
+    partitionBlockCount: 1,
+    maxPartitionDepth: 1,
+    partitionModes: [{ mode: "vertical", count: 1 }],
     sampleSize: 1000,
     note: "nominal",
     colorScale: { mode: "global-track-percentile", sampleCount: 2, valueCount: 4 },
@@ -412,6 +416,10 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
         pixelTop: 0,
         pixelRight: 16,
         pixelBottom: 16,
+        blockWidth: 16,
+        blockHeight: 16,
+        depth: 1,
+        partitionMode: "vertical",
         estimatedBytes: 500,
         globalPercentile: 0.75,
         nominalUnits: 1,
@@ -440,6 +448,9 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   });
 
   assert.match(videoHtml, /block-cell i/);
+  assert.match(videoHtml, /block-map/);
+  assert.match(videoHtml, /Partition/);
+  assert.match(videoHtml, /--cell-left:0\.00000%/);
   assert.match(videoHtml, /16x32 \(rotated -90 deg, encoded 32x16\)/);
   assert.match(videoHtml, /data-inspection-tooltip=/);
   assert.match(videoHtml, /--cell-red:1;--cell-green:2;--cell-blue:3;--cell-alpha:0\.500/);
@@ -954,6 +965,9 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceFrameInternalsView, /data-inspection-tooltip/);
   assert.match(sourceFrameInternalsView, /--cell-red:/);
   assert.match(sourceFrameInternalsView, /globalPercentile/);
+  assert.match(sourceFrameInternalsView, /partitionModes/);
+  assert.match(sourceCss, /\.block-map\s*\{[\s\S]*?position:\s*relative;[\s\S]*?aspect-ratio:\s*var\(--frame-aspect-ratio/);
+  assert.match(sourceCss, /\.block-map \.block-cell\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?left:\s*var\(--cell-left\);/);
   assert.match(sourceCss, /--frame-i:\s*oklch\(0\.82 0\.09 145\);/);
   assert.match(sourceCss, /--frame-p:\s*oklch\(0\.80 0\.085 260\);/);
   assert.match(sourceCss, /--frame-b:\s*oklch\(0\.82 0\.09 325\);/);

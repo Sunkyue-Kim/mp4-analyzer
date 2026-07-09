@@ -19,7 +19,7 @@ The runtime is fully static. You can use it as a single self-contained HTML file
 | Video codecs | AVC/H.264, HEVC/H.265, VP9 metadata, ProRes metadata, unknown-codec fallback |
 | Audio codecs | AAC, MP3, Opus, unknown-codec fallback |
 | Views | Summary, boxes/elements, tracks, frames, metrics, fragments, warnings |
-| Frame internals | Nominal video coding-unit grids and audio band byte-budget estimates for selected samples |
+| Frame internals | Partition-ready rectangular video block maps and audio band byte-budget estimates for selected samples |
 | Exports | JSON and CSV |
 | Languages | English and Korean |
 | Output builds | Single-file HTML and chunked lazy-load HTML |
@@ -33,7 +33,7 @@ The runtime is fully static. You can use it as a single self-contained HTML file
 - Track summaries: codec, handler/type, duration, timescale, dimensions, sample counts, audio configuration, and codec configuration
 - Sample/frame rows: index, track, type, offset, size, DTS, PTS, duration, sync/keyframe state, NAL types, chunks, and fragments where available
 - Visual analysis: frame-size graph, bitrate moving average, FPS moving average, largest samples, and fragment timing
-- Selected-frame internals: nominal AVC macroblock, HEVC CTU, VP9 superblock grids, and audio band byte-budget estimates
+- Selected-frame internals: partition-ready rectangular AVC macroblock, HEVC CTU/CU, VP9/AV1 superblock maps, and audio band byte-budget estimates
 - Playback-assisted navigation: selecting frame/fragment rows can seek the preview player when browser playback supports the file
 - Large tables: recycler-style grids keep DOM size bounded for high sample counts
 - Background analysis: file parsing and frame scanning are designed to run outside the main UI flow where practical
@@ -43,7 +43,7 @@ The runtime is fully static. You can use it as a single self-contained HTML file
 This is not a transcoder, decoder, repair tool, or compliance validator.
 
 - It does not decode video frames into pixels or audio frames into PCM samples.
-- It does not decode entropy-coded block partition syntax. AVC macroblock partitions, HEVC CTU/CU/PU/TU trees, VP9/AV1 partition trees, transform blocks, scalefactors, and exact block-level byte attribution are future decoder-parser work.
+- It does not yet decode entropy-coded block partition syntax exactly. The frame-internals view can render irregular rectangular partition maps, including AV1-style non-square splits, but AVC macroblock partitions, HEVC CTU/CU/PU/TU trees, VP9/AV1 partition trees, transform blocks, scalefactors, and exact block-level byte attribution still require future codec syntax parsers.
 - It does not rewrite, transmux, optimize, or repair media files.
 - It does not implement DASH/HLS manifest loading.
 - It does not bypass DRM, encrypted media, browser CORS policy, or server range-request policy.
@@ -82,7 +82,7 @@ For remote URLs:
 | MP3 | ID3 detection and MPEG audio frame scanning | Yes | Not applicable | Audio metadata and frame rows only |
 | Ogg Opus | Ogg pages, lacing, Opus identification | Packet-level rows | Not applicable | Opus packets are parsed structurally, not decoded |
 
-The selected-frame internals panel is intentionally first-pass and nominal: AVC uses a 16x16 macroblock raster, HEVC currently uses a 64x64 CTU raster, VP9 uses a 64x64 superblock raster, and audio uses packet-size plus codec-metadata band estimates. Exact partition trees and per-band or per-block bit allocation require codec payload decoding and are not implemented yet.
+The selected-frame internals panel now uses a rectangular block-map model rather than a fixed table grid. AVC starts from 16x16 macroblocks, HEVC from 64x64 CTUs, VP9 from 64x64 superblocks, and AV1 from a 128x128 superblock-compatible model that can represent non-square and multi-rectangle splits. These maps are still estimates until codec-specific entropy/syntax partition parsers are implemented. Exact partition trees and per-band or per-block bit allocation require codec payload decoding and are not implemented yet.
 
 ## Privacy And Network Model
 

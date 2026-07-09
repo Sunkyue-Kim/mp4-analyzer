@@ -20,7 +20,8 @@ export function renderVideoFrameInternals(model, options = {}) {
     [t("frameInternals.unit"), model.unitName + " " + model.unitWidth + "x" + model.unitHeight],
     [t("frameInternals.mediaSize"), formatVideoMediaSize(model)],
     [t("frameInternals.nominalGrid"), model.nominalColumns + "x" + model.nominalRows + " (" + model.nominalUnitCount + ")"],
-    [t("frameInternals.displayedGrid"), model.displayColumns + "x" + model.displayRows + (model.aggregation > 1 ? " (x" + model.aggregation + ")" : "")],
+    [t("frameInternals.displayedGrid"), formatVideoDisplayedGrid(model)],
+    [t("frameInternals.partitionModes"), formatPartitionModes(model.partitionModes)],
     [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
     [t("frameInternals.colorScale"), formatFrameInternalsColorScale(model.colorScale)],
     [t("frameInternals.accuracy"), t("frameInternals.nominal")]
@@ -32,12 +33,25 @@ export function renderVideoFrameInternals(model, options = {}) {
     renderFrameInternalsStats(stats) +
     '</div>' +
     '<div class="block-heatmap-wrap">' +
-    '<div class="block-heatmap" style="--block-columns:' + model.displayColumns + ';--frame-aspect-ratio:' + model.mediaWidth + ' / ' + model.mediaHeight + '">' +
+    '<div class="block-map" style="--frame-aspect-ratio:' + model.mediaWidth + ' / ' + model.mediaHeight + '">' +
     model.cells.map((cell) => renderVideoBlockCell(cell, model, frameClass)).join("") +
     '</div>' +
     '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.videoEstimateNote")) + '</p>' +
     '</div>' +
     '</div>';
+}
+
+function formatVideoDisplayedGrid(model) {
+  const blocks = model.partitionBlockCount || model.displayCellCount || 0;
+  const roots = model.displayColumns && model.displayRows ? model.displayColumns + "x" + model.displayRows : t("value.notAvailable");
+  const depth = model.maxPartitionDepth ? ", " + t("frameInternals.maxDepth", { depth: model.maxPartitionDepth }) : "";
+  const aggregation = model.aggregation > 1 ? ", " + t("frameInternals.rootAggregation", { value: model.aggregation }) : "";
+  return t("frameInternals.partitionBlocks", { count: blocks }) + " (" + roots + depth + aggregation + ")";
+}
+
+function formatPartitionModes(modes) {
+  if (!Array.isArray(modes) || !modes.length) return t("value.notAvailable");
+  return modes.slice(0, 4).map((entry) => entry.mode + " " + entry.count).join(", ");
 }
 
 function formatVideoMediaSize(model) {
@@ -54,9 +68,12 @@ function formatVideoMediaSize(model) {
 }
 
 function renderVideoBlockCell(cell, model, frameClass) {
-  const title = model.unitName + " x " + (cell.unitColumnStart + 1) + "-" + cell.unitColumnEnd + ", y " + (cell.unitRowStart + 1) + "-" + cell.unitRowEnd;
+  const title = model.unitName + " " + (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0) + " @ " + cell.pixelLeft + "," + cell.pixelTop;
   const tooltipRows = [
     [t("frameInternals.tooltip.pixelRange"), cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom],
+    [t("frameInternals.tooltip.blockSize"), (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)],
+    [t("frameInternals.tooltip.partition"), cell.partitionMode || t("value.notAvailable")],
+    [t("frameInternals.tooltip.depth"), cell.depth || 0],
     [t("frameInternals.tooltip.estimatedBytes"), formatBytes(cell.estimatedBytes)],
     [t("frameInternals.tooltip.globalPercentile"), formatMetricNumber((cell.globalPercentile || 0) * 100, 1) + "%"],
     [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
@@ -68,13 +85,25 @@ function renderVideoBlockCell(cell, model, frameClass) {
       rows: tooltipRows,
       note: t("frameInternals.videoEstimateNote")
     }) +
-    ' style="' + renderVideoBlockCellStyle(cell) + '"></div>';
+    ' style="' + renderVideoBlockCellStyle(cell, model) + '"></div>';
 }
 
-function renderVideoBlockCellStyle(cell) {
+function renderVideoBlockCellStyle(cell, model) {
   const color = cell.color || { red: 31, green: 122, blue: 140 };
   const alpha = Number.isFinite(cell.intensity) ? cell.intensity : 0.75;
-  return '--cell-red:' + color.red + ';--cell-green:' + color.green + ';--cell-blue:' + color.blue + ';--cell-alpha:' + alpha.toFixed(3);
+  const mediaWidth = Math.max(1, Number(model.mediaWidth) || 1);
+  const mediaHeight = Math.max(1, Number(model.mediaHeight) || 1);
+  return [
+    '--cell-red:' + color.red,
+    '--cell-green:' + color.green,
+    '--cell-blue:' + color.blue,
+    '--cell-alpha:' + alpha.toFixed(3),
+    '--cell-left:' + (cell.pixelLeft * 100 / mediaWidth).toFixed(5) + '%',
+    '--cell-top:' + (cell.pixelTop * 100 / mediaHeight).toFixed(5) + '%',
+    '--cell-width:' + ((cell.pixelRight - cell.pixelLeft) * 100 / mediaWidth).toFixed(5) + '%',
+    '--cell-height:' + ((cell.pixelBottom - cell.pixelTop) * 100 / mediaHeight).toFixed(5) + '%',
+    '--cell-depth:' + (cell.depth || 0)
+  ].join(";");
 }
 
 function formatFrameInternalsColorScale(colorScale) {

@@ -1,4 +1,4 @@
-const MAX_VIDEO_DISPLAY_CELLS = 1800;
+const MAX_VIDEO_DISPLAY_CELLS = 9000;
 const MAX_GLOBAL_DISTRIBUTION_VALUES = 120000;
 
 const HEAT_COLOR_STOPS = [
@@ -18,7 +18,16 @@ const VIDEO_CODING_UNITS = [
     unitWidth: 16,
     unitHeight: 16,
     accuracy: "nominal-exact-grid",
-    note: "AVC uses a 16x16 macroblock raster. Internal prediction partitions and transform blocks require slice-data syntax decoding."
+    note: "AVC uses a 16x16 macroblock raster. This view can show estimated rectangular macroblock partitions, but exact mb_type/sub_mb_type and transform block structure require slice-data syntax decoding.",
+    partitionProfile: {
+      baseWidth: 16,
+      baseHeight: 16,
+      minimumWidth: 4,
+      minimumHeight: 4,
+      maxDepth: 2,
+      targetMultiplier: { I: 1.75, P: 1.35, B: 1.2, default: 1.25 },
+      modes: ["split", "vertical", "horizontal"]
+    }
   },
   {
     matches: (track) => track.codecDescriptor === "hevc" || ["hvc1", "hev1"].includes(track.codec),
@@ -27,7 +36,16 @@ const VIDEO_CODING_UNITS = [
     unitWidth: 64,
     unitHeight: 64,
     accuracy: "nominal-grid",
-    note: "HEVC CTU size is signaled in SPS. This view uses the common 64x64 CTU nominal grid until SPS partition parsing is added."
+    note: "HEVC CTU size is signaled in SPS. This view shows an estimated CTU/CU rectangular partition map using the common 64x64 CTU base until SPS/CABAC partition parsing is added.",
+    partitionProfile: {
+      baseWidth: 64,
+      baseHeight: 64,
+      minimumWidth: 8,
+      minimumHeight: 8,
+      maxDepth: 4,
+      targetMultiplier: { I: 6, P: 4.2, B: 3.2, default: 3.6 },
+      modes: ["split", "vertical", "horizontal"]
+    }
   },
   {
     matches: (track) => track.codec === "V_VP9" || track.codecDescriptor === "V_VP9" || String(track.codec).toLowerCase() === "vp9",
@@ -36,7 +54,16 @@ const VIDEO_CODING_UNITS = [
     unitWidth: 64,
     unitHeight: 64,
     accuracy: "nominal-grid",
-    note: "VP9 superblock partition data is entropy coded in frame payloads. This view shows a nominal 64x64 superblock grid."
+    note: "VP9 superblock partition data is entropy coded in frame payloads. This view shows an estimated rectangular superblock partition map until frame-payload partition parsing is added.",
+    partitionProfile: {
+      baseWidth: 64,
+      baseHeight: 64,
+      minimumWidth: 4,
+      minimumHeight: 4,
+      maxDepth: 4,
+      targetMultiplier: { I: 5, P: 3.6, B: 2.6, default: 3.2 },
+      modes: ["split", "vertical", "horizontal", "verticalA", "verticalB", "horizontalA", "horizontalB"]
+    }
   },
   {
     matches: (track) => track.codec === "av01" || track.codecDescriptor === "av1",
@@ -45,7 +72,26 @@ const VIDEO_CODING_UNITS = [
     unitWidth: 128,
     unitHeight: 128,
     accuracy: "future-nominal-grid",
-    note: "AV1 can use 64x64 or 128x128 superblocks. This placeholder assumes 128x128 until AV1 sequence header parsing is added."
+    note: "AV1 can use 64x64 or 128x128 superblocks and many non-square partition modes. This view uses a partition-ready rectangular block model that supports AV1-style non-square splits until sequence/frame syntax parsing is added.",
+    partitionProfile: {
+      baseWidth: 128,
+      baseHeight: 128,
+      minimumWidth: 4,
+      minimumHeight: 4,
+      maxDepth: 5,
+      targetMultiplier: { I: 7, P: 5.2, B: 4, default: 4.8 },
+      modes: [
+        "split",
+        "vertical",
+        "horizontal",
+        "vertical4",
+        "horizontal4",
+        "verticalA",
+        "verticalB",
+        "horizontalA",
+        "horizontalB"
+      ]
+    }
   }
 ];
 
@@ -93,29 +139,18 @@ function buildVideoInternalsModel(row, track, options = {}) {
 
   const nominalColumns = Math.max(1, Math.ceil(width / descriptor.unitWidth));
   const nominalRows = Math.max(1, Math.ceil(height / descriptor.unitHeight));
-  const aggregation = Math.max(1, Math.ceil(Math.sqrt((nominalColumns * nominalRows) / MAX_VIDEO_DISPLAY_CELLS)));
-  const displayColumns = Math.ceil(nominalColumns / aggregation);
-  const displayRows = Math.ceil(nominalRows / aggregation);
-  const cells = buildVideoCells({
+  const cells = buildVideoPartitionCells({
     row,
     descriptor,
     width,
     height,
-    nominalColumns,
-    nominalRows,
-    displayColumns,
-    displayRows,
-    aggregation
+    maxCells: MAX_VIDEO_DISPLAY_CELLS
   });
+  const partitionSummary = summarizePartitionCells(cells);
   const colorScale = options.colorScale || buildFrameInternalsColorScale(track, options.sampleRows, {
     descriptor,
     width,
     height,
-    nominalColumns,
-    nominalRows,
-    displayColumns,
-    displayRows,
-    aggregation,
     fallbackCells: cells
   });
   applyVideoColorScale(cells, colorScale);
@@ -135,13 +170,17 @@ function buildVideoInternalsModel(row, track, options = {}) {
     encodedWidth: dimensions.encodedWidth,
     encodedHeight: dimensions.encodedHeight,
     displayRotationDegrees: dimensions.displayRotationDegrees,
+    layout: "partition-map",
     nominalColumns,
     nominalRows,
     nominalUnitCount: nominalColumns * nominalRows,
-    displayColumns,
-    displayRows,
-    displayCellCount: displayColumns * displayRows,
-    aggregation,
+    displayColumns: partitionSummary.rootColumns,
+    displayRows: partitionSummary.rootRows,
+    displayCellCount: cells.length,
+    aggregation: partitionSummary.aggregation,
+    partitionBlockCount: cells.length,
+    maxPartitionDepth: partitionSummary.maxDepth,
+    partitionModes: partitionSummary.modes,
     accuracy: descriptor.accuracy,
     colorScale: summarizeColorScale(colorScale),
     note: descriptor.note,
@@ -157,11 +196,6 @@ function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
   const height = options.height || dimensions.displayHeight;
   if (!descriptor || !width || !height) return buildValueDistribution([], "unavailable", 0);
 
-  const nominalColumns = options.nominalColumns || Math.max(1, Math.ceil(width / descriptor.unitWidth));
-  const nominalRows = options.nominalRows || Math.max(1, Math.ceil(height / descriptor.unitHeight));
-  const aggregation = options.aggregation || Math.max(1, Math.ceil(Math.sqrt((nominalColumns * nominalRows) / MAX_VIDEO_DISPLAY_CELLS)));
-  const displayColumns = options.displayColumns || Math.ceil(nominalColumns / aggregation);
-  const displayRows = options.displayRows || Math.ceil(nominalRows / aggregation);
   const rows = getVideoScaleRows(track, sampleRows);
 
   if (!rows.length) {
@@ -174,26 +208,25 @@ function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
   const scaleOptions = {
     descriptor,
     width,
-    height,
-    nominalColumns,
-    nominalRows,
-    displayColumns,
-    displayRows,
-    aggregation
+    height
   };
-  const cellCount = Math.max(1, displayColumns * displayRows);
-  const cellStride = Math.max(1, Math.ceil((rows.length * cellCount) / MAX_GLOBAL_DISTRIBUTION_VALUES));
+  const estimatedCellCount = estimateVideoPartitionCellCount(scaleOptions);
+  const rowStride = Math.max(1, Math.ceil((rows.length * estimatedCellCount) / MAX_GLOBAL_DISTRIBUTION_VALUES));
   const sampledValues = [];
-  for (const sampleRow of rows) {
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += rowStride) {
+    const sampleRow = rows[rowIndex];
     const sampleSize = Math.max(0, Number(sampleRow.size) || 0);
     if (!sampleSize) continue;
-    const totalWeight = calculateVideoTotalWeight(scaleOptions, sampleRow);
-    if (totalWeight <= 0) continue;
-    for (let linearIndex = 0; linearIndex < cellCount; linearIndex += cellStride) {
-      const rowIndex = Math.floor(linearIndex / displayColumns);
-      const columnIndex = linearIndex % displayColumns;
-      const weight = getVideoCellWeight(scaleOptions, sampleRow, rowIndex, columnIndex);
-      sampledValues.push(sampleSize * weight / totalWeight);
+    const cells = buildVideoPartitionCells({
+      row: sampleRow,
+      descriptor,
+      width,
+      height,
+      maxCells: MAX_VIDEO_DISPLAY_CELLS
+    });
+    const cellStride = Math.max(1, Math.ceil(cells.length / Math.max(1, Math.floor(MAX_GLOBAL_DISTRIBUTION_VALUES / Math.ceil(rows.length / rowStride)))));
+    for (let cellIndex = 0; cellIndex < cells.length; cellIndex += cellStride) {
+      sampledValues.push(cells[cellIndex].estimatedBytes);
     }
   }
   return buildValueDistribution(sampledValues, "global-track-percentile", rows.length);
@@ -235,33 +268,289 @@ function getVideoScaleRows(track, sampleRows) {
   );
 }
 
-function buildVideoCells(options) {
+function buildVideoPartitionCells(options) {
+  const profile = options.descriptor.partitionProfile || getDefaultPartitionProfile(options.descriptor);
+  const rootLayout = getPartitionRootLayout(options, profile);
+  let cells = buildRootPartitionCells(options, profile, rootLayout);
+  const targetCellCount = getTargetPartitionCellCount(cells.length, options.row, profile, options.maxCells);
+  cells = refinePartitionCells(cells, options, profile, targetCellCount);
+  return assignPartitionByteEstimates(cells, options);
+}
+
+function getDefaultPartitionProfile(descriptor) {
+  return {
+    baseWidth: descriptor.unitWidth,
+    baseHeight: descriptor.unitHeight,
+    minimumWidth: descriptor.unitWidth,
+    minimumHeight: descriptor.unitHeight,
+    maxDepth: 0,
+    targetMultiplier: { default: 1 },
+    modes: []
+  };
+}
+
+function getPartitionRootLayout(options, profile) {
+  const baseWidth = Math.max(1, profile.baseWidth || options.descriptor.unitWidth);
+  const baseHeight = Math.max(1, profile.baseHeight || options.descriptor.unitHeight);
+  const rawColumns = Math.max(1, Math.ceil(options.width / baseWidth));
+  const rawRows = Math.max(1, Math.ceil(options.height / baseHeight));
+  const rootCount = rawColumns * rawRows;
+  const maxCells = Math.max(1, options.maxCells || MAX_VIDEO_DISPLAY_CELLS);
+  const aggregation = Math.max(1, Math.ceil(Math.sqrt(rootCount / maxCells)));
+  const rootWidth = baseWidth * aggregation;
+  const rootHeight = baseHeight * aggregation;
+  return {
+    baseWidth,
+    baseHeight,
+    aggregation,
+    columns: Math.max(1, Math.ceil(options.width / rootWidth)),
+    rows: Math.max(1, Math.ceil(options.height / rootHeight)),
+    rootWidth,
+    rootHeight
+  };
+}
+
+function buildRootPartitionCells(options, profile, layout) {
   const cells = [];
-  let totalWeight = 0;
-  for (let rowIndex = 0; rowIndex < options.displayRows; rowIndex += 1) {
-    for (let columnIndex = 0; columnIndex < options.displayColumns; columnIndex += 1) {
-      const unitColumnStart = columnIndex * options.aggregation;
-      const unitColumnEnd = Math.min(options.nominalColumns, unitColumnStart + options.aggregation);
-      const unitRowStart = rowIndex * options.aggregation;
-      const unitRowEnd = Math.min(options.nominalRows, unitRowStart + options.aggregation);
-      const nominalUnits = Math.max(1, (unitColumnEnd - unitColumnStart) * (unitRowEnd - unitRowStart));
-      const weight = nominalUnits * getSyntheticSpatialWeight(options.row, rowIndex, columnIndex, options.displayRows, options.displayColumns);
-      totalWeight += weight;
-      cells.push({
+  for (let rowIndex = 0; rowIndex < layout.rows; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < layout.columns; columnIndex += 1) {
+      const pixelLeft = columnIndex * layout.rootWidth;
+      const pixelTop = rowIndex * layout.rootHeight;
+      const pixelRight = Math.min(options.width, pixelLeft + layout.rootWidth);
+      const pixelBottom = Math.min(options.height, pixelTop + layout.rootHeight);
+      cells.push(createPartitionCell({
+        descriptor: options.descriptor,
+        profile,
+        layout,
         rowIndex,
         columnIndex,
-        unitColumnStart,
-        unitColumnEnd,
-        unitRowStart,
-        unitRowEnd,
-        nominalUnits,
-        pixelLeft: unitColumnStart * options.descriptor.unitWidth,
-        pixelTop: unitRowStart * options.descriptor.unitHeight,
-        pixelRight: Math.min(options.width, unitColumnEnd * options.descriptor.unitWidth),
-        pixelBottom: Math.min(options.height, unitRowEnd * options.descriptor.unitHeight),
-        weight
-      });
+        pixelLeft,
+        pixelTop,
+        pixelRight,
+        pixelBottom,
+        depth: 0,
+        partitionMode: layout.aggregation > 1 ? "aggregated-root" : "root"
+      }));
     }
+  }
+  return cells;
+}
+
+function refinePartitionCells(cells, options, profile, targetCellCount) {
+  if (!profile.maxDepth || !profile.modes.length) return cells;
+  let cursor = 0;
+  while (cursor < cells.length && cells.length < targetCellCount) {
+    const cell = cells[cursor];
+    cursor += 1;
+    if (!shouldSplitPartitionCell(cell, options.row, profile, targetCellCount, cells.length)) continue;
+    const mode = choosePartitionMode(cell, options.row, profile);
+    const children = splitPartitionCell(cell, mode, profile, options);
+    if (children.length <= 1) continue;
+    cells.splice(cursor - 1, 1, ...children);
+    cursor = Math.max(0, cursor - 1);
+  }
+  return cells;
+}
+
+function shouldSplitPartitionCell(cell, row, profile, targetCellCount, currentCellCount) {
+  if (currentCellCount >= targetCellCount) return false;
+  if (cell.depth >= profile.maxDepth) return false;
+  if (!canSplitPartitionCell(cell, profile)) return false;
+  const frameType = normalizeFrameType(row.frameType);
+  const frameBias = frameType === "I" || frameType === "IDR" ? 0.9 : frameType === "B" ? 0.56 : 0.72;
+  const sizeBias = clamp(Math.log2(1 + Math.max(0, Number(row.size) || 0) / 1024) / 12, 0.18, 0.88);
+  const depthBias = 1 - cell.depth / Math.max(1, profile.maxDepth + 1);
+  const pressure = clamp((targetCellCount - currentCellCount) / Math.max(1, targetCellCount), 0.08, 0.85);
+  const threshold = clamp(0.18 + frameBias * 0.22 + sizeBias * 0.28 + depthBias * 0.2 + pressure * 0.12, 0.2, 0.92);
+  return deterministicNoise(row, cell.rowIndex + cell.depth, cell.columnIndex + cell.depth) < threshold;
+}
+
+function canSplitPartitionCell(cell, profile) {
+  return (cell.pixelRight - cell.pixelLeft) >= profile.minimumWidth * 2 ||
+    (cell.pixelBottom - cell.pixelTop) >= profile.minimumHeight * 2;
+}
+
+function choosePartitionMode(cell, row, profile) {
+  const availableModes = profile.modes.filter((mode) => splitPartitionCell(cell, mode, profile, null).length > 1);
+  if (!availableModes.length) return "none";
+  const noise = deterministicNoise(row, cell.rowIndex + 11, cell.columnIndex + 17 + cell.depth);
+  const area = Math.max(1, (cell.pixelRight - cell.pixelLeft) * (cell.pixelBottom - cell.pixelTop));
+  const rectangularBias = Math.abs(cell.pixelRight - cell.pixelLeft - (cell.pixelBottom - cell.pixelTop)) / Math.sqrt(area);
+  const modeIndex = Math.min(availableModes.length - 1, Math.floor((noise + rectangularBias * 0.071) * availableModes.length) % availableModes.length);
+  return availableModes[modeIndex];
+}
+
+function splitPartitionCell(cell, mode, profile, options) {
+  const width = cell.pixelRight - cell.pixelLeft;
+  const height = cell.pixelBottom - cell.pixelTop;
+  if (mode === "none" || width <= 0 || height <= 0) return [cell];
+  const verticalHalf = Math.floor(width / 2);
+  const horizontalHalf = Math.floor(height / 2);
+  if (mode === "vertical" && width >= profile.minimumWidth * 2) {
+    return createSplitChildren(cell, mode, [
+      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelBottom],
+      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelBottom]
+    ], profile, options);
+  }
+  if (mode === "horizontal" && height >= profile.minimumHeight * 2) {
+    return createSplitChildren(cell, mode, [
+      [cell.pixelLeft, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
+      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
+    ], profile, options);
+  }
+  if (mode === "split" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
+    return createSplitChildren(cell, mode, [
+      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf],
+      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
+      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelLeft + verticalHalf, cell.pixelBottom],
+      [cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
+    ], profile, options);
+  }
+  if (mode === "vertical4" && width >= profile.minimumWidth * 4) return splitIntoBands(cell, mode, 4, "vertical", profile, options);
+  if (mode === "horizontal4" && height >= profile.minimumHeight * 4) return splitIntoBands(cell, mode, 4, "horizontal", profile, options);
+  if (mode === "verticalA" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
+    return createSplitChildren(cell, mode, [
+      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelBottom],
+      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
+      [cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
+    ], profile, options);
+  }
+  if (mode === "verticalB" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
+    return createSplitChildren(cell, mode, [
+      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf],
+      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelLeft + verticalHalf, cell.pixelBottom],
+      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelBottom]
+    ], profile, options);
+  }
+  if (mode === "horizontalA" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
+    return createSplitChildren(cell, mode, [
+      [cell.pixelLeft, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
+      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelLeft + verticalHalf, cell.pixelBottom],
+      [cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
+    ], profile, options);
+  }
+  if (mode === "horizontalB" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
+    return createSplitChildren(cell, mode, [
+      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf],
+      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
+      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
+    ], profile, options);
+  }
+  return [cell];
+}
+
+function splitIntoBands(cell, mode, count, direction, profile, options) {
+  const rectangles = [];
+  if (direction === "vertical") {
+    const width = cell.pixelRight - cell.pixelLeft;
+    for (let index = 0; index < count; index += 1) {
+      rectangles.push([
+        cell.pixelLeft + Math.floor(width * index / count),
+        cell.pixelTop,
+        cell.pixelLeft + Math.floor(width * (index + 1) / count),
+        cell.pixelBottom
+      ]);
+    }
+  } else {
+    const height = cell.pixelBottom - cell.pixelTop;
+    for (let index = 0; index < count; index += 1) {
+      rectangles.push([
+        cell.pixelLeft,
+        cell.pixelTop + Math.floor(height * index / count),
+        cell.pixelRight,
+        cell.pixelTop + Math.floor(height * (index + 1) / count)
+      ]);
+    }
+  }
+  return createSplitChildren(cell, mode, rectangles, profile, options);
+}
+
+function createSplitChildren(parent, mode, rectangles, profile, options) {
+  const descriptor = options && options.descriptor ? options.descriptor : null;
+  return rectangles
+    .filter(([left, top, right, bottom]) => right > left && bottom > top)
+    .map(([left, top, right, bottom], childIndex) => createPartitionCell({
+      descriptor: descriptor || parent.descriptor,
+      profile,
+      layout: parent.layout,
+      rowIndex: parent.rowIndex,
+      columnIndex: parent.columnIndex,
+      pixelLeft: left,
+      pixelTop: top,
+      pixelRight: right,
+      pixelBottom: bottom,
+      depth: parent.depth + 1,
+      partitionMode: mode,
+      parentId: parent.id,
+      childIndex
+    }));
+}
+
+function createPartitionCell(options) {
+  const descriptor = options.descriptor;
+  const unitWidth = descriptor ? descriptor.unitWidth : Math.max(1, options.profile.minimumWidth);
+  const unitHeight = descriptor ? descriptor.unitHeight : Math.max(1, options.profile.minimumHeight);
+  const width = Math.max(0, options.pixelRight - options.pixelLeft);
+  const height = Math.max(0, options.pixelBottom - options.pixelTop);
+  const nominalUnits = Math.max(1, Math.round((width * height) / Math.max(1, unitWidth * unitHeight)));
+  return {
+    id: [
+      options.rowIndex,
+      options.columnIndex,
+      options.depth || 0,
+      Math.round(options.pixelLeft),
+      Math.round(options.pixelTop),
+      options.childIndex || 0
+    ].join(":"),
+    descriptor,
+    layout: options.layout,
+    rowIndex: options.rowIndex,
+    columnIndex: options.columnIndex,
+    unitColumnStart: Math.floor(options.pixelLeft / unitWidth),
+    unitColumnEnd: Math.max(1, Math.ceil(options.pixelRight / unitWidth)),
+    unitRowStart: Math.floor(options.pixelTop / unitHeight),
+    unitRowEnd: Math.max(1, Math.ceil(options.pixelBottom / unitHeight)),
+    nominalUnits,
+    pixelLeft: Math.round(options.pixelLeft),
+    pixelTop: Math.round(options.pixelTop),
+    pixelRight: Math.round(options.pixelRight),
+    pixelBottom: Math.round(options.pixelBottom),
+    blockWidth: Math.round(width),
+    blockHeight: Math.round(height),
+    depth: options.depth || 0,
+    partitionMode: options.partitionMode,
+    parentId: options.parentId || "",
+    childIndex: options.childIndex || 0
+  };
+}
+
+function getTargetPartitionCellCount(rootCellCount, row, profile, maxCells) {
+  const frameType = normalizeFrameType(row.frameType);
+  const multiplierMap = profile.targetMultiplier || { default: 1 };
+  const multiplier = multiplierMap[frameType] || multiplierMap.default || 1;
+  const sizeFactor = clamp(Math.log2(1 + Math.max(0, Number(row.size) || 0) / 2048) / 8, 0.75, 1.45);
+  return Math.max(rootCellCount, Math.min(maxCells || MAX_VIDEO_DISPLAY_CELLS, Math.ceil(rootCellCount * multiplier * sizeFactor)));
+}
+
+function estimateVideoPartitionCellCount(options) {
+  const profile = options.descriptor.partitionProfile || getDefaultPartitionProfile(options.descriptor);
+  const rootLayout = getPartitionRootLayout({ ...options, maxCells: MAX_VIDEO_DISPLAY_CELLS }, profile);
+  const rootCellCount = rootLayout.columns * rootLayout.rows;
+  const multiplier = profile.targetMultiplier && profile.targetMultiplier.default || 1;
+  return Math.max(1, Math.min(MAX_VIDEO_DISPLAY_CELLS, Math.ceil(rootCellCount * multiplier)));
+}
+
+function assignPartitionByteEstimates(cells, options) {
+  let totalWeight = 0;
+  for (const cell of cells) {
+    const centerColumn = (cell.pixelLeft + cell.pixelRight) / 2 / Math.max(1, options.width);
+    const centerRow = (cell.pixelTop + cell.pixelBottom) / 2 / Math.max(1, options.height);
+    const area = Math.max(1, cell.blockWidth * cell.blockHeight);
+    const areaWeight = Math.sqrt(area / Math.max(1, options.descriptor.unitWidth * options.descriptor.unitHeight));
+    const depthWeight = 1 + cell.depth * 0.17;
+    const modeWeight = getPartitionModeWeight(cell.partitionMode);
+    cell.weight = areaWeight * depthWeight * modeWeight * getSyntheticSpatialWeightAt(options.row, centerColumn, centerRow);
+    totalWeight += cell.weight;
   }
   const sampleSize = Math.max(0, Number(options.row.size) || 0);
   for (const cell of cells) {
@@ -273,23 +562,42 @@ function buildVideoCells(options) {
   return cells;
 }
 
-function calculateVideoTotalWeight(options, row) {
-  let totalWeight = 0;
-  for (let rowIndex = 0; rowIndex < options.displayRows; rowIndex += 1) {
-    for (let columnIndex = 0; columnIndex < options.displayColumns; columnIndex += 1) {
-      totalWeight += getVideoCellWeight(options, row, rowIndex, columnIndex);
-    }
-  }
-  return totalWeight;
+function getPartitionModeWeight(mode) {
+  if (mode === "split") return 1.08;
+  if (mode === "vertical4" || mode === "horizontal4") return 1.18;
+  if (mode && /A$|B$/.test(mode)) return 1.12;
+  if (mode === "vertical" || mode === "horizontal") return 1.04;
+  return 1;
 }
 
-function getVideoCellWeight(options, row, rowIndex, columnIndex) {
-  const unitColumnStart = columnIndex * options.aggregation;
-  const unitColumnEnd = Math.min(options.nominalColumns, unitColumnStart + options.aggregation);
-  const unitRowStart = rowIndex * options.aggregation;
-  const unitRowEnd = Math.min(options.nominalRows, unitRowStart + options.aggregation);
-  const nominalUnits = Math.max(1, (unitColumnEnd - unitColumnStart) * (unitRowEnd - unitRowStart));
-  return nominalUnits * getSyntheticSpatialWeight(row, rowIndex, columnIndex, options.displayRows, options.displayColumns);
+function summarizePartitionCells(cells) {
+  const modes = new Map();
+  let maxDepth = 0;
+  let rootColumns = 1;
+  let rootRows = 1;
+  let aggregation = 1;
+  for (const cell of cells) {
+    maxDepth = Math.max(maxDepth, cell.depth || 0);
+    modes.set(cell.partitionMode || "unknown", (modes.get(cell.partitionMode || "unknown") || 0) + 1);
+    if (cell.layout) {
+      rootColumns = cell.layout.columns || rootColumns;
+      rootRows = cell.layout.rows || rootRows;
+      aggregation = cell.layout.aggregation || aggregation;
+    }
+  }
+  return {
+    rootColumns,
+    rootRows,
+    aggregation,
+    maxDepth,
+    modes: Array.from(modes.entries())
+      .sort((left, right) => right[1] - left[1])
+      .map(([mode, count]) => ({ mode, count }))
+  };
+}
+
+function normalizeFrameType(frameType) {
+  return String(frameType || "").toUpperCase();
 }
 
 function applyVideoColorScale(cells, colorScale) {
@@ -396,12 +704,16 @@ function getNonlinearHeatPercentile(percentile) {
 function getSyntheticSpatialWeight(row, rowIndex, columnIndex, rowCount, columnCount) {
   const x = columnCount <= 1 ? 0.5 : columnIndex / (columnCount - 1);
   const y = rowCount <= 1 ? 0.5 : rowIndex / (rowCount - 1);
+  return getSyntheticSpatialWeightAt(row, x, y);
+}
+
+function getSyntheticSpatialWeightAt(row, x, y) {
   const centerX = x - 0.5;
   const centerY = y - 0.5;
   const centerBias = 1.1 - Math.min(0.65, Math.sqrt(centerX * centerX + centerY * centerY));
   const type = row.frameType || "";
   const typeBias = type === "I" || type === "IDR" ? 1.15 : type === "B" ? 0.92 : 1;
-  return Math.max(0.1, centerBias * typeBias * (0.72 + deterministicNoise(row, rowIndex, columnIndex) * 0.56));
+  return Math.max(0.1, centerBias * typeBias * (0.72 + deterministicNoise(row, Math.round(y * 1000), Math.round(x * 1000)) * 0.56));
 }
 
 function deterministicNoise(row, rowIndex, columnIndex) {
