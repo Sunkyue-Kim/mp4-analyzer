@@ -217,14 +217,71 @@ function parseTkhd(cursor, node) {
   const duration = full.version === 1 ? cursor.uint64(28).toString() : cursor.uint32(20).toString();
   const widthRaw = cursor.uint32(cursor.length - 8);
   const heightRaw = cursor.uint32(cursor.length - 4);
+  const width = widthRaw / 65536;
+  const height = heightRaw / 65536;
+  const matrix = parseTrackDisplayMatrix(cursor, full.version);
+  const rotationDegrees = matrix ? matrix.rotationDegrees : 0;
+  const quarterTurn = Math.abs(rotationDegrees) % 180 === 90;
   node.fields = {
     version: full.version,
     flags: full.flags,
     trackId,
     duration,
-    width: widthRaw / 65536,
-    height: heightRaw / 65536
+    width,
+    height,
+    matrix,
+    rotationDegrees,
+    displayWidth: quarterTurn ? height : width,
+    displayHeight: quarterTurn ? width : height
   };
+}
+
+function parseTrackDisplayMatrix(cursor, version) {
+  const matrixOffset = version === 1 ? 52 : 40;
+  if (!cursor.ensure(matrixOffset, 36)) return null;
+  const raw = [];
+  for (let index = 0; index < 9; index += 1) raw.push(cursor.int32(matrixOffset + index * 4));
+  const a = fixed16(raw[0]);
+  const b = fixed16(raw[1]);
+  const c = fixed16(raw[3]);
+  const d = fixed16(raw[4]);
+  return {
+    raw,
+    a,
+    b,
+    c,
+    d,
+    x: raw[6],
+    y: raw[7],
+    w: raw[8],
+    rotationDegrees: getTrackMatrixRotationDegrees(a, b, c, d)
+  };
+}
+
+function fixed16(value) {
+  return Math.round((value / 65536) * 1000000) / 1000000;
+}
+
+function nearMatrixValue(value, expected) {
+  return Math.abs(value - expected) < 0.001;
+}
+
+function getTrackMatrixRotationDegrees(a, b, c, d) {
+  if (nearMatrixValue(a, 1) && nearMatrixValue(b, 0) && nearMatrixValue(c, 0) && nearMatrixValue(d, 1)) return 0;
+  if (nearMatrixValue(a, 0) && nearMatrixValue(b, 1) && nearMatrixValue(c, -1) && nearMatrixValue(d, 0)) return -90;
+  if (nearMatrixValue(a, -1) && nearMatrixValue(b, 0) && nearMatrixValue(c, 0) && nearMatrixValue(d, -1)) return 180;
+  if (nearMatrixValue(a, 0) && nearMatrixValue(b, -1) && nearMatrixValue(c, 1) && nearMatrixValue(d, 0)) return 90;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  const rawDegrees = -Math.atan2(b, a) * 180 / Math.PI;
+  const roundedDegrees = Math.round(rawDegrees / 90) * 90;
+  return Math.abs(rawDegrees - roundedDegrees) < 0.5 ? normalizeRotationDegrees(roundedDegrees) : 0;
+}
+
+function normalizeRotationDegrees(degrees) {
+  let normalized = degrees % 360;
+  if (normalized > 180) normalized -= 360;
+  if (normalized <= -180) normalized += 360;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function parseMdhd(cursor, node) {

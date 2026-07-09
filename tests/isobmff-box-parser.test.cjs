@@ -149,6 +149,40 @@ test("ISO BMFF box parser handles compact sample sizes and signed composition of
   assert.deepEqual(toPlainValue(nodes[1].fields.entries), [{ sampleCount: 2, sampleOffset: -3 }]);
 });
 
+test("ISO BMFF box parser extracts tkhd display matrix rotation", async () => {
+  const rotateMinus90Matrix = [
+    0, 0x00010000, 0,
+    -0x00010000, 0, 0,
+    0, 0, 0x40000000
+  ];
+  const bytes = box("tkhd", fullBoxPayload(0, 7, concatBytes([
+    uint32(0),
+    uint32(0),
+    uint32(7),
+    uint32(0),
+    uint32(9000),
+    new Uint8Array(8),
+    uint16(0),
+    uint16(0),
+    uint16(0),
+    uint16(0),
+    ...rotateMinus90Matrix.map(int32),
+    uint32(1920 << 16),
+    uint32(1080 << 16)
+  ])));
+
+  const { nodes, warnings } = await parseSyntheticBoxes(bytes);
+
+  assert.equal(warnings.length, 0);
+  assert.equal(nodes[0].fields.trackId, 7);
+  assert.equal(nodes[0].fields.width, 1920);
+  assert.equal(nodes[0].fields.height, 1080);
+  assert.equal(nodes[0].fields.rotationDegrees, -90);
+  assert.equal(nodes[0].fields.displayWidth, 1080);
+  assert.equal(nodes[0].fields.displayHeight, 1920);
+  assert.deepEqual(toPlainValue(nodes[0].fields.matrix.raw.slice(0, 5)), [0, 65536, 0, -65536, 0]);
+});
+
 test("ISO BMFF box parser detects both FullBox and QuickTime meta child offsets", async () => {
   const handlerReferenceBox = box("hdlr", fullBoxPayload(0, 0, concatBytes([
     uint32(0),

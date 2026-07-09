@@ -18,7 +18,7 @@ export function renderVideoFrameInternals(model, options = {}) {
     [t("frameInternals.codec"), model.codecFamily],
     [t("frameInternals.frame"), options.frameLabel || t("value.notAvailable")],
     [t("frameInternals.unit"), model.unitName + " " + model.unitWidth + "x" + model.unitHeight],
-    [t("frameInternals.mediaSize"), model.mediaWidth + "x" + model.mediaHeight],
+    [t("frameInternals.mediaSize"), formatVideoMediaSize(model)],
     [t("frameInternals.nominalGrid"), model.nominalColumns + "x" + model.nominalRows + " (" + model.nominalUnitCount + ")"],
     [t("frameInternals.displayedGrid"), model.displayColumns + "x" + model.displayRows + (model.aggregation > 1 ? " (x" + model.aggregation + ")" : "")],
     [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
@@ -38,6 +38,19 @@ export function renderVideoFrameInternals(model, options = {}) {
     '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.videoEstimateNote")) + '</p>' +
     '</div>' +
     '</div>';
+}
+
+function formatVideoMediaSize(model) {
+  const displaySize = model.mediaWidth + "x" + model.mediaHeight;
+  const encodedWidth = Number(model.encodedWidth) || 0;
+  const encodedHeight = Number(model.encodedHeight) || 0;
+  const rotationDegrees = Number(model.displayRotationDegrees) || 0;
+  const details = [];
+  if (rotationDegrees) details.push(t("frameInternals.rotatedDegrees", { degrees: rotationDegrees }));
+  if (encodedWidth && encodedHeight && (encodedWidth !== model.mediaWidth || encodedHeight !== model.mediaHeight)) {
+    details.push(t("frameInternals.encodedSize", { size: encodedWidth + "x" + encodedHeight }));
+  }
+  return details.length ? displaySize + " (" + details.join(", ") + ")" : displaySize;
 }
 
 function renderVideoBlockCell(cell, model, frameClass) {

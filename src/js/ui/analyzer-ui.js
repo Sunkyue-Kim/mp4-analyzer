@@ -1437,13 +1437,41 @@ function formatTrackLabel(track) {
 }
 
 function formatTrackMedia(track) {
-  if (track.handlerType === "vide") return track.width + "x" + track.height;
+  if (track.handlerType === "vide") return formatVideoTrackMedia(track);
   if (track.handlerType === "soun") {
     const sampleRate = track.codecConfig && track.codecConfig.samplingFrequency ? track.codecConfig.samplingFrequency : track.sampleRate;
     const channels = track.codecConfig && track.codecConfig.channelDescription ? track.codecConfig.channelDescription : (track.channelCount ? track.channelCount + " channels" : "audio");
     return channels + (sampleRate ? " @ " + sampleRate + " Hz" : "");
   }
   return t("value.notAvailable");
+}
+
+function formatVideoTrackMedia(track) {
+  const displayWidth = positiveRoundedDimension(track.displayWidth) || positiveRoundedDimension(track.width);
+  const displayHeight = positiveRoundedDimension(track.displayHeight) || positiveRoundedDimension(track.height);
+  if (!displayWidth || !displayHeight) return t("value.notAvailable");
+  const encodedWidth = positiveRoundedDimension(track.encodedWidth) || positiveRoundedDimension(track.width);
+  const encodedHeight = positiveRoundedDimension(track.encodedHeight) || positiveRoundedDimension(track.height);
+  const rotationDegrees = normalizeDisplayRotation(track.displayRotationDegrees);
+  const details = [];
+  if (rotationDegrees) details.push(t("frameInternals.rotatedDegrees", { degrees: rotationDegrees }));
+  if (encodedWidth && encodedHeight && (encodedWidth !== displayWidth || encodedHeight !== displayHeight)) {
+    details.push(t("frameInternals.encodedSize", { size: encodedWidth + "x" + encodedHeight }));
+  }
+  return displayWidth + "x" + displayHeight + (details.length ? " (" + details.join(", ") + ")" : "");
+}
+
+function positiveRoundedDimension(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? Math.round(numberValue) : 0;
+}
+
+function normalizeDisplayRotation(value) {
+  const numberValue = Number(value) || 0;
+  let normalized = numberValue % 360;
+  if (normalized > 180) normalized -= 360;
+  if (normalized <= -180) normalized += 360;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function formatTrackCodecConfig(track) {
@@ -1696,6 +1724,9 @@ function getFrameInternalsColorScale(track) {
     track.codecDescriptor || "",
     track.width || 0,
     track.height || 0,
+    track.displayWidth || 0,
+    track.displayHeight || 0,
+    track.displayRotationDegrees || 0,
     state.analysis.sampleRows.length
   ].join(":");
   if (!state.frameInternalsColorScaleCache.has(cacheKey)) {
@@ -2148,6 +2179,11 @@ function exportJson() {
       duration: track.duration,
       width: track.width,
       height: track.height,
+      encodedWidth: track.encodedWidth,
+      encodedHeight: track.encodedHeight,
+      displayWidth: track.displayWidth,
+      displayHeight: track.displayHeight,
+      displayRotationDegrees: track.displayRotationDegrees,
       channelCount: track.channelCount,
       sampleRate: track.sampleRate,
       sampleCount: track.sampleCount,

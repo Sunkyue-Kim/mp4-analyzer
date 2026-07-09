@@ -214,6 +214,29 @@ test("frame internals model builds nominal video grids and audio band estimates"
   assert.ok(videoModel.cells.some((cell) => cell.globalPercentile > 0.5));
   assert.ok(videoModel.cells.every((cell) => Number.isFinite(cell.color.red) && Number.isFinite(cell.color.green) && Number.isFinite(cell.color.blue)));
 
+  const rotatedVideoModel = buildFrameInternalsModel(
+    { trackId: 7, sampleIndex: 1, size: 64000, frameType: "P" },
+    {
+      trackId: 7,
+      handlerType: "vide",
+      codec: "hvc1",
+      codecDescriptor: "hevc",
+      width: 1920,
+      height: 1080,
+      encodedWidth: 1920,
+      encodedHeight: 1080,
+      displayWidth: 1080,
+      displayHeight: 1920,
+      displayRotationDegrees: -90
+    }
+  );
+  assert.equal(rotatedVideoModel.mediaWidth, 1080);
+  assert.equal(rotatedVideoModel.mediaHeight, 1920);
+  assert.equal(rotatedVideoModel.encodedWidth, 1920);
+  assert.equal(rotatedVideoModel.encodedHeight, 1080);
+  assert.equal(rotatedVideoModel.displayRotationDegrees, -90);
+  assert.ok(rotatedVideoModel.cells.every((cell) => cell.pixelRight <= 1080 && cell.pixelBottom <= 1920));
+
   const hevcModel = buildFrameInternalsModel(
     { trackId: 2, sampleIndex: 1, size: 90000, frameType: "P" },
     { trackId: 2, handlerType: "vide", codec: "hvc1", codecDescriptor: "hevc", width: 1280, height: 720 }

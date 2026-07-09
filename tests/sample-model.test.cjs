@@ -17,15 +17,28 @@ function box(type, fields = {}, children = [], options = {}) {
   };
 }
 
-function makeTrackTree(extraStblChildren = []) {
+function makeTrackTree(extraStblChildren = [], options = {}) {
+  const trackHeaderFields = {
+    trackId: 7,
+    width: 1920,
+    height: 1080,
+    ...(options.trackHeaderFields || {})
+  };
+  const sampleEntry = {
+    format: "avc1",
+    width: 1280,
+    height: 720,
+    codecConfig: { nalLengthSize: 4 },
+    ...(options.sampleEntry || {})
+  };
   return box("trak", {}, [
-    box("tkhd", { trackId: 7, width: 1920, height: 1080 }),
+    box("tkhd", trackHeaderFields),
     box("mdia", {}, [
       box("mdhd", { timescale: 90000, duration: "9000" }),
       box("hdlr", { handlerType: "vide" }),
       box("minf", {}, [
         box("stbl", {}, [
-          box("stsd", { entries: [{ format: "avc1", width: 1280, height: 720, codecConfig: { nalLengthSize: 4 } }] }),
+          box("stsd", { entries: [sampleEntry] }),
           ...extraStblChildren
         ])
       ])
@@ -53,6 +66,8 @@ test("sample model builds normal MP4 track and timing rows", async () => {
   assert.equal(tracks[0].trackId, 7);
   assert.equal(tracks[0].codecDescriptor, "avc");
   assert.equal(tracks[0].width, 1280);
+  assert.equal(tracks[0].displayWidth, 1920);
+  assert.equal(tracks[0].displayHeight, 1080);
 
   const rows = sampleModel.buildNormalSamples(tracks, warnings);
   assert.equal(rows.length, 3);
@@ -61,6 +76,30 @@ test("sample model builds normal MP4 track and timing rows", async () => {
   assert.deepEqual(Array.from(rows.map((row) => row.pts)), [0, 4500, 7500]);
   assert.deepEqual(Array.from(rows.map((row) => row.isSync)), [true, false, true]);
   assert.equal(tracks[0].sampleCount, 3);
+  assert.deepEqual(Array.from(warnings), []);
+});
+
+test("sample model keeps encoded and display dimensions separate for rotated video tracks", async () => {
+  const loader = await createSourceModuleLoader();
+  const sampleModel = await loader.import("src/js/core/containers/isobmff/sample-model.js");
+  const warnings = [];
+  const moov = box("moov", {}, [
+    makeTrackTree([], {
+      trackHeaderFields: { rotationDegrees: -90, width: 1920, height: 1080 },
+      sampleEntry: { width: 1920, height: 1080 }
+    })
+  ]);
+
+  const tracks = sampleModel.buildTrackModels([moov], warnings);
+
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].width, 1920);
+  assert.equal(tracks[0].height, 1080);
+  assert.equal(tracks[0].encodedWidth, 1920);
+  assert.equal(tracks[0].encodedHeight, 1080);
+  assert.equal(tracks[0].displayWidth, 1080);
+  assert.equal(tracks[0].displayHeight, 1920);
+  assert.equal(tracks[0].displayRotationDegrees, -90);
   assert.deepEqual(Array.from(warnings), []);
 });
 

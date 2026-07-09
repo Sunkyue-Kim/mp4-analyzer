@@ -46,6 +46,7 @@ function buildTrackModels(topBoxes, warnings) {
     const sampleEntry = stsd && stsd.fields.entries.length ? stsd.fields.entries[0] : null;
     const codec = sampleEntry ? sampleEntry.format : "unknown";
     const codecDescriptor = getCodecBySampleEntryType(codec);
+    const dimensions = buildTrackDimensions(sampleEntry, tkhd);
     const track = {
       trackId,
       handlerType: hdlr ? hdlr.fields.handlerType : "unknown",
@@ -54,8 +55,13 @@ function buildTrackModels(topBoxes, warnings) {
       codecConfig: sampleEntry && sampleEntry.codecConfig ? sampleEntry.codecConfig : null,
       timescale: mdhd ? mdhd.fields.timescale : 0,
       duration: mdhd ? mdhd.fields.duration : "0",
-      width: sampleEntry && sampleEntry.width ? sampleEntry.width : (tkhd ? tkhd.fields.width : 0),
-      height: sampleEntry && sampleEntry.height ? sampleEntry.height : (tkhd ? tkhd.fields.height : 0),
+      width: dimensions.encodedWidth,
+      height: dimensions.encodedHeight,
+      encodedWidth: dimensions.encodedWidth,
+      encodedHeight: dimensions.encodedHeight,
+      displayWidth: dimensions.displayWidth,
+      displayHeight: dimensions.displayHeight,
+      displayRotationDegrees: dimensions.displayRotationDegrees,
       channelCount: sampleEntry && sampleEntry.channelCount ? sampleEntry.channelCount : 0,
       sampleRate: sampleEntry && sampleEntry.sampleRate ? sampleEntry.sampleRate : 0,
       sampleCount: 0,
@@ -71,6 +77,69 @@ function buildTrackModels(topBoxes, warnings) {
     tracks.push(track);
   }
   return tracks;
+}
+
+function buildTrackDimensions(sampleEntry, tkhd) {
+  const encodedWidth = positiveDimension(sampleEntry && sampleEntry.width) || positiveDimension(tkhd && tkhd.fields.width);
+  const encodedHeight = positiveDimension(sampleEntry && sampleEntry.height) || positiveDimension(tkhd && tkhd.fields.height);
+  const trackHeaderWidth = positiveDimension(tkhd && tkhd.fields.width);
+  const trackHeaderHeight = positiveDimension(tkhd && tkhd.fields.height);
+  const rotationDegrees = normalizeRotationDegrees(tkhd && tkhd.fields.rotationDegrees);
+  const displayDimensions = resolveDisplayDimensions({
+    encodedWidth,
+    encodedHeight,
+    trackHeaderWidth,
+    trackHeaderHeight,
+    rotationDegrees
+  });
+  return {
+    encodedWidth,
+    encodedHeight,
+    displayWidth: displayDimensions.width,
+    displayHeight: displayDimensions.height,
+    displayRotationDegrees: rotationDegrees
+  };
+}
+
+function resolveDisplayDimensions(options) {
+  const quarterTurn = Math.abs(options.rotationDegrees) % 180 === 90;
+  const encodedWidth = options.encodedWidth;
+  const encodedHeight = options.encodedHeight;
+  const trackHeaderWidth = options.trackHeaderWidth;
+  const trackHeaderHeight = options.trackHeaderHeight;
+  if (!quarterTurn) {
+    return {
+      width: trackHeaderWidth || encodedWidth || 0,
+      height: trackHeaderHeight || encodedHeight || 0
+    };
+  }
+  if (encodedWidth && encodedHeight) {
+    if (nearlyEqual(trackHeaderWidth, encodedHeight) && nearlyEqual(trackHeaderHeight, encodedWidth)) {
+      return { width: trackHeaderWidth, height: trackHeaderHeight };
+    }
+    return { width: encodedHeight, height: encodedWidth };
+  }
+  return {
+    width: trackHeaderHeight || encodedHeight || 0,
+    height: trackHeaderWidth || encodedWidth || 0
+  };
+}
+
+function positiveDimension(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
+}
+
+function nearlyEqual(left, right) {
+  return left > 0 && right > 0 && Math.abs(left - right) < 0.5;
+}
+
+function normalizeRotationDegrees(value) {
+  const numberValue = Number(value) || 0;
+  let normalized = numberValue % 360;
+  if (normalized > 180) normalized -= 360;
+  if (normalized <= -180) normalized += 360;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function buildNormalSamples(tracks, warnings) {

@@ -388,8 +388,11 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
     unitName: "macroblock",
     unitWidth: 16,
     unitHeight: 16,
-    mediaWidth: 32,
-    mediaHeight: 16,
+    mediaWidth: 16,
+    mediaHeight: 32,
+    encodedWidth: 32,
+    encodedHeight: 16,
+    displayRotationDegrees: -90,
     nominalColumns: 2,
     nominalRows: 1,
     nominalUnitCount: 2,
@@ -437,6 +440,7 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   });
 
   assert.match(videoHtml, /block-cell i/);
+  assert.match(videoHtml, /16x32 \(rotated -90 deg, encoded 32x16\)/);
   assert.match(videoHtml, /data-inspection-tooltip=/);
   assert.match(videoHtml, /--cell-red:1;--cell-green:2;--cell-blue:3;--cell-alpha:0\.500/);
   assert.match(audioHtml, /audio-band-row/);

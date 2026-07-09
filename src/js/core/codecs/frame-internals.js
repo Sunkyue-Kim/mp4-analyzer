@@ -79,8 +79,9 @@ function buildFrameInternalsModel(row, track, options = {}) {
 
 function buildVideoInternalsModel(row, track, options = {}) {
   const descriptor = VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
-  const width = Math.max(0, Math.round(Number(track.width) || 0));
-  const height = Math.max(0, Math.round(Number(track.height) || 0));
+  const dimensions = getVideoTrackDimensions(track);
+  const width = dimensions.displayWidth;
+  const height = dimensions.displayHeight;
   if (!descriptor || !width || !height) {
     return {
       kind: "unsupported",
@@ -131,6 +132,9 @@ function buildVideoInternalsModel(row, track, options = {}) {
     unitHeight: descriptor.unitHeight,
     mediaWidth: width,
     mediaHeight: height,
+    encodedWidth: dimensions.encodedWidth,
+    encodedHeight: dimensions.encodedHeight,
+    displayRotationDegrees: dimensions.displayRotationDegrees,
     nominalColumns,
     nominalRows,
     nominalUnitCount: nominalColumns * nominalRows,
@@ -148,8 +152,9 @@ function buildVideoInternalsModel(row, track, options = {}) {
 function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
   if (!track || track.handlerType !== "vide") return buildValueDistribution([], "unavailable", 0);
   const descriptor = options.descriptor || VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
-  const width = options.width || Math.max(0, Math.round(Number(track.width) || 0));
-  const height = options.height || Math.max(0, Math.round(Number(track.height) || 0));
+  const dimensions = getVideoTrackDimensions(track);
+  const width = options.width || dimensions.displayWidth;
+  const height = options.height || dimensions.displayHeight;
   if (!descriptor || !width || !height) return buildValueDistribution([], "unavailable", 0);
 
   const nominalColumns = options.nominalColumns || Math.max(1, Math.ceil(width / descriptor.unitWidth));
@@ -192,6 +197,33 @@ function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
     }
   }
   return buildValueDistribution(sampledValues, "global-track-percentile", rows.length);
+}
+
+function getVideoTrackDimensions(track) {
+  const encodedWidth = positiveRoundedDimension(track.encodedWidth) || positiveRoundedDimension(track.width);
+  const encodedHeight = positiveRoundedDimension(track.encodedHeight) || positiveRoundedDimension(track.height);
+  const displayWidth = positiveRoundedDimension(track.displayWidth) || encodedWidth;
+  const displayHeight = positiveRoundedDimension(track.displayHeight) || encodedHeight;
+  return {
+    encodedWidth,
+    encodedHeight,
+    displayWidth,
+    displayHeight,
+    displayRotationDegrees: normalizeRotationDegrees(track.displayRotationDegrees)
+  };
+}
+
+function positiveRoundedDimension(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? Math.round(numberValue) : 0;
+}
+
+function normalizeRotationDegrees(value) {
+  const numberValue = Number(value) || 0;
+  let normalized = numberValue % 360;
+  if (normalized > 180) normalized -= 360;
+  if (normalized <= -180) normalized += 360;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function getVideoScaleRows(track, sampleRows) {
