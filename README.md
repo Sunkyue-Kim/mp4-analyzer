@@ -148,7 +148,7 @@ npm run build
 | Output | Purpose |
 | --- | --- |
 | `mp4-analyzer.html` | Readable single-file HTML for inspection and debugging |
-| `index.html` | Minified single-file HTML and GitHub Pages entry point, with inline JavaScript source maps |
+| `index.html` | Minified single-file HTML and GitHub Pages entry point, without inline source maps to keep the file small |
 | `chunked/index.html` | Minified shell for the chunked lazy-load build |
 | `chunked/assets/` | Minified ESM chunks, worker bundle, CSS, and JavaScript source maps |
 
@@ -161,6 +161,8 @@ npm run build:chunked  # only chunked/index.html and chunked/assets/
 ```
 
 The chunked build keeps the first app load small. It loads the analyzer runtime after a file or sample is opened, then dynamically imports only the needed container and codec modules. For example, opening an MP4 does not load WebM/Ogg/MP3 analyzers, and scanning an AVC file does not load the HEVC scanner.
+
+Source maps are emitted for the chunked `.mjs` assets as separate `.map` files. The minified single-file `index.html` intentionally omits inline source maps because embedding app and worker maps inside the page can make the minified output larger than the readable build.
 
 ## Test And Validation
 

@@ -28,8 +28,8 @@ async function buildSingleFileOutputs(templateHtml) {
   const normalWorkerJs = await buildWorkerJavaScript({ minify: false, sourceMap: false });
   const normalJs = await buildJavaScript({ minify: false, sourceMap: false, workerJs: normalWorkerJs });
   const minifiedCss = await buildCss({ minify: true });
-  const minifiedWorkerJs = await buildWorkerJavaScript({ minify: true, sourceMap: true });
-  const minifiedJs = await buildJavaScript({ minify: true, sourceMap: true, workerJs: minifiedWorkerJs });
+  const minifiedWorkerJs = await buildWorkerJavaScript({ minify: true, sourceMap: false });
+  const minifiedJs = await buildJavaScript({ minify: true, sourceMap: false, workerJs: minifiedWorkerJs });
 
   const normalHtml = inlineAssets({
     templateHtml,
@@ -278,9 +278,6 @@ function replaceTemplateAssets({ templateHtml, cssReplacement, scriptReplacement
 async function verifySingleFileHtml(filePath, html) {
   const script = extractSingleInlineScript(filePath, html);
   new Function(script);
-  if (path.basename(filePath) === path.basename(outputPagesHtmlPath)) {
-    verifyInlineJavaScriptSourceMaps(filePath, script);
-  }
 
   const previousWindow = global.window;
   const previousDocument = global.document;
@@ -333,18 +330,6 @@ async function verifyChunkedHtml({ html, appOutputPath, workerOutputPath }) {
     global.window = previousWindow;
     if (previousDocument === undefined) delete global.document;
     else global.document = previousDocument;
-  }
-}
-
-function verifyInlineJavaScriptSourceMaps(filePath, script) {
-  const sourceMapMatches = [...script.matchAll(/sourceMappingURL=data:application\/json(?:;charset=utf-8)?;base64,([A-Za-z0-9+/=]+)/g)];
-  if (sourceMapMatches.length < 2) {
-    throw new Error(`${filePath} must include inline app and worker source maps.`);
-  }
-  for (const match of sourceMapMatches) {
-    verifySourceMapObject(filePath, JSON.parse(Buffer.from(match[1], "base64").toString("utf8")), {
-      requireOriginalSources: true
-    });
   }
 }
 

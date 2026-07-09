@@ -708,8 +708,9 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(builtHtml, /MP4AnalyzerWorkerSource/);
   assert.match(builtHtml, /window\.MP4AnalyzerCore/);
   assert.match(builtHtml, /window\.MP4AnalyzerDevTools/);
-  const inlineSourceMapCount = (builtMinifiedHtml.match(/sourceMappingURL=data:application\/json(?:;charset=utf-8)?;base64,/g) || []).length;
-  assert.ok(inlineSourceMapCount >= 2, "minified single-file output must include app and worker inline source maps");
+  assert.ok(builtMinifiedHtml.length < builtHtml.length, "minified single-file output must be smaller than the readable single-file output");
+  assert.doesNotMatch(builtMinifiedHtml, /sourceMappingURL=data:application\/json/);
+  assert.doesNotMatch(builtMinifiedHtml, /sourcesContent/);
   if (fs.existsSync(chunkedHtmlPath)) {
     const chunkedHtml = fs.readFileSync(chunkedHtmlPath, "utf8");
     assert.match(chunkedHtml, /<base href="\.\.\/">/);
