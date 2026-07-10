@@ -19,6 +19,8 @@ These instructions are project-specific context for LLM coding agents. They capt
 - Do not recreate `mp4-analyzer.min.html`; the minified output is intentionally `index.html`.
 - Keep source split into maintainable modules even though outputs are single HTML files.
 - The source HTML at `src/index.html` is a template for the build pipeline. It is not required to be directly usable from `file://` as a development entry point.
+- The single-file minified `index.html` must not inline source maps. Chunked builds may emit separate `.map` files under `chunked/assets/`.
+- Chunked asset filenames are content-hashed. When a build changes hashes, commit the deleted old assets, the new assets, and the updated `chunked/index.html` together.
 
 ## Architecture
 
@@ -34,6 +36,7 @@ These instructions are project-specific context for LLM coding agents. They capt
 
 - ISO BMFF support includes MP4, fMP4, and MOV-style files. Preserve box tree, track, sample, chunk, fragment, and warning views.
 - AVC and HEVC frame type scanning should inspect sample payload NAL units when available.
+- AV1 frame type scanning should inspect OBU/frame-header metadata where the existing lightweight parser can do so without becoming a full decoder.
 - AAC, MP3, Opus, ProRes, VP9, and unknown codecs may expose metadata and sample rows even when detailed video frame type parsing is not possible.
 - WebM/Matroska, MP3, and Ogg Opus support are first-class enough to appear in samples, metrics, frames, and warnings. Do not treat them as MP4 box variants.
 - Box or node explanations should be registered for every supported container family where the UI shows structure. Avoid MP4-only wording for WebM, Ogg, or MP3 structures.
@@ -57,6 +60,16 @@ These instructions are project-specific context for LLM coding agents. They capt
   `Index`, `Track`, `Type`, `Offset`, `Size`, `DTS`, `PTS`, `Duration`, `Sync`, `NAL`, `Chunk/Frag`.
 - The vertical frame-size graph uses time/sample order vertically and byte size horizontally. Frame type color is part of the graph meaning and should remain clear.
 
+## Frame Internals View
+
+- Frame internals are an inspection aid, not a decoder. Be explicit when a value is estimated, nominal, or derived from lightweight syntax parsing.
+- Keep all numeric block statistics based on intrinsic codec block dimensions. Cropping at display edges must not change block-size or byte-density statistics.
+- Apply track rotation and pixel aspect ratio only as display transforms for the block map and source-frame alignment.
+- Partition depth statistics should describe the partition model tree across depths, not only the final rendered leaf cells.
+- The optional source-frame overlay is a visual background captured from the preview element. Do not use decoded pixels to infer block structure or byte allocation.
+- Source-frame overlay must remain optional and gracefully unavailable when browser CORS/canvas-taint rules prevent reading remote media pixels.
+- Preserve zoom/pan state across selected frames so users can inspect the same region over time.
+
 ## Metrics View
 
 - Metrics must allow selecting any parsed track, including audio tracks. If video tracks exist, default selection may prefer video, but the dropdown must still include audio tracks such as Opus.
@@ -71,6 +84,14 @@ These instructions are project-specific context for LLM coding agents. They capt
 - When adding or changing format support, add or update generated samples where practical and verify at least the representative bundled samples.
 - Use `ffmpeg` and `ffprobe` for generated media and cross-checks when validating parsing behavior.
 - Keep code-level UI tests for regressions that browser automation may miss or cannot run in this environment.
+
+## Remote Loading And Preview
+
+- Remote URL support must be best-effort and capability-driven. Prefer range streaming only when CORS, size detection, and `206 Partial Content` behavior are verified.
+- For remote media up to 4 MB, full-download once and share the resulting Blob between analysis and preview to avoid duplicate traffic.
+- For larger remote media, do not assume the analyzer can reuse the native media element's private network buffer. Document or warn when analysis and playback may issue separate requests.
+- Header probing should use a small minimum request size, currently 4 KB, rather than tiny per-box requests or an eager multi-megabyte first fetch.
+- Keep local-file and remote-URL preview behavior behind shared media-source policy helpers so preload and Blob URL behavior do not diverge silently.
 
 ## Verification Expectations
 
@@ -90,4 +111,3 @@ These instructions are project-specific context for LLM coding agents. They capt
 - The public repository name is `standalone-web-media-analyzer`.
 - GitHub Pages serves the minified `index.html` from the repository root.
 - After changes intended for the hosted app, commit and push to `main`, then confirm the latest GitHub Pages build succeeds.
-

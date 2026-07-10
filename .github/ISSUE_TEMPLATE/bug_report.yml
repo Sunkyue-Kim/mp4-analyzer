@@ -37,11 +37,23 @@ body:
     attributes:
       label: Media format and codec
       placeholder: "Example: MP4/fMP4 + HEVC + AAC"
+  - type: dropdown
+    id: input-path
+    attributes:
+      label: Input path
+      description: Where does the issue happen?
+      options:
+        - Local file
+        - Remote URL
+        - Hosted validation sample
+        - GitHub Pages app
+        - Direct file:// app
+        - All input paths
   - type: textarea
     id: artifacts
     attributes:
       label: Debug artifacts
-      description: Exported JSON, console logs, screenshots, ffprobe output, or a minimal non-private sample link.
+      description: Exported JSON, console logs, screenshots, ffprobe output, MediaInfo/MP4Box comparison, or a minimal non-private sample link.
   - type: input
     id: browser
     attributes:

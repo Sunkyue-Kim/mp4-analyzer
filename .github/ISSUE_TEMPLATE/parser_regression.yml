@@ -25,9 +25,20 @@ body:
     id: mismatch
     attributes:
       label: Mismatch
-      description: Describe sample count, offsets, frame types, fragments, metrics, or UI behavior that looks wrong.
+      description: Describe sample count, offsets, frame types, fragments, frame internals, metrics, or UI behavior that looks wrong.
     validations:
       required: true
+  - type: dropdown
+    id: input-path
+    attributes:
+      label: Input path
+      description: Where did you load the sample?
+      options:
+        - Local file
+        - Remote URL
+        - Hosted validation sample
+        - GitHub Pages app
+        - Direct file:// app
   - type: textarea
     id: comparison
     attributes:

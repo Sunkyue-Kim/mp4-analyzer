@@ -30,6 +30,7 @@ body:
         - Container parser
         - Codec parser
         - Frame internals visualization
+        - Source-frame overlay
         - Metrics visualization
         - UI/UX
         - Export
