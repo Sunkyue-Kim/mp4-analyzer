@@ -951,6 +951,19 @@ test("source HTML has required controls, tabs, and no external runtime assets af
 
   assert.match(sourceHtml, /<title>Standalone Web Media Analyzer<\/title>/);
   assert.match(sourceHtml, /WebM, AV1, MP3/);
+  assert.match(sourceHtml, /id="mediaPreviewBar" class="media-preview-bar empty"/);
+  assert.doesNotMatch(sourceHtml, /id="mediaPreviewBar"[^>]*hidden/);
+  assert.match(sourceHtml, /class="media-preview-stage"/);
+  assert.match(sourceHtml, /class="media-preview-skeleton"/);
+  assert.match(sourceHtml, /id="mediaPreviewStatus" data-i18n="preview\.placeholderTitle"/);
+  assert.match(sourceUi, /renderMediaPreviewPlaceholder/);
+  assert.match(sourceUi, /mediaPreviewBar\.classList\.remove\("empty"\)/);
+  assert.match(sourceUi, /mediaPreviewBar\.classList\.add\("empty"\)/);
+  assert.doesNotMatch(sourceUi, /mediaPreviewBar\.hidden\s*=\s*false/);
+  assert.match(sourceCss, /\.media-preview-bar\s*\{[\s\S]*?min-height:\s*184px;/);
+  assert.match(sourceCss, /\.media-preview-stage\s*\{[\s\S]*?aspect-ratio:\s*16\s*\/\s*9;/);
+  assert.match(sourceCss, /\.media-preview-skeleton\s*\{[\s\S]*?position:\s*absolute;/);
+  assert.match(sourceCss, /\.media-preview-bar:not\(\.empty\) \.media-preview-skeleton\s*\{[\s\S]*?display:\s*none;/);
   assert.match(sourceHtml, /id="autoPlaybackSynchronizationToggle" type="checkbox" checked/);
   assert.match(sourceUi, /requestVideoFrameCallback/);
   assert.match(sourceUi, /requestAnimationFrame\(runPlaybackSynchronizationStep\)/);

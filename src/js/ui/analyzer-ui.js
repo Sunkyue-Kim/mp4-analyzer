@@ -129,6 +129,7 @@ const elements = {
   exportCsvButton: document.getElementById("exportCsvButton"),
   mediaPreviewBar: document.getElementById("mediaPreviewBar"),
   filePreview: document.getElementById("filePreview"),
+  mediaPreviewStatus: document.getElementById("mediaPreviewStatus"),
   mediaPreviewName: document.getElementById("mediaPreviewName"),
   mediaPreviewMeta: document.getElementById("mediaPreviewMeta"),
   dropOverlay: document.getElementById("dropOverlay"),
@@ -490,6 +491,7 @@ function refreshDynamicLanguage() {
     elements.warningsBody.innerHTML = emptyHtml("empty.noWarnings");
     elements.frameCountText.textContent = t("count.rows", { count: 0 });
     elements.graphAxisUnit.textContent = t("unit.bytes");
+    renderMediaPreviewPlaceholder();
     renderFrameInternals();
     renderFrameTableLayout([]);
     elements.trackFilter.innerHTML = '<option value="">' + escapeHtml(t("option.all")) + '</option>';
@@ -1179,13 +1181,33 @@ function setFilePreview(file, options = {}) {
   const previewPlan = createMediaPreviewPlan(file, options);
   state.filePreviewUrl = previewPlan.url;
   state.filePreviewObjectUrl = previewPlan.isObjectUrl;
+  elements.mediaPreviewBar.classList.remove("empty");
+  elements.filePreview.controls = true;
   elements.filePreview.preload = previewPlan.preload;
   elements.filePreview.title = previewPlan.title;
   elements.filePreview.src = state.filePreviewUrl;
   elements.filePreview.load();
+  elements.mediaPreviewStatus.removeAttribute("data-i18n");
+  elements.mediaPreviewName.removeAttribute("data-i18n");
+  elements.mediaPreviewMeta.removeAttribute("data-i18n");
+  elements.mediaPreviewStatus.textContent = t("preview.loadedMedia");
   elements.mediaPreviewName.textContent = file.name || "Unnamed media";
   updateMediaPreviewMeta(file, null);
-  elements.mediaPreviewBar.hidden = false;
+}
+
+function renderMediaPreviewPlaceholder() {
+  if (state.filePreviewUrl) {
+    elements.mediaPreviewStatus.textContent = t("preview.loadedMedia");
+    return;
+  }
+  elements.mediaPreviewBar.classList.add("empty");
+  elements.filePreview.controls = false;
+  elements.mediaPreviewStatus.dataset.i18n = "preview.placeholderTitle";
+  elements.mediaPreviewName.dataset.i18n = "preview.placeholderName";
+  elements.mediaPreviewMeta.dataset.i18n = "preview.placeholderMeta";
+  elements.mediaPreviewStatus.textContent = t("preview.placeholderTitle");
+  elements.mediaPreviewName.textContent = t("preview.placeholderName");
+  elements.mediaPreviewMeta.textContent = t("preview.placeholderMeta");
 }
 
 function updateMediaPreviewMeta(file, analysis) {

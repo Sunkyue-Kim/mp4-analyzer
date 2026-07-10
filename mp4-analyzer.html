@@ -333,17 +333,64 @@ button:disabled {
   border-radius: 8px;
   background: var(--panel);
   box-shadow: var(--shadow);
-  min-height: 0;
+  min-height: 184px;
 }
-.media-preview-bar[hidden] {
-  display: none;
-}
-.media-preview-video {
-  width: 100%;
-  max-height: 260px;
+.media-preview-stage {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #000;
+  aspect-ratio: 16 / 9;
+  max-height: 260px;
+}
+.media-preview-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000;
+}
+.media-preview-skeleton {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  justify-items: center;
+  padding: 20px;
+  color: #8aa0b4;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.06),
+      transparent 36%),
+    #070b10;
+}
+.media-preview-bar:not(.empty) .media-preview-skeleton {
+  display: none;
+}
+.skeleton-play {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background:
+    linear-gradient(
+      90deg,
+      transparent 36%,
+      rgba(226, 232, 240, 0.75) 36% 58%,
+      transparent 58%),
+    rgba(15, 23, 42, 0.78);
+}
+.skeleton-line {
+  width: min(180px, 60%);
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.24);
+}
+.skeleton-line.wide {
+  width: min(260px, 78%);
 }
 .media-preview-meta {
   display: grid;
@@ -351,6 +398,7 @@ button:disabled {
   gap: 8px;
   min-width: 0;
   padding: 2px 2px 0;
+  grid-template-rows: 18px minmax(26px, auto) minmax(36px, auto);
 }
 .media-preview-meta span {
   color: var(--muted);
@@ -359,10 +407,16 @@ button:disabled {
 .media-preview-meta strong {
   font-size: 18px;
   overflow-wrap: anywhere;
+  min-height: 26px;
 }
 .media-preview-meta small {
   color: var(--muted);
   line-height: 1.45;
+  min-height: 36px;
+}
+.media-preview-bar.empty .media-preview-meta strong,
+.media-preview-bar.empty .media-preview-meta small {
+  color: #8a9aae;
 }
 .side-section {
   padding: 14px 16px;
@@ -2087,7 +2141,7 @@ button:disabled {
     padding: 10px;
     gap: 10px;
   }
-  .media-preview-video {
+  .media-preview-stage {
     max-height: 210px;
   }
   .tabs {
@@ -2366,12 +2420,19 @@ button:disabled {
       </div>
     </header>
 
-    <section id="mediaPreviewBar" class="media-preview-bar" hidden>
-      <video id="filePreview" class="media-preview-video" controls playsinline preload="metadata"></video>
+    <section id="mediaPreviewBar" class="media-preview-bar empty">
+      <div class="media-preview-stage">
+        <video id="filePreview" class="media-preview-video" playsinline preload="metadata"></video>
+        <div class="media-preview-skeleton" aria-hidden="true">
+          <span class="skeleton-play"></span>
+          <span class="skeleton-line wide"></span>
+          <span class="skeleton-line"></span>
+        </div>
+      </div>
       <div class="media-preview-meta">
-        <span data-i18n="preview.loadedMedia">Loaded media</span>
-        <strong id="mediaPreviewName"></strong>
-        <small id="mediaPreviewMeta"></small>
+        <span id="mediaPreviewStatus" data-i18n="preview.placeholderTitle">Media preview</span>
+        <strong id="mediaPreviewName" data-i18n="preview.placeholderName">No media loaded</strong>
+        <small id="mediaPreviewMeta" data-i18n="preview.placeholderMeta">Open a file or URL to reserve playback and media metadata here.</small>
       </div>
     </section>
 
@@ -7953,6 +8014,9 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "button.exportJson": "Export JSON",
           "button.exportCsv": "Export CSV",
           "button.clear": "Clear",
+          "preview.placeholderTitle": "Media preview",
+          "preview.placeholderName": "No media loaded",
+          "preview.placeholderMeta": "Open or drop a file to reserve playback and media metadata here.",
           "preview.loadedMedia": "Loaded media",
           "preview.remoteFetchDeferred": "preview uses metadata preload",
           "tab.summary": "Summary",
@@ -8205,6 +8269,9 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "button.exportJson": "JSON \uB0B4\uBCF4\uB0B4\uAE30",
           "button.exportCsv": "CSV \uB0B4\uBCF4\uB0B4\uAE30",
           "button.clear": "\uCD08\uAE30\uD654",
+          "preview.placeholderTitle": "\uBBF8\uB514\uC5B4 \uBBF8\uB9AC\uBCF4\uAE30",
+          "preview.placeholderName": "\uB85C\uB4DC\uB41C \uBBF8\uB514\uC5B4 \uC5C6\uC74C",
+          "preview.placeholderMeta": "\uD30C\uC77C\uC744 \uC5F4\uAC70\uB098 \uB04C\uC5B4\uB2E4 \uB193\uC73C\uBA74 \uC774 \uC601\uC5ED\uC5D0\uC11C \uC7AC\uC0DD\uACFC \uBBF8\uB514\uC5B4 \uC815\uBCF4\uB97C \uD655\uC778\uD569\uB2C8\uB2E4.",
           "preview.loadedMedia": "\uB85C\uB4DC\uB41C \uBBF8\uB514\uC5B4",
           "preview.remoteFetchDeferred": "preview metadata preload \uC0AC\uC6A9",
           "tab.summary": "\uC694\uC57D",
@@ -10287,6 +10354,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       exportCsvButton: document.getElementById("exportCsvButton"),
       mediaPreviewBar: document.getElementById("mediaPreviewBar"),
       filePreview: document.getElementById("filePreview"),
+      mediaPreviewStatus: document.getElementById("mediaPreviewStatus"),
       mediaPreviewName: document.getElementById("mediaPreviewName"),
       mediaPreviewMeta: document.getElementById("mediaPreviewMeta"),
       dropOverlay: document.getElementById("dropOverlay"),
@@ -10631,6 +10699,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         elements.warningsBody.innerHTML = emptyHtml("empty.noWarnings");
         elements.frameCountText.textContent = t("count.rows", { count: 0 });
         elements.graphAxisUnit.textContent = t("unit.bytes");
+        renderMediaPreviewPlaceholder();
         renderFrameInternals();
         renderFrameTableLayout([]);
         elements.trackFilter.innerHTML = '<option value="">' + escapeHtml2(t("option.all")) + "</option>";
@@ -11234,13 +11303,32 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       const previewPlan = createMediaPreviewPlan(file, options2);
       state.filePreviewUrl = previewPlan.url;
       state.filePreviewObjectUrl = previewPlan.isObjectUrl;
+      elements.mediaPreviewBar.classList.remove("empty");
+      elements.filePreview.controls = true;
       elements.filePreview.preload = previewPlan.preload;
       elements.filePreview.title = previewPlan.title;
       elements.filePreview.src = state.filePreviewUrl;
       elements.filePreview.load();
+      elements.mediaPreviewStatus.removeAttribute("data-i18n");
+      elements.mediaPreviewName.removeAttribute("data-i18n");
+      elements.mediaPreviewMeta.removeAttribute("data-i18n");
+      elements.mediaPreviewStatus.textContent = t("preview.loadedMedia");
       elements.mediaPreviewName.textContent = file.name || "Unnamed media";
       updateMediaPreviewMeta(file, null);
-      elements.mediaPreviewBar.hidden = false;
+    }
+    function renderMediaPreviewPlaceholder() {
+      if (state.filePreviewUrl) {
+        elements.mediaPreviewStatus.textContent = t("preview.loadedMedia");
+        return;
+      }
+      elements.mediaPreviewBar.classList.add("empty");
+      elements.filePreview.controls = false;
+      elements.mediaPreviewStatus.dataset.i18n = "preview.placeholderTitle";
+      elements.mediaPreviewName.dataset.i18n = "preview.placeholderName";
+      elements.mediaPreviewMeta.dataset.i18n = "preview.placeholderMeta";
+      elements.mediaPreviewStatus.textContent = t("preview.placeholderTitle");
+      elements.mediaPreviewName.textContent = t("preview.placeholderName");
+      elements.mediaPreviewMeta.textContent = t("preview.placeholderMeta");
     }
     function updateMediaPreviewMeta(file, analysis) {
       const parts = [formatBytes(file.size)];

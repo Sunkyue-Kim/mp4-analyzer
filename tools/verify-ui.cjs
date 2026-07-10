@@ -76,7 +76,14 @@ class FakeElement {
     return true;
   }
 
-  setAttribute(name, value) { this[name] = value; }
+  setAttribute(name, value) {
+    this[name] = value;
+    if (name.startsWith("data-")) this.dataset[toDatasetPropertyName(name.slice(5))] = String(value);
+  }
+  removeAttribute(name) {
+    delete this[name];
+    if (name.startsWith("data-")) delete this.dataset[toDatasetPropertyName(name.slice(5))];
+  }
   appendChild(child) { this.children.push(child); return child; }
   remove() {}
   click() {}
@@ -119,6 +126,10 @@ function createFakeTreeRows(html) {
     match = pattern.exec(html);
   }
   return rows;
+}
+
+function toDatasetPropertyName(name) {
+  return String(name).replace(/-([a-z])/g, (_, character) => character.toUpperCase());
 }
 
 function decodeHtmlAttribute(value) {

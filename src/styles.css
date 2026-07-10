@@ -345,19 +345,64 @@
       border-radius: 8px;
       background: var(--panel);
       box-shadow: var(--shadow);
-      min-height: 0;
+      min-height: 184px;
     }
 
-    .media-preview-bar[hidden] {
-      display: none;
+    .media-preview-stage {
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #000;
+      aspect-ratio: 16 / 9;
+      max-height: 260px;
     }
 
     .media-preview-video {
       width: 100%;
-      max-height: 260px;
-      border: 1px solid var(--line);
-      border-radius: 7px;
+      height: 100%;
+      display: block;
       background: #000;
+    }
+
+    .media-preview-skeleton {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      gap: 10px;
+      justify-items: center;
+      padding: 20px;
+      color: #8aa0b4;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.06), transparent 36%),
+        #070b10;
+    }
+
+    .media-preview-bar:not(.empty) .media-preview-skeleton {
+      display: none;
+    }
+
+    .skeleton-play {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      background:
+        linear-gradient(90deg, transparent 36%, rgba(226, 232, 240, 0.75) 36% 58%, transparent 58%),
+        rgba(15, 23, 42, 0.78);
+    }
+
+    .skeleton-line {
+      width: min(180px, 60%);
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.24);
+    }
+
+    .skeleton-line.wide {
+      width: min(260px, 78%);
     }
 
     .media-preview-meta {
@@ -366,6 +411,7 @@
       gap: 8px;
       min-width: 0;
       padding: 2px 2px 0;
+      grid-template-rows: 18px minmax(26px, auto) minmax(36px, auto);
     }
 
     .media-preview-meta span {
@@ -376,11 +422,18 @@
     .media-preview-meta strong {
       font-size: 18px;
       overflow-wrap: anywhere;
+      min-height: 26px;
     }
 
     .media-preview-meta small {
       color: var(--muted);
       line-height: 1.45;
+      min-height: 36px;
+    }
+
+    .media-preview-bar.empty .media-preview-meta strong,
+    .media-preview-bar.empty .media-preview-meta small {
+      color: #8a9aae;
     }
 
     .side-section {
@@ -2207,7 +2260,7 @@
         padding: 10px;
         gap: 10px;
       }
-      .media-preview-video { max-height: 210px; }
+      .media-preview-stage { max-height: 210px; }
       .tabs {
         position: sticky;
         top: 0;

@@ -44,12 +44,19 @@
       </div>
     </header>
 
-    <section id="mediaPreviewBar" class="media-preview-bar" hidden>
-      <video id="filePreview" class="media-preview-video" controls playsinline preload="metadata"></video>
+    <section id="mediaPreviewBar" class="media-preview-bar empty">
+      <div class="media-preview-stage">
+        <video id="filePreview" class="media-preview-video" playsinline preload="metadata"></video>
+        <div class="media-preview-skeleton" aria-hidden="true">
+          <span class="skeleton-play"></span>
+          <span class="skeleton-line wide"></span>
+          <span class="skeleton-line"></span>
+        </div>
+      </div>
       <div class="media-preview-meta">
-        <span data-i18n="preview.loadedMedia">Loaded media</span>
-        <strong id="mediaPreviewName"></strong>
-        <small id="mediaPreviewMeta"></small>
+        <span id="mediaPreviewStatus" data-i18n="preview.placeholderTitle">Media preview</span>
+        <strong id="mediaPreviewName" data-i18n="preview.placeholderName">No media loaded</strong>
+        <small id="mediaPreviewMeta" data-i18n="preview.placeholderMeta">Open a file or URL to reserve playback and media metadata here.</small>
       </div>
     </section>
 
