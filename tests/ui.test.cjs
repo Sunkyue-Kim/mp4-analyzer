@@ -981,6 +981,12 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /updateMetricPlaybackCursors/);
   assert.match(sourceUi, /readMetricChartPoints/);
   assert.match(sourceUi, /hasMetricPlaybackCursorTargets/);
+  assert.match(sourceUi, /METRIC_PLAYBACK_CURSOR_INTERVAL_MS\s*=\s*100/);
+  assert.match(sourceUi, /startMetricPlaybackCursorLoop/);
+  assert.match(sourceUi, /stopMetricPlaybackCursorLoop/);
+  assert.match(sourceUi, /shouldRunMetricPlaybackCursorLoop/);
+  assert.match(sourceUi, /setInterval\(\(\)\s*=>\s*\{/);
+  assert.match(sourceUi, /METRIC_PLAYBACK_CURSOR_INTERVAL_MS\)/);
   assert.match(sourceUi, /findNearestMetricChartPoint/);
   assert.match(sourceUi, /hideMetricChartOverlay/);
   assert.match(sourceUi, /metricsBody\.addEventListener\("pointermove"/);

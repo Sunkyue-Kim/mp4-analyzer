@@ -10238,6 +10238,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     const FRAME_TABLE_MINIMUM_WIDTH = "1048px";
     const FRAME_INTERNALS_MAP_MINIMUM_SCALE = 1;
     const FRAME_INTERNALS_MAP_MAXIMUM_SCALE = 32;
+    const METRIC_PLAYBACK_CURSOR_INTERVAL_MS = 100;
     const state = {
       analysis: null,
       language: options.initialLanguage || getLanguage(),
@@ -10262,6 +10263,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       lastPlaybackSynchronizationFragmentIndex: 0,
       playbackSynchronizationRequestId: 0,
       playbackSynchronizationRequestType: "",
+      metricPlaybackCursorTimerId: 0,
       boxTreeActivationCount: 0,
       lastBoxTreeActivation: null,
       frameInternalsTooltipTarget: null,
@@ -10558,10 +10560,12 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     elements.filePreview.addEventListener("playing", startPlaybackSynchronizationLoop);
     elements.filePreview.addEventListener("pause", () => {
       stopPlaybackSynchronizationLoop();
+      stopMetricPlaybackCursorLoop();
       synchronizeSelectionsToPlayback({ force: true });
     });
     elements.filePreview.addEventListener("ended", () => {
       stopPlaybackSynchronizationLoop();
+      stopMetricPlaybackCursorLoop();
       synchronizeSelectionsToPlayback({ force: true });
     });
     elements.filePreview.addEventListener("seeking", () => synchronizeSelectionsToPlayback({ force: true }));
@@ -10901,8 +10905,8 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       }
     }
     function startPlaybackSynchronizationLoop() {
-      if (state.playbackSynchronizationRequestId || !shouldRunPlaybackSynchronizationLoop()) return;
-      requestNextPlaybackSynchronizationStep();
+      startMetricPlaybackCursorLoop();
+      if (!state.playbackSynchronizationRequestId && shouldRunPlaybackSynchronizationLoop()) requestNextPlaybackSynchronizationStep();
     }
     function stopPlaybackSynchronizationLoop() {
       if (!state.playbackSynchronizationRequestId) return;
@@ -10913,6 +10917,35 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       }
       state.playbackSynchronizationRequestId = 0;
       state.playbackSynchronizationRequestType = "";
+    }
+    function synchronizeMetricPlaybackCursorLoopState() {
+      if (shouldRunMetricPlaybackCursorLoop()) startMetricPlaybackCursorLoop();
+      else stopMetricPlaybackCursorLoop();
+    }
+    function startMetricPlaybackCursorLoop() {
+      if (!shouldRunMetricPlaybackCursorLoop()) {
+        stopMetricPlaybackCursorLoop();
+        return;
+      }
+      updateMetricPlaybackCursors({ force: true });
+      if (state.metricPlaybackCursorTimerId) return;
+      state.metricPlaybackCursorTimerId = setInterval(() => {
+        if (!shouldRunMetricPlaybackCursorLoop()) {
+          stopMetricPlaybackCursorLoop();
+          return;
+        }
+        updateMetricPlaybackCursors();
+      }, METRIC_PLAYBACK_CURSOR_INTERVAL_MS);
+    }
+    function stopMetricPlaybackCursorLoop() {
+      if (!state.metricPlaybackCursorTimerId) return;
+      clearInterval(state.metricPlaybackCursorTimerId);
+      state.metricPlaybackCursorTimerId = 0;
+    }
+    function shouldRunMetricPlaybackCursorLoop() {
+      return Boolean(
+        state.activeTab === "metrics" && hasMetricPlaybackCursorTargets() && elements.filePreview && elements.filePreview.src && elements.filePreview.paused === false && !elements.filePreview.ended
+      );
     }
     function requestNextPlaybackSynchronizationStep() {
       if (shouldUseVideoFramePlaybackSynchronization()) {
@@ -10941,7 +10974,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     }
     function shouldRunPlaybackSynchronizationLoop() {
       return Boolean(
-        (elements.autoPlaybackSynchronizationToggle.checked || elements.fragmentPlaybackSynchronizationToggle.checked || hasMetricPlaybackCursorTargets()) && elements.filePreview && elements.filePreview.src && elements.filePreview.paused === false && !elements.filePreview.ended
+        (elements.autoPlaybackSynchronizationToggle.checked || elements.fragmentPlaybackSynchronizationToggle.checked) && elements.filePreview && elements.filePreview.src && elements.filePreview.paused === false && !elements.filePreview.ended
       );
     }
     function synchronizeSelectionsToPlayback(options2 = {}) {
@@ -11267,6 +11300,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       if (tabName === "frames") renderFrames();
       if (tabName === "metrics") renderMetrics();
       if (tabName === "fragments") renderFragments();
+      synchronizeMetricPlaybackCursorLoopState();
     }
     function setFrameViewMode(mode) {
       state.frameViewMode = mode;
@@ -11547,11 +11581,13 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       const track = getSelectedMetricsTrack();
       if (!track) {
         elements.metricsBody.innerHTML = emptyHtml("empty.noTrackMetrics");
+        stopMetricPlaybackCursorLoop();
         return;
       }
       const rows = getRowsForTrack(track.trackId);
       if (!rows.length) {
         elements.metricsBody.innerHTML = emptyHtml("empty.noSamplesForTrack", { trackId: track.trackId });
+        stopMetricPlaybackCursorLoop();
         return;
       }
       const windowSize = getMetricsWindowSize();
@@ -11559,7 +11595,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       const metrics = buildTrackMetrics(track, rows, windowSize, { getDefaultSampleFrameType });
       elements.metricsBody.innerHTML = renderMetricsBody(track, metrics, pointLimit);
       updateMetricPlaybackCursors({ force: true });
-      if (elements.filePreview && elements.filePreview.paused === false) startPlaybackSynchronizationLoop();
+      synchronizeMetricPlaybackCursorLoopState();
     }
     function getSelectedMetricsTrack() {
       if (!state.analysis) return null;

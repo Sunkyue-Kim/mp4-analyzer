@@ -79,6 +79,7 @@ const FRAME_TABLE_HEADER_HEIGHT = 34;
 const FRAME_TABLE_MINIMUM_WIDTH = "1048px";
 const FRAME_INTERNALS_MAP_MINIMUM_SCALE = 1;
 const FRAME_INTERNALS_MAP_MAXIMUM_SCALE = 32;
+const METRIC_PLAYBACK_CURSOR_INTERVAL_MS = 100;
 const state = {
   analysis: null,
   language: options.initialLanguage || getLanguage(),
@@ -103,6 +104,7 @@ const state = {
   lastPlaybackSynchronizationFragmentIndex: 0,
   playbackSynchronizationRequestId: 0,
   playbackSynchronizationRequestType: "",
+  metricPlaybackCursorTimerId: 0,
   boxTreeActivationCount: 0,
   lastBoxTreeActivation: null,
   frameInternalsTooltipTarget: null,
@@ -412,10 +414,12 @@ elements.filePreview.addEventListener("play", startPlaybackSynchronizationLoop);
 elements.filePreview.addEventListener("playing", startPlaybackSynchronizationLoop);
 elements.filePreview.addEventListener("pause", () => {
   stopPlaybackSynchronizationLoop();
+  stopMetricPlaybackCursorLoop();
   synchronizeSelectionsToPlayback({ force: true });
 });
 elements.filePreview.addEventListener("ended", () => {
   stopPlaybackSynchronizationLoop();
+  stopMetricPlaybackCursorLoop();
   synchronizeSelectionsToPlayback({ force: true });
 });
 elements.filePreview.addEventListener("seeking", () => synchronizeSelectionsToPlayback({ force: true }));
@@ -789,8 +793,8 @@ function seekPreviewToSeconds(timeSeconds) {
 }
 
 function startPlaybackSynchronizationLoop() {
-  if (state.playbackSynchronizationRequestId || !shouldRunPlaybackSynchronizationLoop()) return;
-  requestNextPlaybackSynchronizationStep();
+  startMetricPlaybackCursorLoop();
+  if (!state.playbackSynchronizationRequestId && shouldRunPlaybackSynchronizationLoop()) requestNextPlaybackSynchronizationStep();
 }
 
 function stopPlaybackSynchronizationLoop() {
@@ -805,6 +809,44 @@ function stopPlaybackSynchronizationLoop() {
   }
   state.playbackSynchronizationRequestId = 0;
   state.playbackSynchronizationRequestType = "";
+}
+
+function synchronizeMetricPlaybackCursorLoopState() {
+  if (shouldRunMetricPlaybackCursorLoop()) startMetricPlaybackCursorLoop();
+  else stopMetricPlaybackCursorLoop();
+}
+
+function startMetricPlaybackCursorLoop() {
+  if (!shouldRunMetricPlaybackCursorLoop()) {
+    stopMetricPlaybackCursorLoop();
+    return;
+  }
+  updateMetricPlaybackCursors({ force: true });
+  if (state.metricPlaybackCursorTimerId) return;
+  state.metricPlaybackCursorTimerId = setInterval(() => {
+    if (!shouldRunMetricPlaybackCursorLoop()) {
+      stopMetricPlaybackCursorLoop();
+      return;
+    }
+    updateMetricPlaybackCursors();
+  }, METRIC_PLAYBACK_CURSOR_INTERVAL_MS);
+}
+
+function stopMetricPlaybackCursorLoop() {
+  if (!state.metricPlaybackCursorTimerId) return;
+  clearInterval(state.metricPlaybackCursorTimerId);
+  state.metricPlaybackCursorTimerId = 0;
+}
+
+function shouldRunMetricPlaybackCursorLoop() {
+  return Boolean(
+    state.activeTab === "metrics" &&
+    hasMetricPlaybackCursorTargets() &&
+    elements.filePreview &&
+    elements.filePreview.src &&
+    elements.filePreview.paused === false &&
+    !elements.filePreview.ended
+  );
 }
 
 function requestNextPlaybackSynchronizationStep() {
@@ -841,11 +883,7 @@ function runPlaybackSynchronizationStep() {
 
 function shouldRunPlaybackSynchronizationLoop() {
   return Boolean(
-    (
-      elements.autoPlaybackSynchronizationToggle.checked ||
-      elements.fragmentPlaybackSynchronizationToggle.checked ||
-      hasMetricPlaybackCursorTargets()
-    ) &&
+    (elements.autoPlaybackSynchronizationToggle.checked || elements.fragmentPlaybackSynchronizationToggle.checked) &&
     elements.filePreview &&
     elements.filePreview.src &&
     elements.filePreview.paused === false &&
@@ -1212,6 +1250,7 @@ function setActiveTab(tabName) {
   if (tabName === "frames") renderFrames();
   if (tabName === "metrics") renderMetrics();
   if (tabName === "fragments") renderFragments();
+  synchronizeMetricPlaybackCursorLoopState();
 }
 
 function setFrameViewMode(mode) {
@@ -1531,11 +1570,13 @@ function renderMetrics() {
   const track = getSelectedMetricsTrack();
   if (!track) {
     elements.metricsBody.innerHTML = emptyHtml("empty.noTrackMetrics");
+    stopMetricPlaybackCursorLoop();
     return;
   }
   const rows = getRowsForTrack(track.trackId);
   if (!rows.length) {
     elements.metricsBody.innerHTML = emptyHtml("empty.noSamplesForTrack", { trackId: track.trackId });
+    stopMetricPlaybackCursorLoop();
     return;
   }
   const windowSize = getMetricsWindowSize();
@@ -1543,7 +1584,7 @@ function renderMetrics() {
   const metrics = buildMetricsForTrackRows(track, rows, windowSize, { getDefaultSampleFrameType });
   elements.metricsBody.innerHTML = renderMetricsBody(track, metrics, pointLimit);
   updateMetricPlaybackCursors({ force: true });
-  if (elements.filePreview && elements.filePreview.paused === false) startPlaybackSynchronizationLoop();
+  synchronizeMetricPlaybackCursorLoopState();
 }
 
 function getSelectedMetricsTrack() {
