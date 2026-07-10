@@ -110,7 +110,8 @@ const state = {
   frameInternalsMapGesture: null,
   frameInternalsMapPointers: new Map(),
   frameInternalsMapView: createDefaultFrameInternalsMapView(),
-  frameInternalsColorScaleCache: new Map()
+  frameInternalsColorScaleCache: new Map(),
+  metricChartPointCache: new WeakMap()
 };
 
 const elements = {
@@ -378,6 +379,9 @@ window.addEventListener("pointercancel", handleFrameInternalsMapPointerUp, true)
 elements.frameSpacer.addEventListener("click", handleFrameRowPointerActivation);
 elements.graphSpacer.addEventListener("click", handleFrameRowPointerActivation);
 elements.metricsBody.addEventListener("click", handleFrameRowPointerActivation);
+elements.metricsBody.addEventListener("pointermove", handleMetricChartPointerMove);
+elements.metricsBody.addEventListener("pointerleave", hideMetricChartOverlay);
+elements.metricsBody.addEventListener("scroll", hideMetricChartOverlay);
 elements.fragmentsBody.addEventListener("click", handleFragmentRowPointerActivation);
 elements.frameSpacer.addEventListener("keydown", handleFrameRowKeyboardActivation);
 elements.graphSpacer.addEventListener("keydown", handleFrameRowKeyboardActivation);
@@ -837,7 +841,11 @@ function runPlaybackSynchronizationStep() {
 
 function shouldRunPlaybackSynchronizationLoop() {
   return Boolean(
-    (elements.autoPlaybackSynchronizationToggle.checked || elements.fragmentPlaybackSynchronizationToggle.checked) &&
+    (
+      elements.autoPlaybackSynchronizationToggle.checked ||
+      elements.fragmentPlaybackSynchronizationToggle.checked ||
+      hasMetricPlaybackCursorTargets()
+    ) &&
     elements.filePreview &&
     elements.filePreview.src &&
     elements.filePreview.paused === false &&
@@ -846,6 +854,7 @@ function shouldRunPlaybackSynchronizationLoop() {
 }
 
 function synchronizeSelectionsToPlayback(options = {}) {
+  updateMetricPlaybackCursors(options);
   return {
     frame: synchronizeFrameSelectionToPlayback(options),
     fragment: synchronizeFragmentSelectionToPlayback(options)
@@ -1533,6 +1542,8 @@ function renderMetrics() {
   const pointLimit = getMetricsPointLimit();
   const metrics = buildMetricsForTrackRows(track, rows, windowSize, { getDefaultSampleFrameType });
   elements.metricsBody.innerHTML = renderMetricsBody(track, metrics, pointLimit);
+  updateMetricPlaybackCursors({ force: true });
+  if (elements.filePreview && elements.filePreview.paused === false) startPlaybackSynchronizationLoop();
 }
 
 function getSelectedMetricsTrack() {
@@ -1603,6 +1614,19 @@ function renderMetricChart(title, points, valueKey, pointLimit, formatter, class
     const y = METRIC_CHART_HEIGHT - ((Number(point[valueKey]) || 0) / maxValue) * METRIC_CHART_HEIGHT;
     return x.toFixed(2) + "," + y.toFixed(2);
   }).join(" ");
+  const hoverPoints = chartPoints.map((point) => {
+    const value = Number(point[valueKey]) || 0;
+    const xPercent = ((point.time - minTime) / timeSpan) * 100;
+    const yPercent = 100 - (value / maxValue) * 100;
+    return {
+      x: clamp(xPercent, 0, 100),
+      y: clamp(yPercent, 0, 100),
+      time: Number(point.time) || 0,
+      value,
+      timeLabel: formatMetricNumber(Number(point.time) || 0, 3) + "s",
+      valueLabel: formatter(value)
+    };
+  });
   const axisRatios = [0, 0.25, 0.5, 0.75, 1];
   const gridLines = axisRatios.map((ratio) => {
     const y = METRIC_CHART_HEIGHT - ratio * METRIC_CHART_HEIGHT;
@@ -1617,12 +1641,160 @@ function renderMetricChart(title, points, valueKey, pointLimit, formatter, class
   return '<section class="metric-chart-card"><div class="metric-chart-head"><strong>' + escapeHtml(title) + '</strong><span>' + escapeHtml(t("metrics.chartMax", { value: formatter(maxValue), count: chartPoints.length })) + '</span></div>' +
     '<div class="metric-chart-body" aria-label="' + escapeHtml(title) + '">' +
     '<div class="metric-y-axis" aria-hidden="true">' + yAxisLabels + '</div>' +
-    '<div class="metric-plot-area">' +
+    '<div class="metric-plot-area" data-metric-chart="1" data-chart-points="' + escapeHtml(JSON.stringify(hoverPoints)) + '">' +
     '<svg class="metric-chart" viewBox="0 0 ' + METRIC_CHART_WIDTH + ' ' + METRIC_CHART_HEIGHT + '" preserveAspectRatio="none" role="img" aria-label="' + escapeHtml(title) + '">' +
     gridLines + '<polyline class="metric-line ' + escapeHtml(className) + '" points="' + polylinePoints + '"></polyline>' +
-    '</svg></div>' +
+    '</svg>' + renderMetricChartHoverOverlay() + renderMetricChartPlaybackOverlay() + '</div>' +
     '<div class="metric-x-axis" aria-hidden="true"><span>' + escapeHtml(formatMetricNumber(minTime, 2)) + 's</span><span>' + escapeHtml(formatMetricNumber(maxTime, 2)) + 's</span></div>' +
     '</div></section>';
+}
+
+function renderMetricChartHoverOverlay() {
+  return '<div class="metric-chart-hover" hidden aria-hidden="true">' +
+    '<span class="metric-hover-line vertical"></span>' +
+    '<span class="metric-hover-line horizontal"></span>' +
+    '<span class="metric-hover-point"></span>' +
+    '<span class="metric-hover-tooltip">' +
+    '<span><strong>' + escapeHtml(t("metrics.hoverTime")) + '</strong><em data-hover-time></em></span>' +
+    '<span><strong>' + escapeHtml(t("metrics.hoverValue")) + '</strong><em data-hover-value></em></span>' +
+    '</span>' +
+    '</div>';
+}
+
+function renderMetricChartPlaybackOverlay() {
+  return '<div class="metric-chart-playback" hidden aria-hidden="true">' +
+    '<span class="metric-playback-line vertical"></span>' +
+    '<span class="metric-playback-point"></span>' +
+    '<span class="metric-playback-tooltip">' +
+    '<span><strong>' + escapeHtml(t("metrics.playback")) + '</strong><em data-playback-time></em></span>' +
+    '<span><strong>' + escapeHtml(t("metrics.hoverValue")) + '</strong><em data-playback-value></em></span>' +
+    '</span>' +
+    '</div>';
+}
+
+function handleMetricChartPointerMove(event) {
+  const target = event.target && typeof event.target.closest === "function" ? event.target : null;
+  const plotElement = target ? target.closest(".metric-plot-area[data-metric-chart]") : null;
+  if (!plotElement || !elements.metricsBody.contains(plotElement)) {
+    hideMetricChartOverlay();
+    return;
+  }
+  updateMetricChartOverlay(plotElement, event.clientX);
+}
+
+function readMetricChartPoints(plotElement) {
+  if (state.metricChartPointCache.has(plotElement)) return state.metricChartPointCache.get(plotElement);
+  let points = [];
+  try {
+    points = JSON.parse(plotElement.dataset.chartPoints || "[]");
+  } catch (error) {
+    points = [];
+  }
+  const normalizedPoints = Array.isArray(points)
+    ? points.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    : [];
+  state.metricChartPointCache.set(plotElement, normalizedPoints);
+  return normalizedPoints;
+}
+
+function updateMetricChartOverlay(plotElement, clientX) {
+  const points = readMetricChartPoints(plotElement);
+  const overlayElement = plotElement.querySelector(".metric-chart-hover");
+  if (!points.length || !overlayElement) {
+    hideMetricChartOverlay();
+    return;
+  }
+  const plotRect = plotElement.getBoundingClientRect();
+  const relativeX = clamp((clientX - plotRect.left) / Math.max(1, plotRect.width), 0, 1) * 100;
+  const nearestPoint = findNearestMetricChartPoint(points, relativeX, "x");
+  for (const otherOverlayElement of elements.metricsBody.querySelectorAll(".metric-chart-hover")) {
+    if (otherOverlayElement !== overlayElement) otherOverlayElement.hidden = true;
+  }
+  positionMetricChartHoverOverlay(overlayElement, nearestPoint);
+}
+
+function updateMetricPlaybackCursors() {
+  const playbackSeconds = Number(elements.filePreview && elements.filePreview.currentTime);
+  const canShowPlayback = Boolean(
+    state.analysis &&
+    elements.filePreview &&
+    elements.filePreview.src &&
+    Number.isFinite(playbackSeconds)
+  );
+  const plotElements = elements.metricsBody ? elements.metricsBody.querySelectorAll(".metric-plot-area[data-metric-chart]") : [];
+  for (const plotElement of plotElements) {
+    const overlayElement = plotElement.querySelector(".metric-chart-playback");
+    if (!canShowPlayback || !overlayElement) {
+      if (overlayElement) overlayElement.hidden = true;
+      continue;
+    }
+    const nearestPoint = findNearestMetricChartPoint(readMetricChartPoints(plotElement), playbackSeconds, "time");
+    if (!nearestPoint) {
+      overlayElement.hidden = true;
+      continue;
+    }
+    positionMetricChartPlaybackOverlay(overlayElement, nearestPoint);
+  }
+}
+
+function hasMetricPlaybackCursorTargets() {
+  return Boolean(elements.metricsBody && elements.metricsBody.querySelector(".metric-plot-area[data-metric-chart]"));
+}
+
+function findNearestMetricChartPoint(points, target, fieldName) {
+  if (!points.length || !Number.isFinite(target)) return null;
+  let nearestPoint = points[0];
+  let nearestDistance = Math.abs(Number(nearestPoint[fieldName]) - target);
+  for (const point of points) {
+    const distance = Math.abs(Number(point[fieldName]) - target);
+    if (distance < nearestDistance) {
+      nearestPoint = point;
+      nearestDistance = distance;
+    }
+  }
+  return nearestPoint;
+}
+
+function positionMetricChartHoverOverlay(overlayElement, nearestPoint) {
+  if (!nearestPoint) {
+    overlayElement.hidden = true;
+    return;
+  }
+  overlayElement.hidden = false;
+  overlayElement.classList.toggle("near-right", nearestPoint.x > 72);
+  overlayElement.classList.toggle("near-top", nearestPoint.y < 24);
+  overlayElement.querySelector(".metric-hover-line.vertical").style.left = nearestPoint.x.toFixed(2) + "%";
+  overlayElement.querySelector(".metric-hover-line.horizontal").style.top = nearestPoint.y.toFixed(2) + "%";
+  const pointElement = overlayElement.querySelector(".metric-hover-point");
+  pointElement.style.left = nearestPoint.x.toFixed(2) + "%";
+  pointElement.style.top = nearestPoint.y.toFixed(2) + "%";
+  const tooltipElement = overlayElement.querySelector(".metric-hover-tooltip");
+  tooltipElement.style.left = nearestPoint.x.toFixed(2) + "%";
+  tooltipElement.style.top = nearestPoint.y.toFixed(2) + "%";
+  overlayElement.querySelector("[data-hover-time]").textContent = nearestPoint.timeLabel || (formatMetricNumber(nearestPoint.time, 3) + "s");
+  overlayElement.querySelector("[data-hover-value]").textContent = nearestPoint.valueLabel || formatMetricNumber(nearestPoint.value, 3);
+}
+
+function positionMetricChartPlaybackOverlay(overlayElement, nearestPoint) {
+  overlayElement.hidden = false;
+  overlayElement.classList.toggle("near-right", nearestPoint.x > 72);
+  overlayElement.classList.toggle("near-top", nearestPoint.y < 24);
+  overlayElement.querySelector(".metric-playback-line.vertical").style.left = nearestPoint.x.toFixed(2) + "%";
+  const pointElement = overlayElement.querySelector(".metric-playback-point");
+  pointElement.style.left = nearestPoint.x.toFixed(2) + "%";
+  pointElement.style.top = nearestPoint.y.toFixed(2) + "%";
+  const tooltipElement = overlayElement.querySelector(".metric-playback-tooltip");
+  tooltipElement.style.left = nearestPoint.x.toFixed(2) + "%";
+  tooltipElement.style.top = nearestPoint.y.toFixed(2) + "%";
+  overlayElement.querySelector("[data-playback-time]").textContent = nearestPoint.timeLabel || (formatMetricNumber(nearestPoint.time, 3) + "s");
+  overlayElement.querySelector("[data-playback-value]").textContent = nearestPoint.valueLabel || formatMetricNumber(nearestPoint.value, 3);
+}
+
+function hideMetricChartOverlay() {
+  if (!elements.metricsBody) return;
+  for (const overlayElement of elements.metricsBody.querySelectorAll(".metric-chart-hover")) {
+    overlayElement.hidden = true;
+  }
 }
 
 function downsamplePoints(points, limit) {

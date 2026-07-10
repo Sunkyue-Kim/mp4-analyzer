@@ -649,6 +649,9 @@ async function main() {
   if (!metricsHtml.includes("data-grid-shell largest-samples-grid") || !metricsHtml.includes("data-frame-key=")) {
     throw new Error("Largest samples panel did not render clickable rows with the reusable data grid.");
   }
+  if (!metricsHtml.includes("data-chart-points=") || !metricsHtml.includes("metric-chart-hover") || !metricsHtml.includes("metric-chart-playback")) {
+    throw new Error("Metrics charts should render hover and playback cursor overlays with chart point metadata.");
+  }
 
   const fragmentsHtml = fakeDocument.getElementById("fragmentsBody").innerHTML;
   if (
