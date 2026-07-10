@@ -1713,6 +1713,15 @@
       background: #f8fafc;
     }
 
+    .frame-internals-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+    }
+
     .frame-internals-head h2 {
       margin: 0;
       font-size: 13px;
@@ -2038,6 +2047,10 @@
       cursor: grabbing;
     }
 
+    .block-map-viewport.has-frame-image {
+      background: #111827;
+    }
+
     .block-map {
       display: block;
       width: 100%;
@@ -2046,6 +2059,26 @@
       min-height: 0;
       margin: 0;
       overflow: hidden;
+    }
+
+    .block-frame-overlay {
+      pointer-events: none;
+      opacity: 0.94;
+    }
+
+    .frame-overlay-status {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      max-width: calc(100% - 20px);
+      padding: 4px 7px;
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.86);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.25;
+      pointer-events: none;
     }
 
     .block-cell {
@@ -2063,6 +2096,11 @@
       stroke-width: 1;
       vector-effect: non-scaling-stroke;
       shape-rendering: geometricPrecision;
+    }
+
+    .block-map-viewport.has-frame-image .block-cell {
+      fill: rgba(var(--cell-red), var(--cell-green), var(--cell-blue), calc(var(--cell-alpha) * 0.46));
+      stroke: rgba(255, 255, 255, 0.76);
     }
 
     .block-map .block-cell:hover {

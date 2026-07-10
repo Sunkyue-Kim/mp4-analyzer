@@ -1564,6 +1564,14 @@ button:disabled {
   border-bottom: 1px solid var(--line);
   background: #f8fafc;
 }
+.frame-internals-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
 .frame-internals-head h2 {
   margin: 0;
   font-size: 13px;
@@ -1845,6 +1853,9 @@ button:disabled {
 .block-map-viewport.dragging {
   cursor: grabbing;
 }
+.block-map-viewport.has-frame-image {
+  background: #111827;
+}
 .block-map {
   display: block;
   width: 100%;
@@ -1853,6 +1864,24 @@ button:disabled {
   min-height: 0;
   margin: 0;
   overflow: hidden;
+}
+.block-frame-overlay {
+  pointer-events: none;
+  opacity: 0.94;
+}
+.frame-overlay-status {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  padding: 4px 7px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+  pointer-events: none;
 }
 .block-cell {
   --cell-red: 31;
@@ -1868,6 +1897,10 @@ button:disabled {
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
   shape-rendering: geometricPrecision;
+}
+.block-map-viewport.has-frame-image .block-cell {
+  fill: rgba(var(--cell-red), var(--cell-green), var(--cell-blue), calc(var(--cell-alpha) * 0.46));
+  stroke: rgba(255, 255, 255, 0.76);
 }
 .block-map .block-cell:hover {
   stroke: rgba(24, 34, 48, 0.5);
@@ -2547,7 +2580,13 @@ button:disabled {
             <section id="frameInternalsPanel" class="frame-internals-panel" aria-live="polite">
               <div class="frame-internals-head">
                 <h2 data-i18n="frameInternals.title">Selected frame internals</h2>
-                <span data-i18n="frameInternals.badge">nominal view</span>
+                <div class="frame-internals-actions">
+                  <label class="checkbox-field">
+                    <input id="frameInternalsOverlayToggle" type="checkbox">
+                    <span data-i18n="frameInternals.overlayFrame">Overlay source frame</span>
+                  </label>
+                  <span data-i18n="frameInternals.badge">nominal view</span>
+                </div>
               </div>
               <div id="frameInternalsBody" class="frame-internals-body">
                 <div class="empty compact" data-i18n="frameInternals.empty">Select a frame row to inspect nominal block or audio band structure.</div>
@@ -7021,13 +7060,14 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     }
     const nominalColumns = Math.max(1, Math.ceil(width / descriptor.unitWidth));
     const nominalRows = Math.max(1, Math.ceil(height / descriptor.unitHeight));
-    const cells = buildVideoPartitionCells({
+    const partitionCellModel = buildVideoPartitionCellModel({
       row,
       descriptor,
       width,
       height,
       maxCells: MAX_VIDEO_DISPLAY_CELLS
     });
+    const cells = partitionCellModel.cells;
     const intrinsicBounds = getPartitionCellIntrinsicBounds(cells, width, height);
     const displayDimensions = getDisplayDimensionsForIntrinsicBounds(intrinsicBounds, dimensions);
     orientVideoPartitionCells(cells, dimensions, intrinsicBounds);
@@ -7069,6 +7109,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       aggregation: partitionSummary.aggregation,
       partitionBlockCount: cells.length,
       maxPartitionDepth: partitionSummary.maxDepth,
+      partitionDepths: partitionCellModel.partitionDepths,
       partitionModes: partitionSummary.modes,
       accuracy: descriptor.accuracy,
       colorScale: summarizeColorScale(colorScale),
@@ -7176,12 +7217,19 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     );
   }
   function buildVideoPartitionCells(options) {
+    return buildVideoPartitionCellModel(options).cells;
+  }
+  function buildVideoPartitionCellModel(options) {
     const profile = options.descriptor.partitionProfile || getDefaultPartitionProfile(options.descriptor);
     const rootLayout = getPartitionRootLayout(options, profile);
     let cells = buildRootPartitionCells(options, profile, rootLayout);
+    const depthCounts = createPartitionDepthCounts(cells);
     const expansionDepth = getTrackPartitionExpansionDepth(cells.length, profile, options.maxCells);
-    cells = refinePartitionCells(cells, options, profile, expansionDepth);
-    return assignPartitionByteEstimates(cells, options);
+    cells = refinePartitionCells(cells, options, profile, expansionDepth, depthCounts);
+    return {
+      cells: assignPartitionByteEstimates(cells, options),
+      partitionDepths: formatPartitionDepthCounts(depthCounts)
+    };
   }
   function getDefaultPartitionProfile(descriptor) {
     return {
@@ -7251,7 +7299,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     }
     return cells;
   }
-  function refinePartitionCells(cells, options, profile, expansionDepth) {
+  function refinePartitionCells(cells, options, profile, expansionDepth, depthCounts) {
     if (!profile.maxDepth || !profile.modes.length) return cells;
     const depthLimit = Math.min(profile.maxDepth, Math.max(0, Number(expansionDepth) || 0));
     for (let depth = 0; depth < depthLimit; depth += 1) {
@@ -7264,11 +7312,26 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         const children = splitPartitionCell(cell, mode, profile, options);
         if (children.length <= 1) continue;
         replacementMap.set(cell.id, children);
+        addPartitionDepthCounts(depthCounts, children);
       }
       if (replacementMap.size !== currentDepthCells.length) break;
       cells = cells.flatMap((cell) => replacementMap.get(cell.id) || [cell]);
     }
     return cells;
+  }
+  function createPartitionDepthCounts(cells) {
+    const counts = /* @__PURE__ */ new Map();
+    addPartitionDepthCounts(counts, cells);
+    return counts;
+  }
+  function addPartitionDepthCounts(counts, cells) {
+    for (const cell of cells || []) {
+      const depth = Math.max(0, Math.round(Number(cell && cell.depth) || 0));
+      counts.set(depth, (counts.get(depth) || 0) + 1);
+    }
+  }
+  function formatPartitionDepthCounts(counts) {
+    return Array.from(counts.entries()).sort((left, right) => left[0] - right[0]).map(([depth, count]) => ({ depth, count }));
   }
   function canSplitPartitionCell(cell, profile) {
     return cell.pixelRight - cell.pixelLeft >= profile.minimumWidth * 2 || cell.pixelBottom - cell.pixelTop >= profile.minimumHeight * 2;
@@ -8094,6 +8157,9 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.title": "Selected frame internals",
           "frameInternals.badge": "nominal view",
           "frameInternals.empty": "Select a frame row to inspect nominal block or audio band structure.",
+          "frameInternals.overlayFrame": "Overlay source frame",
+          "frameInternals.frameOverlayPending": "Frame overlay pending",
+          "frameInternals.frameOverlayUnavailable": "Frame overlay unavailable",
           "frameInternals.unsupported": "No supported internal structure view is available for this selected sample.",
           "frameInternals.codec": "Codec",
           "frameInternals.frame": "Frame",
@@ -8349,6 +8415,9 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.title": "\uC120\uD0DD \uD504\uB808\uC784 \uB0B4\uBD80 \uC815\uBCF4",
           "frameInternals.badge": "nominal \uBCF4\uAE30",
           "frameInternals.empty": "\uD504\uB808\uC784 row\uB97C \uC120\uD0DD\uD558\uBA74 nominal block \uB610\uB294 audio band \uAD6C\uC870\uB97C \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
+          "frameInternals.overlayFrame": "\uC6D0\uBCF8 \uD504\uB808\uC784 \uC624\uBC84\uB808\uC774",
+          "frameInternals.frameOverlayPending": "\uD504\uB808\uC784 \uC624\uBC84\uB808\uC774 \uC900\uBE44 \uC911",
+          "frameInternals.frameOverlayUnavailable": "\uD504\uB808\uC784 \uC624\uBC84\uB808\uC774\uB97C \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC74C",
           "frameInternals.unsupported": "\uC120\uD0DD\uB41C \uC0D8\uD50C\uC5D0 \uB300\uD574 \uC9C0\uC6D0\uB418\uB294 \uB0B4\uBD80 \uAD6C\uC870 \uBCF4\uAE30\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
           "frameInternals.codec": "\uCF54\uB371",
           "frameInternals.frame": "\uD504\uB808\uC784",
@@ -9899,6 +9968,12 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\ui\frame-internals-view.js
   function renderVideoFrameInternals(model, options = {}) {
     const frameClass = getFrameTypeClass(model.frameType);
+    const frameOverlay = normalizeFrameOverlayOptions(options.frameOverlay);
+    const viewportClass = [
+      "block-map-viewport",
+      frameOverlay.enabled ? "frame-overlay-enabled" : "",
+      frameOverlay.imageUrl ? "has-frame-image" : ""
+    ].filter(Boolean).join(" ");
     const stats = [
       [t("frameInternals.codec"), model.codecFamily],
       [t("frameInternals.frame"), options.frameLabel || t("value.notAvailable")],
@@ -9911,7 +9986,22 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       [t("frameInternals.colorScale"), formatFrameInternalsColorScale(model.colorScale)],
       [t("frameInternals.accuracy"), t("frameInternals.nominal")]
     ];
-    return '<div class="frame-internals-layout"><div class="frame-internals-summary"><div class="frame-internals-title-row"><strong>' + escapeHtml2(model.title) + '</strong><span class="pill ' + frameClass + '">' + escapeHtml2(formatFrameTypeLabel(model.frameType)) + '</span></div><p class="frame-internals-note">' + escapeHtml2(model.note) + "</p>" + renderFrameInternalsStats(stats) + '</div><div class="block-heatmap-wrap"><div class="block-map-viewport" tabindex="0" role="region" aria-label="' + escapeHtml2(t("frameInternals.zoomPlotAria")) + '" style="' + renderVideoBlockMapStyle(model) + '"><svg class="block-map" viewBox="0 0 ' + formatSvgNumber(model.mediaWidth) + " " + formatSvgNumber(model.mediaHeight) + '" data-media-width="' + escapeHtml2(String(model.mediaWidth)) + '" data-media-height="' + escapeHtml2(String(model.mediaHeight)) + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' + model.cells.map((cell) => renderVideoBlockCell(cell, model, frameClass)).join("") + '</svg></div><p class="frame-internals-note">' + escapeHtml2(t("frameInternals.videoEstimateNote")) + "</p></div></div>" + renderVideoInternalsMetrics(model);
+    return '<div class="frame-internals-layout"><div class="frame-internals-summary"><div class="frame-internals-title-row"><strong>' + escapeHtml2(model.title) + '</strong><span class="pill ' + frameClass + '">' + escapeHtml2(formatFrameTypeLabel(model.frameType)) + '</span></div><p class="frame-internals-note">' + escapeHtml2(model.note) + "</p>" + renderFrameInternalsStats(stats) + '</div><div class="block-heatmap-wrap"><div class="' + viewportClass + '" tabindex="0" role="region" aria-label="' + escapeHtml2(t("frameInternals.zoomPlotAria")) + '" style="' + renderVideoBlockMapStyle(model) + '"><svg class="block-map" viewBox="0 0 ' + formatSvgNumber(model.mediaWidth) + " " + formatSvgNumber(model.mediaHeight) + '" data-media-width="' + escapeHtml2(String(model.mediaWidth)) + '" data-media-height="' + escapeHtml2(String(model.mediaHeight)) + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' + renderFrameOverlayImage(model, frameOverlay) + model.cells.map((cell) => renderVideoBlockCell(cell, model, frameClass)).join("") + "</svg>" + renderFrameOverlayStatus(frameOverlay) + '</div><p class="frame-internals-note">' + escapeHtml2(t("frameInternals.videoEstimateNote")) + "</p></div></div>" + renderVideoInternalsMetrics(model);
+  }
+  function normalizeFrameOverlayOptions(frameOverlay) {
+    return {
+      enabled: Boolean(frameOverlay && frameOverlay.enabled),
+      imageUrl: frameOverlay && frameOverlay.imageUrl ? String(frameOverlay.imageUrl) : "",
+      unavailable: Boolean(frameOverlay && frameOverlay.unavailable)
+    };
+  }
+  function renderFrameOverlayImage(model, frameOverlay) {
+    if (!frameOverlay.enabled || !frameOverlay.imageUrl) return "";
+    return '<image class="block-frame-overlay" href="' + escapeHtml2(frameOverlay.imageUrl) + '" x="0" y="0" width="' + formatSvgNumber(model.mediaWidth) + '" height="' + formatSvgNumber(model.mediaHeight) + '" preserveAspectRatio="xMidYMid meet"></image>';
+  }
+  function renderFrameOverlayStatus(frameOverlay) {
+    if (!frameOverlay.enabled || frameOverlay.imageUrl) return "";
+    return '<div class="frame-overlay-status">' + escapeHtml2(t(frameOverlay.unavailable ? "frameInternals.frameOverlayUnavailable" : "frameInternals.frameOverlayPending")) + "</div>";
   }
   function renderVideoBlockMapStyle(model) {
     const mediaWidth = Math.max(1, Number(model.mediaWidth) || 1);
@@ -10031,7 +10121,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     const estimatedBytes = cells.map((cell) => Number(cell.estimatedBytes)).filter(isFiniteNonNegative);
     const areas = cells.map((cell) => Math.max(1, Number(cell.blockWidth) * Number(cell.blockHeight) || 1));
     const blockSizeGroups = getTopCountGroups(cells.map((cell) => (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)), 6);
-    const depthGroups = getTopCountGroups(cells.map((cell) => t("frameInternals.depthLabel", { depth: cell.depth || 0 })), 8);
+    const depthGroups = getPartitionDepthGroups(model, cells);
     const modeGroups = getTopCountGroups(cells.map((cell) => cell.partitionMode || t("value.unknown")), 8);
     const commonBlock = blockSizeGroups[0];
     const sampleBytes = Math.max(0, Number(model.sampleSize) || sumNumbers(estimatedBytes));
@@ -10061,6 +10151,21 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         detail: t("frameInternals.stats.blockCount", { count: group.count })
       }))) + "</div>"
     ].join(""));
+  }
+  function getPartitionDepthGroups(model, cells) {
+    const modelDepths = Array.isArray(model.partitionDepths) ? model.partitionDepths : [];
+    const normalizedModelDepths = modelDepths.map((entry) => ({
+      depth: Math.max(0, Math.round(Number(entry && entry.depth) || 0)),
+      count: Math.max(0, Number(entry && entry.count) || 0)
+    })).filter((entry) => entry.count > 0).sort((left, right) => left.depth - right.depth);
+    if (normalizedModelDepths.length) {
+      return normalizedModelDepths.map((entry) => ({
+        label: t("frameInternals.depthLabel", { depth: entry.depth }),
+        count: entry.count,
+        value: entry.count
+      }));
+    }
+    return getTopCountGroups(cells.map((cell) => t("frameInternals.depthLabel", { depth: cell.depth || 0 })), 8);
   }
   function renderAudioFrameInternals(model, options = {}) {
     const stats = [
@@ -10339,6 +10444,13 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       frameInternalsMapPointers: /* @__PURE__ */ new Map(),
       frameInternalsMapView: createDefaultFrameInternalsMapView(),
       frameInternalsColorScaleCache: /* @__PURE__ */ new Map(),
+      frameInternalsFrameOverlayEnabled: false,
+      frameInternalsFrameOverlay: {
+        frameKey: "",
+        imageUrl: "",
+        unavailable: false
+      },
+      frameInternalsFrameOverlayCaptureRequestId: 0,
       metricChartPointCache: /* @__PURE__ */ new WeakMap()
     };
     const elements = {
@@ -10390,6 +10502,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       frameGraphView: document.getElementById("frameGraphView"),
       frameTableView: document.getElementById("frameTableView"),
       frameInternalsPanel: document.getElementById("frameInternalsPanel"),
+      frameInternalsOverlayToggle: document.getElementById("frameInternalsOverlayToggle"),
       frameInternalsBody: document.getElementById("frameInternalsBody"),
       frameInternalsTooltip: document.getElementById("frameInternalsTooltip"),
       frameWrap: document.getElementById("frameWrap"),
@@ -10590,6 +10703,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     elements.frameInternalsBody.addEventListener("keydown", handleFrameInternalsMapKeyDown);
     elements.frameInternalsBody.addEventListener("pointerdown", handleFrameInternalsMapPointerDown);
     elements.frameInternalsBody.addEventListener("pointermove", handleFrameInternalsMapPointerMove);
+    elements.frameInternalsOverlayToggle.addEventListener("change", handleFrameInternalsOverlayToggleChange);
     window.addEventListener("pointerup", handleFrameInternalsMapPointerUp, true);
     window.addEventListener("pointercancel", handleFrameInternalsMapPointerUp, true);
     elements.frameSpacer.addEventListener("click", handleFrameRowPointerActivation);
@@ -10637,7 +10751,11 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       synchronizeSelectionsToPlayback({ force: true });
     });
     elements.filePreview.addEventListener("seeking", () => synchronizeSelectionsToPlayback({ force: true }));
-    elements.filePreview.addEventListener("seeked", () => synchronizeSelectionsToPlayback({ force: true }));
+    elements.filePreview.addEventListener("seeked", () => {
+      synchronizeSelectionsToPlayback({ force: true });
+      scheduleFrameInternalsFrameOverlayCapture({ force: true });
+    });
+    elements.filePreview.addEventListener("loadeddata", () => scheduleFrameInternalsFrameOverlayCapture({ force: true }));
     elements.filePreview.addEventListener("loadedmetadata", () => synchronizeSelectionsToPlayback({ force: true }));
     for (const input of [elements.trackFilter, elements.typeFilter, elements.syncFilter, elements.minSizeFilter, elements.maxSizeFilter, elements.warningOnlyFilter]) {
       input.addEventListener("input", renderFrames);
@@ -11269,6 +11387,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       state.fragmentRows = [];
       state.frameInternalsColorScaleCache = /* @__PURE__ */ new Map();
       state.frameInternalsMapView = createDefaultFrameInternalsMapView();
+      clearFrameInternalsFrameOverlay();
       state.transientWarnings = options2.initialWarnings ? options2.initialWarnings.slice() : [];
       if (!options2.keepSampleSelection && elements.sampleSelect) elements.sampleSelect.value = "";
       setFilePreview(file, options2);
@@ -11974,8 +12093,12 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         return;
       }
       if (model.kind === "video-grid") {
-        elements.frameInternalsBody.innerHTML = renderVideoFrameInternals(model, { frameLabel: formatSelectedFrameLabel() });
+        elements.frameInternalsBody.innerHTML = renderVideoFrameInternals(model, {
+          frameLabel: formatSelectedFrameLabel(),
+          frameOverlay: getFrameInternalsFrameOverlayRenderOptions()
+        });
         restoreFrameInternalsMapViewport();
+        scheduleFrameInternalsFrameOverlayCapture();
         return;
       }
       if (model.kind === "audio-bands") {
@@ -12012,6 +12135,85 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         );
       }
       return state.frameInternalsColorScaleCache.get(cacheKey);
+    }
+    function handleFrameInternalsOverlayToggleChange() {
+      state.frameInternalsFrameOverlayEnabled = Boolean(elements.frameInternalsOverlayToggle.checked);
+      clearFrameInternalsFrameOverlay();
+      renderFrameInternals();
+      if (state.frameInternalsFrameOverlayEnabled) scheduleFrameInternalsFrameOverlayCapture({ force: true });
+    }
+    function getFrameInternalsFrameOverlayRenderOptions() {
+      const selectedFrameKey = state.selectedFrameKey || "";
+      const frameOverlay = state.frameInternalsFrameOverlay;
+      const hasCurrentImage = frameOverlay.frameKey === selectedFrameKey && frameOverlay.imageUrl;
+      const hasCurrentUnavailableState = frameOverlay.frameKey === selectedFrameKey && frameOverlay.unavailable;
+      return {
+        enabled: Boolean(state.frameInternalsFrameOverlayEnabled),
+        imageUrl: hasCurrentImage ? frameOverlay.imageUrl : "",
+        unavailable: hasCurrentUnavailableState
+      };
+    }
+    function clearFrameInternalsFrameOverlay() {
+      if (state.frameInternalsFrameOverlayCaptureRequestId) {
+        cancelAnimationFrame(state.frameInternalsFrameOverlayCaptureRequestId);
+        state.frameInternalsFrameOverlayCaptureRequestId = 0;
+      }
+      state.frameInternalsFrameOverlay = {
+        frameKey: "",
+        imageUrl: "",
+        unavailable: false
+      };
+    }
+    function scheduleFrameInternalsFrameOverlayCapture(options2 = {}) {
+      if (!shouldCaptureFrameInternalsFrameOverlay(options2)) return;
+      if (state.frameInternalsFrameOverlayCaptureRequestId && !options2.force) return;
+      if (state.frameInternalsFrameOverlayCaptureRequestId) {
+        cancelAnimationFrame(state.frameInternalsFrameOverlayCaptureRequestId);
+      }
+      state.frameInternalsFrameOverlayCaptureRequestId = requestAnimationFrame(() => {
+        state.frameInternalsFrameOverlayCaptureRequestId = 0;
+        captureFrameInternalsFrameOverlay();
+      });
+    }
+    function shouldCaptureFrameInternalsFrameOverlay(options2 = {}) {
+      if (!state.frameInternalsFrameOverlayEnabled || !state.selectedFrameKey) return false;
+      if (!elements.filePreview || !elements.filePreview.src) return false;
+      const frameOverlay = state.frameInternalsFrameOverlay;
+      if (!options2.force && frameOverlay.frameKey === state.selectedFrameKey && (frameOverlay.imageUrl || frameOverlay.unavailable)) {
+        return false;
+      }
+      return true;
+    }
+    function captureFrameInternalsFrameOverlay() {
+      if (!shouldCaptureFrameInternalsFrameOverlay({ force: true })) return;
+      const frameKey = state.selectedFrameKey;
+      const videoElement = elements.filePreview;
+      if (videoElement.seeking || videoElement.readyState < 2) return;
+      const videoWidth = Math.max(0, Number(videoElement.videoWidth) || 0);
+      const videoHeight = Math.max(0, Number(videoElement.videoHeight) || 0);
+      if (!videoWidth || !videoHeight) return;
+      try {
+        const maximumCanvasEdge = 960;
+        const scale = Math.min(1, maximumCanvasEdge / Math.max(videoWidth, videoHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(videoHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas 2D context unavailable.");
+        context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        state.frameInternalsFrameOverlay = {
+          frameKey,
+          imageUrl: canvas.toDataURL("image/jpeg", 0.82),
+          unavailable: false
+        };
+      } catch (_) {
+        state.frameInternalsFrameOverlay = {
+          frameKey,
+          imageUrl: "",
+          unavailable: true
+        };
+      }
+      if (frameKey === state.selectedFrameKey) renderFrameInternals();
     }
     function handleFrameInternalsTooltipPointerOver(event) {
       if (state.frameInternalsMapDrag || state.frameInternalsMapGesture) return;

@@ -337,6 +337,10 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.ok(videoModel.partitionBlockCount > videoModel.displayColumns * videoModel.displayRows);
   assert.ok(videoModel.maxPartitionDepth > 0);
   assertSingleExpandedDepth(assert, videoModel);
+  assert.ok(videoModel.partitionDepths.length > 1);
+  assert.equal(videoModel.partitionDepths[0].depth, 0);
+  assert.equal(videoModel.partitionDepths.at(-1).depth, videoModel.maxPartitionDepth);
+  assert.equal(videoModel.partitionDepths.at(-1).count, videoModel.cells.length);
   assert.ok(videoModel.partitionModes.some((entry) => entry.mode === "split"));
   assert.ok(videoModel.cells.length <= 9000);
   assert.equal(Math.round(sum(videoModel.cells.map((cell) => cell.estimatedBytes))), 120000);
@@ -367,6 +371,10 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.equal(smallVideoModel.maxPartitionDepth, videoModel.maxPartitionDepth);
   assert.equal(smallVideoModel.displayColumns, videoModel.displayColumns);
   assert.equal(smallVideoModel.displayRows, videoModel.displayRows);
+  assert.deepEqual(
+    smallVideoModel.partitionDepths.map((entry) => entry.depth),
+    videoModel.partitionDepths.map((entry) => entry.depth)
+  );
   assertSingleExpandedDepth(assert, smallVideoModel);
 
   const rotatedVideoModel = buildFrameInternalsModel(

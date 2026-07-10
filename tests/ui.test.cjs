@@ -562,6 +562,10 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
     layout: "partition-map",
     partitionBlockCount: 1,
     maxPartitionDepth: 1,
+    partitionDepths: [
+      { depth: 0, count: 1 },
+      { depth: 1, count: 2 }
+    ],
     partitionModes: [{ mode: "vertical", count: 1 }],
     sampleSize: 1000,
     note: "nominal",
@@ -593,7 +597,53 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
         intensity: 0.5
       }
     ]
-  }, { frameLabel: "T1 #1" });
+  }, {
+    frameLabel: "T1 #1",
+    frameOverlay: {
+      enabled: true,
+      imageUrl: "data:image/jpeg;base64,AA=="
+    }
+  });
+  const pendingOverlayHtml = frameInternalsView.renderVideoFrameInternals({
+    kind: "video-grid",
+    title: "Pending overlay",
+    codecFamily: "AVC / H.264",
+    frameType: "P",
+    unitName: "macroblock",
+    unitWidth: 16,
+    unitHeight: 16,
+    mediaWidth: 16,
+    mediaHeight: 16,
+    nominalColumns: 1,
+    nominalRows: 1,
+    nominalUnitCount: 1,
+    displayColumns: 1,
+    displayRows: 1,
+    aggregation: 1,
+    partitionBlockCount: 1,
+    maxPartitionDepth: 0,
+    partitionModes: [],
+    sampleSize: 10,
+    note: "nominal",
+    colorScale: { mode: "selected-frame-percentile" },
+    cells: [
+      {
+        pixelLeft: 0,
+        pixelTop: 0,
+        pixelRight: 16,
+        pixelBottom: 16,
+        blockWidth: 16,
+        blockHeight: 16,
+        depth: 0,
+        partitionMode: "root",
+        estimatedBytes: 10,
+        estimatedBytesPerPixel: 0.0390625,
+        normalizedByteDensity: 1,
+        globalPercentile: 0.5,
+        nominalUnits: 1
+      }
+    ]
+  }, { frameOverlay: { enabled: true } });
   const audioHtml = frameInternalsView.renderAudioFrameInternals({
     kind: "audio-bands",
     title: "AAC",
@@ -619,6 +669,8 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   assert.match(videoHtml, /data-media-width="16"/);
   assert.match(videoHtml, /data-media-height="32"/);
   assert.match(videoHtml, /<rect class="block-cell i"/);
+  assert.match(videoHtml, /has-frame-image/);
+  assert.match(videoHtml, /<image class="block-frame-overlay" href="data:image\/jpeg;base64,AA=="/);
   assert.match(videoHtml, /role="region"/);
   assert.match(videoHtml, /Partition/);
   assert.match(videoHtml, /--frame-aspect-ratio:16 \/ 32/);
@@ -637,8 +689,11 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   assert.match(videoHtml, /Total bits/);
   assert.match(videoHtml, /Block size distribution/);
   assert.match(videoHtml, /Byte density distribution/);
+  assert.match(videoHtml, /Depth 0/);
+  assert.match(videoHtml, /Depth 1/);
   assert.match(videoHtml, /data-inspection-tooltip=/);
   assert.match(videoHtml, /--cell-red:1;--cell-green:2;--cell-blue:3;--cell-alpha:0\.500/);
+  assert.match(pendingOverlayHtml, /Frame overlay pending/);
   assert.match(audioHtml, /audio-band-row/);
   assert.match(audioHtml, /Band byte share/);
   assert.match(audioHtml, /Band activity/);
@@ -1323,7 +1378,7 @@ test("source HTML has required controls, tabs, and no external runtime assets af
     "warningsBody",
     "frameGraphButton", "frameTableButton", "autoPlaybackSynchronizationToggle",
     "fragmentPlaybackSynchronizationToggle", "fragmentCountText", "fragmentsBody",
-    "frameInternalsPanel", "frameInternalsBody", "frameInternalsTooltip",
+    "frameInternalsPanel", "frameInternalsOverlayToggle", "frameInternalsBody", "frameInternalsTooltip",
     "frameWrap", "frameHeader", "frameScroller", "graphScroller",
     "remoteUrlModal", "remoteUrlForm", "remoteUrlInput", "remoteUrlSubmitButton"
   ]) {
@@ -1410,6 +1465,8 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /buildFrameInternalsModel/);
   assert.match(sourceUi, /buildFrameInternalsColorScale/);
   assert.match(sourceUi, /frameInternalsColorScaleCache/);
+  assert.match(sourceUi, /captureFrameInternalsFrameOverlay/);
+  assert.match(sourceUi, /frameInternalsFrameOverlayEnabled/);
   assert.match(sourceUi, /renderFrameInternals/);
   assert.match(sourceUi, /from "\.\/frame-internals-view\.js"/);
   assert.match(sourceFrameInternalsView, /renderFrameInternalsTooltipAttributes/);
@@ -1433,10 +1490,12 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /dataset\.mapCenterX/);
   assert.match(sourceFrameInternalsView, /data-inspection-tooltip/);
   assert.match(sourceFrameInternalsView, /<svg class="block-map"/);
+  assert.match(sourceFrameInternalsView, /block-frame-overlay/);
   assert.match(sourceFrameInternalsView, /<rect class="block-cell/);
   assert.match(sourceFrameInternalsView, /--cell-red:/);
   assert.match(sourceFrameInternalsView, /globalPercentile/);
   assert.match(sourceFrameInternalsView, /partitionModes/);
+  assert.match(sourceFrameInternalsView, /partitionDepths/);
   assert.match(sourceCss, /\.block-map-viewport\s*\{[\s\S]*?position:\s*relative;[\s\S]*?width:\s*100%;/);
   assert.match(sourceCss, /\.block-map-viewport\s*\{[\s\S]*?display:\s*flex;/);
   assert.match(sourceCss, /\.block-map-viewport\s*\{[\s\S]*?height:\s*var\(--frame-map-height/);
@@ -1449,6 +1508,8 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.doesNotMatch(sourceCss, /\.block-map-viewport\.zoomed/);
   assert.match(sourceCss, /\.block-map\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*100%;/);
   assert.match(sourceCss, /\.block-map \.block-cell\s*\{[\s\S]*?vector-effect:\s*non-scaling-stroke;/);
+  assert.match(sourceCss, /\.block-map-viewport\.has-frame-image \.block-cell\s*\{[\s\S]*?calc\(var\(--cell-alpha\) \* 0\.46\)/);
+  assert.match(sourceCss, /\.block-frame-overlay\s*\{[\s\S]*?pointer-events:\s*none;/);
   assert.match(sourceCss, /\.frame-internals-metrics\s*\{[\s\S]*?display:\s*grid;/);
   assert.match(sourceCss, /\.frame-internals-chart-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
   assert.match(sourceCss, /--frame-i:\s*oklch\(0\.82 0\.09 145\);/);

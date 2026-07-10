@@ -113,6 +113,13 @@ const state = {
   frameInternalsMapPointers: new Map(),
   frameInternalsMapView: createDefaultFrameInternalsMapView(),
   frameInternalsColorScaleCache: new Map(),
+  frameInternalsFrameOverlayEnabled: false,
+  frameInternalsFrameOverlay: {
+    frameKey: "",
+    imageUrl: "",
+    unavailable: false
+  },
+  frameInternalsFrameOverlayCaptureRequestId: 0,
   metricChartPointCache: new WeakMap()
 };
 
@@ -165,6 +172,7 @@ const elements = {
   frameGraphView: document.getElementById("frameGraphView"),
   frameTableView: document.getElementById("frameTableView"),
   frameInternalsPanel: document.getElementById("frameInternalsPanel"),
+  frameInternalsOverlayToggle: document.getElementById("frameInternalsOverlayToggle"),
   frameInternalsBody: document.getElementById("frameInternalsBody"),
   frameInternalsTooltip: document.getElementById("frameInternalsTooltip"),
   frameWrap: document.getElementById("frameWrap"),
@@ -377,6 +385,7 @@ elements.frameInternalsBody.addEventListener("wheel", handleFrameInternalsMapWhe
 elements.frameInternalsBody.addEventListener("keydown", handleFrameInternalsMapKeyDown);
 elements.frameInternalsBody.addEventListener("pointerdown", handleFrameInternalsMapPointerDown);
 elements.frameInternalsBody.addEventListener("pointermove", handleFrameInternalsMapPointerMove);
+elements.frameInternalsOverlayToggle.addEventListener("change", handleFrameInternalsOverlayToggleChange);
 window.addEventListener("pointerup", handleFrameInternalsMapPointerUp, true);
 window.addEventListener("pointercancel", handleFrameInternalsMapPointerUp, true);
 elements.frameSpacer.addEventListener("click", handleFrameRowPointerActivation);
@@ -424,7 +433,11 @@ elements.filePreview.addEventListener("ended", () => {
   synchronizeSelectionsToPlayback({ force: true });
 });
 elements.filePreview.addEventListener("seeking", () => synchronizeSelectionsToPlayback({ force: true }));
-elements.filePreview.addEventListener("seeked", () => synchronizeSelectionsToPlayback({ force: true }));
+elements.filePreview.addEventListener("seeked", () => {
+  synchronizeSelectionsToPlayback({ force: true });
+  scheduleFrameInternalsFrameOverlayCapture({ force: true });
+});
+elements.filePreview.addEventListener("loadeddata", () => scheduleFrameInternalsFrameOverlayCapture({ force: true }));
 elements.filePreview.addEventListener("loadedmetadata", () => synchronizeSelectionsToPlayback({ force: true }));
 for (const input of [elements.trackFilter, elements.typeFilter, elements.syncFilter, elements.minSizeFilter, elements.maxSizeFilter, elements.warningOnlyFilter]) {
   input.addEventListener("input", renderFrames);
@@ -1146,6 +1159,7 @@ function resetView(file, options = {}) {
   state.fragmentRows = [];
   state.frameInternalsColorScaleCache = new Map();
   state.frameInternalsMapView = createDefaultFrameInternalsMapView();
+  clearFrameInternalsFrameOverlay();
   state.transientWarnings = options.initialWarnings ? options.initialWarnings.slice() : [];
   if (!options.keepSampleSelection && elements.sampleSelect) elements.sampleSelect.value = "";
   setFilePreview(file, options);
@@ -1959,8 +1973,12 @@ function renderFrameInternals() {
     return;
   }
   if (model.kind === "video-grid") {
-    elements.frameInternalsBody.innerHTML = renderVideoFrameInternals(model, { frameLabel: formatSelectedFrameLabel() });
+    elements.frameInternalsBody.innerHTML = renderVideoFrameInternals(model, {
+      frameLabel: formatSelectedFrameLabel(),
+      frameOverlay: getFrameInternalsFrameOverlayRenderOptions()
+    });
     restoreFrameInternalsMapViewport();
+    scheduleFrameInternalsFrameOverlayCapture();
     return;
   }
   if (model.kind === "audio-bands") {
@@ -1999,6 +2017,95 @@ function getFrameInternalsColorScale(track) {
     );
   }
   return state.frameInternalsColorScaleCache.get(cacheKey);
+}
+
+function handleFrameInternalsOverlayToggleChange() {
+  state.frameInternalsFrameOverlayEnabled = Boolean(elements.frameInternalsOverlayToggle.checked);
+  clearFrameInternalsFrameOverlay();
+  renderFrameInternals();
+  if (state.frameInternalsFrameOverlayEnabled) scheduleFrameInternalsFrameOverlayCapture({ force: true });
+}
+
+function getFrameInternalsFrameOverlayRenderOptions() {
+  const selectedFrameKey = state.selectedFrameKey || "";
+  const frameOverlay = state.frameInternalsFrameOverlay;
+  const hasCurrentImage = frameOverlay.frameKey === selectedFrameKey && frameOverlay.imageUrl;
+  const hasCurrentUnavailableState = frameOverlay.frameKey === selectedFrameKey && frameOverlay.unavailable;
+  return {
+    enabled: Boolean(state.frameInternalsFrameOverlayEnabled),
+    imageUrl: hasCurrentImage ? frameOverlay.imageUrl : "",
+    unavailable: hasCurrentUnavailableState
+  };
+}
+
+function clearFrameInternalsFrameOverlay() {
+  if (state.frameInternalsFrameOverlayCaptureRequestId) {
+    cancelAnimationFrame(state.frameInternalsFrameOverlayCaptureRequestId);
+    state.frameInternalsFrameOverlayCaptureRequestId = 0;
+  }
+  state.frameInternalsFrameOverlay = {
+    frameKey: "",
+    imageUrl: "",
+    unavailable: false
+  };
+}
+
+function scheduleFrameInternalsFrameOverlayCapture(options = {}) {
+  if (!shouldCaptureFrameInternalsFrameOverlay(options)) return;
+  if (state.frameInternalsFrameOverlayCaptureRequestId && !options.force) return;
+  if (state.frameInternalsFrameOverlayCaptureRequestId) {
+    cancelAnimationFrame(state.frameInternalsFrameOverlayCaptureRequestId);
+  }
+  state.frameInternalsFrameOverlayCaptureRequestId = requestAnimationFrame(() => {
+    state.frameInternalsFrameOverlayCaptureRequestId = 0;
+    captureFrameInternalsFrameOverlay();
+  });
+}
+
+function shouldCaptureFrameInternalsFrameOverlay(options = {}) {
+  if (!state.frameInternalsFrameOverlayEnabled || !state.selectedFrameKey) return false;
+  if (!elements.filePreview || !elements.filePreview.src) return false;
+  const frameOverlay = state.frameInternalsFrameOverlay;
+  if (
+    !options.force &&
+    frameOverlay.frameKey === state.selectedFrameKey &&
+    (frameOverlay.imageUrl || frameOverlay.unavailable)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function captureFrameInternalsFrameOverlay() {
+  if (!shouldCaptureFrameInternalsFrameOverlay({ force: true })) return;
+  const frameKey = state.selectedFrameKey;
+  const videoElement = elements.filePreview;
+  if (videoElement.seeking || videoElement.readyState < 2) return;
+  const videoWidth = Math.max(0, Number(videoElement.videoWidth) || 0);
+  const videoHeight = Math.max(0, Number(videoElement.videoHeight) || 0);
+  if (!videoWidth || !videoHeight) return;
+  try {
+    const maximumCanvasEdge = 960;
+    const scale = Math.min(1, maximumCanvasEdge / Math.max(videoWidth, videoHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(videoHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas 2D context unavailable.");
+    context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+    state.frameInternalsFrameOverlay = {
+      frameKey,
+      imageUrl: canvas.toDataURL("image/jpeg", 0.82),
+      unavailable: false
+    };
+  } catch (_) {
+    state.frameInternalsFrameOverlay = {
+      frameKey,
+      imageUrl: "",
+      unavailable: true
+    };
+  }
+  if (frameKey === state.selectedFrameKey) renderFrameInternals();
 }
 
 function handleFrameInternalsTooltipPointerOver(event) {

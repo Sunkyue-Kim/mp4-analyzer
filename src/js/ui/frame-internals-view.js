@@ -14,6 +14,12 @@ import {
 
 export function renderVideoFrameInternals(model, options = {}) {
   const frameClass = getFrameTypeClass(model.frameType);
+  const frameOverlay = normalizeFrameOverlayOptions(options.frameOverlay);
+  const viewportClass = [
+    "block-map-viewport",
+    frameOverlay.enabled ? "frame-overlay-enabled" : "",
+    frameOverlay.imageUrl ? "has-frame-image" : ""
+  ].filter(Boolean).join(" ");
   const stats = [
     [t("frameInternals.codec"), model.codecFamily],
     [t("frameInternals.frame"), options.frameLabel || t("value.notAvailable")],
@@ -33,15 +39,41 @@ export function renderVideoFrameInternals(model, options = {}) {
     renderFrameInternalsStats(stats) +
     '</div>' +
     '<div class="block-heatmap-wrap">' +
-    '<div class="block-map-viewport" tabindex="0" role="region" aria-label="' + escapeHtml(t("frameInternals.zoomPlotAria")) + '" style="' + renderVideoBlockMapStyle(model) + '">' +
+    '<div class="' + viewportClass + '" tabindex="0" role="region" aria-label="' + escapeHtml(t("frameInternals.zoomPlotAria")) + '" style="' + renderVideoBlockMapStyle(model) + '">' +
     '<svg class="block-map" viewBox="0 0 ' + formatSvgNumber(model.mediaWidth) + ' ' + formatSvgNumber(model.mediaHeight) + '" data-media-width="' + escapeHtml(String(model.mediaWidth)) + '" data-media-height="' + escapeHtml(String(model.mediaHeight)) + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+      renderFrameOverlayImage(model, frameOverlay) +
       model.cells.map((cell) => renderVideoBlockCell(cell, model, frameClass)).join("") +
     '</svg>' +
+    renderFrameOverlayStatus(frameOverlay) +
     '</div>' +
     '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.videoEstimateNote")) + '</p>' +
     '</div>' +
     '</div>' +
     renderVideoInternalsMetrics(model);
+}
+
+function normalizeFrameOverlayOptions(frameOverlay) {
+  return {
+    enabled: Boolean(frameOverlay && frameOverlay.enabled),
+    imageUrl: frameOverlay && frameOverlay.imageUrl ? String(frameOverlay.imageUrl) : "",
+    unavailable: Boolean(frameOverlay && frameOverlay.unavailable)
+  };
+}
+
+function renderFrameOverlayImage(model, frameOverlay) {
+  if (!frameOverlay.enabled || !frameOverlay.imageUrl) return "";
+  return '<image class="block-frame-overlay" href="' + escapeHtml(frameOverlay.imageUrl) + '"' +
+    ' x="0" y="0"' +
+    ' width="' + formatSvgNumber(model.mediaWidth) + '"' +
+    ' height="' + formatSvgNumber(model.mediaHeight) + '"' +
+    ' preserveAspectRatio="xMidYMid meet"></image>';
+}
+
+function renderFrameOverlayStatus(frameOverlay) {
+  if (!frameOverlay.enabled || frameOverlay.imageUrl) return "";
+  return '<div class="frame-overlay-status">' +
+    escapeHtml(t(frameOverlay.unavailable ? "frameInternals.frameOverlayUnavailable" : "frameInternals.frameOverlayPending")) +
+  '</div>';
 }
 
 function renderVideoBlockMapStyle(model) {
@@ -188,7 +220,7 @@ function renderVideoInternalsMetrics(model) {
   const estimatedBytes = cells.map((cell) => Number(cell.estimatedBytes)).filter(isFiniteNonNegative);
   const areas = cells.map((cell) => Math.max(1, Number(cell.blockWidth) * Number(cell.blockHeight) || 1));
   const blockSizeGroups = getTopCountGroups(cells.map((cell) => (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)), 6);
-  const depthGroups = getTopCountGroups(cells.map((cell) => t("frameInternals.depthLabel", { depth: cell.depth || 0 })), 8);
+  const depthGroups = getPartitionDepthGroups(model, cells);
   const modeGroups = getTopCountGroups(cells.map((cell) => cell.partitionMode || t("value.unknown")), 8);
   const commonBlock = blockSizeGroups[0];
   const sampleBytes = Math.max(0, Number(model.sampleSize) || sumNumbers(estimatedBytes));
@@ -223,6 +255,25 @@ function renderVideoInternalsMetrics(model) {
       }))) +
     '</div>'
   ].join(""));
+}
+
+function getPartitionDepthGroups(model, cells) {
+  const modelDepths = Array.isArray(model.partitionDepths) ? model.partitionDepths : [];
+  const normalizedModelDepths = modelDepths
+    .map((entry) => ({
+      depth: Math.max(0, Math.round(Number(entry && entry.depth) || 0)),
+      count: Math.max(0, Number(entry && entry.count) || 0)
+    }))
+    .filter((entry) => entry.count > 0)
+    .sort((left, right) => left.depth - right.depth);
+  if (normalizedModelDepths.length) {
+    return normalizedModelDepths.map((entry) => ({
+      label: t("frameInternals.depthLabel", { depth: entry.depth }),
+      count: entry.count,
+      value: entry.count
+    }));
+  }
+  return getTopCountGroups(cells.map((cell) => t("frameInternals.depthLabel", { depth: cell.depth || 0 })), 8);
 }
 
 export function renderAudioFrameInternals(model, options = {}) {

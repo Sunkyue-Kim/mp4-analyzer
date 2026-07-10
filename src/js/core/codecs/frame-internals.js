@@ -135,13 +135,14 @@ function buildVideoInternalsModel(row, track, options = {}) {
 
   const nominalColumns = Math.max(1, Math.ceil(width / descriptor.unitWidth));
   const nominalRows = Math.max(1, Math.ceil(height / descriptor.unitHeight));
-  const cells = buildVideoPartitionCells({
+  const partitionCellModel = buildVideoPartitionCellModel({
     row,
     descriptor,
     width,
     height,
     maxCells: MAX_VIDEO_DISPLAY_CELLS
   });
+  const cells = partitionCellModel.cells;
   const intrinsicBounds = getPartitionCellIntrinsicBounds(cells, width, height);
   const displayDimensions = getDisplayDimensionsForIntrinsicBounds(intrinsicBounds, dimensions);
   orientVideoPartitionCells(cells, dimensions, intrinsicBounds);
@@ -184,6 +185,7 @@ function buildVideoInternalsModel(row, track, options = {}) {
     aggregation: partitionSummary.aggregation,
     partitionBlockCount: cells.length,
     maxPartitionDepth: partitionSummary.maxDepth,
+    partitionDepths: partitionCellModel.partitionDepths,
     partitionModes: partitionSummary.modes,
     accuracy: descriptor.accuracy,
     colorScale: summarizeColorScale(colorScale),
@@ -315,12 +317,20 @@ function getVideoScaleRows(track, sampleRows) {
 }
 
 function buildVideoPartitionCells(options) {
+  return buildVideoPartitionCellModel(options).cells;
+}
+
+function buildVideoPartitionCellModel(options) {
   const profile = options.descriptor.partitionProfile || getDefaultPartitionProfile(options.descriptor);
   const rootLayout = getPartitionRootLayout(options, profile);
   let cells = buildRootPartitionCells(options, profile, rootLayout);
+  const depthCounts = createPartitionDepthCounts(cells);
   const expansionDepth = getTrackPartitionExpansionDepth(cells.length, profile, options.maxCells);
-  cells = refinePartitionCells(cells, options, profile, expansionDepth);
-  return assignPartitionByteEstimates(cells, options);
+  cells = refinePartitionCells(cells, options, profile, expansionDepth, depthCounts);
+  return {
+    cells: assignPartitionByteEstimates(cells, options),
+    partitionDepths: formatPartitionDepthCounts(depthCounts)
+  };
 }
 
 function getDefaultPartitionProfile(descriptor) {
@@ -396,7 +406,7 @@ function buildRootPartitionCells(options, profile, layout) {
   return cells;
 }
 
-function refinePartitionCells(cells, options, profile, expansionDepth) {
+function refinePartitionCells(cells, options, profile, expansionDepth, depthCounts) {
   if (!profile.maxDepth || !profile.modes.length) return cells;
   const depthLimit = Math.min(profile.maxDepth, Math.max(0, Number(expansionDepth) || 0));
   for (let depth = 0; depth < depthLimit; depth += 1) {
@@ -409,11 +419,31 @@ function refinePartitionCells(cells, options, profile, expansionDepth) {
       const children = splitPartitionCell(cell, mode, profile, options);
       if (children.length <= 1) continue;
       replacementMap.set(cell.id, children);
+      addPartitionDepthCounts(depthCounts, children);
     }
     if (replacementMap.size !== currentDepthCells.length) break;
     cells = cells.flatMap((cell) => replacementMap.get(cell.id) || [cell]);
   }
   return cells;
+}
+
+function createPartitionDepthCounts(cells) {
+  const counts = new Map();
+  addPartitionDepthCounts(counts, cells);
+  return counts;
+}
+
+function addPartitionDepthCounts(counts, cells) {
+  for (const cell of cells || []) {
+    const depth = Math.max(0, Math.round(Number(cell && cell.depth) || 0));
+    counts.set(depth, (counts.get(depth) || 0) + 1);
+  }
+}
+
+function formatPartitionDepthCounts(counts) {
+  return Array.from(counts.entries())
+    .sort((left, right) => left[0] - right[0])
+    .map(([depth, count]) => ({ depth, count }));
 }
 
 function canSplitPartitionCell(cell, profile) {
