@@ -19,7 +19,7 @@ The runtime is fully static. You can use it as a single self-contained HTML file
 | Video codecs | AVC/H.264, HEVC/H.265, AV1 metadata/OBU scan, VP9 metadata, ProRes metadata, unknown-codec fallback |
 | Audio codecs | AAC, MP3, Opus, unknown-codec fallback |
 | Views | Summary, boxes/elements, tracks, frames, metrics, fragments, warnings |
-| Frame internals | Partition-ready rectangular video block maps, optional source-frame overlay, and audio band byte-budget estimates for selected samples |
+| Frame internals | Partition-ready rectangular video block maps, optional source-frame overlay, and audio band bit-budget estimates for selected samples |
 | Exports | JSON and CSV |
 | Languages | English and Korean |
 | Output builds | Single-file HTML and chunked lazy-load HTML |
@@ -33,7 +33,7 @@ The runtime is fully static. You can use it as a single self-contained HTML file
 - Track summaries: codec, handler/type, duration, timescale, dimensions, sample counts, audio configuration, and codec configuration
 - Sample/frame rows: index, track, type, offset, size, DTS, PTS, duration, sync/keyframe state, NAL/OBU tags, chunks, and fragments where available
 - Visual analysis: frame-size graph, bitrate moving average, FPS moving average, largest samples, and fragment timing
-- Selected-frame internals: partition-ready rectangular AVC macroblock, HEVC CTU/CU, VP9/AV1 superblock maps, optional source-frame overlay, partition statistics, and audio band byte-budget estimates
+- Selected-frame internals: partition-ready rectangular AVC macroblock, HEVC CTU/CU, VP9/AV1 superblock maps, optional source-frame overlay, partition statistics, and audio band bit-budget estimates
 - Playback-assisted navigation: selecting frame/fragment rows can seek the preview player when browser playback supports the file
 - Large tables: recycler-style grids keep DOM size bounded for high sample counts
 - Background analysis: file parsing and frame scanning are designed to run outside the main UI flow where practical
@@ -43,8 +43,8 @@ The runtime is fully static. You can use it as a single self-contained HTML file
 This is not a transcoder, decoder, repair tool, or compliance validator.
 
 - It does not decode video frames into pixels or audio frames into PCM samples.
-- It does not yet decode entropy-coded block partition syntax exactly. The frame-internals view can render irregular rectangular partition maps, including AV1-style non-square splits, but AVC macroblock partitions, HEVC CTU/CU/PU/TU trees, VP9/AV1 partition trees, transform blocks, scalefactors, and exact block-level byte attribution still require future codec syntax parsers.
-- It does not infer block partitions or byte allocation from decoded pixels. The source-frame overlay is only a visual background captured from the browser preview.
+- It does not yet decode entropy-coded block partition syntax exactly. The frame-internals view can render irregular rectangular partition maps, including AV1-style non-square splits, but AVC macroblock partitions, HEVC CTU/CU/PU/TU trees, VP9/AV1 partition trees, transform blocks, scalefactors, and exact block-level bit attribution still require future codec syntax parsers.
+- It does not infer block partitions or bit allocation from decoded pixels. The source-frame overlay is only a visual background captured from the browser preview.
 - It does not rewrite, transmux, optimize, or repair media files.
 - It does not implement DASH/HLS manifest loading.
 - It does not bypass DRM, encrypted media, browser CORS policy, or server range-request policy.
@@ -84,7 +84,7 @@ For remote URLs:
 | MP3 | ID3 detection and MPEG audio frame scanning | Yes | Not applicable | Audio metadata and frame rows only |
 | Ogg Opus | Ogg pages, lacing, Opus identification | Packet-level rows | Not applicable | Opus packets are parsed structurally, not decoded |
 
-The selected-frame internals panel uses a rectangular block-map model rather than a fixed table grid. AVC starts from 16x16 macroblocks, HEVC from 64x64 CTUs, VP9 from 64x64 superblocks, and AV1 from a 128x128 superblock-compatible model that can represent non-square and multi-rectangle splits. Block size, depth, byte-density, and heatmap statistics are calculated from the analyzer's partition-ready model and intrinsic block dimensions. Display orientation and pixel aspect ratio affect how the map is shown, not the underlying block statistics.
+The selected-frame internals panel uses a rectangular block-map model rather than a fixed table grid. AVC starts from 16x16 macroblocks, HEVC from 64x64 CTUs, VP9 from 64x64 superblocks, and AV1 from a 128x128 superblock-compatible model that can represent non-square and multi-rectangle splits. Block size, depth, bit-density, and heatmap statistics are calculated from the analyzer's partition-ready model and intrinsic block dimensions. The estimate conserves the complete encoded sample bit count, weights allocation linearly by intrinsic block area before applying a synthetic spatial-complexity factor, and therefore does not make smaller, deeper, or differently shaped blocks denser merely because of their geometry. Display orientation and pixel aspect ratio affect how the map is shown, not the underlying block statistics.
 
 These maps are still estimates until codec-specific entropy/syntax partition parsers are implemented. Exact partition trees and per-band or per-block bit allocation require codec payload decoding and are not implemented yet. The optional source-frame overlay captures the current preview frame with a canvas and draws the block model over it; it is a visual aid, not an additional parser input. Remote media can make this overlay unavailable when browser CORS/canvas-taint rules block pixel reads.
 
@@ -205,8 +205,8 @@ Validation samples live under `validation/generated/` and are exposed by the Git
 Current coverage snapshot from `npm run test:coverage`:
 
 - Tests: 65 passed, 0 failed
-- All files: 97.49% line coverage, 80.70% branch coverage, 97.14% function coverage
-- Strong coverage areas: binary readers, HTTP range readers and range failures, remote URL fallback/progress/abort handling, shared media-source preview/download policy, browser worker client message flow, bitstream helpers, formatting edge cases, AAC/MP3/Opus parser branches, MP3 ID3v2/ID3v1/Info frame handling, nominal frame internals models, 100,000-cell batched vector heatmap rendering, stable frame-internals interaction wiring, spatial hover lookup, codec registry, i18n, data grid/recycler helpers, UI box-detail/json-viewer/frame-internals/media-row/metrics model boundaries, ISO BMFF sample modeling, ISO BMFF rare/private box parsing, WebM Xiph/fixed/EBML lacing, source-map build wiring, and bundled sample container integration
+- All files: 97.56% line coverage, 81.06% branch coverage, 97.31% function coverage
+- Strong coverage areas: binary readers, HTTP range readers and range failures, remote URL fallback/progress/abort handling, shared media-source preview/download policy, browser worker client message flow, bitstream helpers, formatting edge cases, AAC/MP3/Opus parser branches, MP3 ID3v2/ID3v1/Info frame handling, nominal frame internals models, block-bit conservation and area-proportional allocation, 100,000-cell batched vector heatmap rendering, stable frame-internals interaction wiring, spatial hover lookup, codec registry, i18n, data grid/recycler helpers, UI box-detail/json-viewer/frame-internals/media-row/metrics model boundaries, ISO BMFF sample modeling, ISO BMFF rare/private box parsing, WebM Xiph/fixed/EBML lacing, source-map build wiring, and bundled sample container integration
 - Lower branch coverage remains mainly in browser-worker runtime branches and malformed/edge container branches such as oversized/invalid MP4 boxes, Ogg page edge cases, uncommon WebM element variants, and recycler/remote UI fallback paths that require live browser event timing
 
 ## Contribution Policy

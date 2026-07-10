@@ -1,5 +1,6 @@
 const MAX_VIDEO_DISPLAY_CELLS = 100000;
 const MAX_GLOBAL_DISTRIBUTION_VALUES = 120000;
+const BITS_PER_BYTE = 8;
 
 const HEAT_COLOR_STOPS = [
   { percentile: 0, red: 226, green: 245, blue: 241 },
@@ -161,7 +162,7 @@ function buildVideoInternalsModel(row, track, options = {}) {
     codecFamily: descriptor.codecFamily,
     codec: track.codec,
     frameType: row.frameType || "unknown",
-    sampleSize: Number(row.size) || 0,
+    sampleBits: getSampleBitCount(row),
     unitName: descriptor.unitName,
     unitWidth: descriptor.unitWidth,
     unitHeight: descriptor.unitHeight,
@@ -221,8 +222,8 @@ function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
   const sampledValues = [];
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += rowStride) {
     const sampleRow = rows[rowIndex];
-    const sampleSize = Math.max(0, Number(sampleRow.size) || 0);
-    if (!sampleSize) continue;
+    const sampleBits = getSampleBitCount(sampleRow);
+    if (!sampleBits) continue;
     const cells = buildVideoPartitionCells({
       row: sampleRow,
       descriptor,
@@ -328,7 +329,7 @@ function buildVideoPartitionCellModel(options) {
   const expansionDepth = getTrackPartitionExpansionDepth(cells.length, profile, options.maxCells);
   cells = refinePartitionCells(cells, options, profile, expansionDepth, depthCounts);
   return {
-    cells: assignPartitionByteEstimates(cells, options),
+    cells: assignPartitionBitEstimates(cells, options),
     partitionDepths: formatPartitionDepthCounts(depthCounts)
   };
 }
@@ -629,39 +630,56 @@ function estimateVideoPartitionCellCount(options) {
   return Math.max(1, Math.min(MAX_VIDEO_DISPLAY_CELLS, cellCount));
 }
 
-function assignPartitionByteEstimates(cells, options) {
-  let totalWeight = 0;
+function assignPartitionBitEstimates(cells, options) {
   const intrinsicBounds = getPartitionCellIntrinsicBounds(cells, options.width, options.height);
   const intrinsicWidth = Math.max(1, intrinsicBounds.width);
   const intrinsicHeight = Math.max(1, intrinsicBounds.height);
-  for (const cell of cells) {
+  const complexityWeights = cells.map((cell) => {
     const centerColumn = clamp((cell.pixelLeft + cell.pixelRight) / 2 / intrinsicWidth, 0, 1);
     const centerRow = clamp((cell.pixelTop + cell.pixelBottom) / 2 / intrinsicHeight, 0, 1);
-    const area = Math.max(1, cell.blockWidth * cell.blockHeight);
-    const areaWeight = Math.sqrt(area / Math.max(1, options.descriptor.unitWidth * options.descriptor.unitHeight));
-    const depthWeight = 1 + cell.depth * 0.17;
-    const modeWeight = getPartitionModeWeight(cell.partitionMode);
-    cell.weight = areaWeight * depthWeight * modeWeight * getSyntheticSpatialWeightAt(options.row, centerColumn, centerRow);
-    totalWeight += cell.weight;
+    return getSyntheticSpatialWeightAt(options.row, centerColumn, centerRow);
+  });
+  return allocatePartitionBits(cells, getSampleBitCount(options.row), complexityWeights);
+}
+
+function allocatePartitionBits(cells, sampleBits, complexityWeights = []) {
+  const sampleBitCount = Number(sampleBits);
+  const normalizedSampleBits = Number.isFinite(sampleBitCount) && sampleBitCount > 0 ? sampleBitCount : 0;
+  const cellAreas = cells.map((cell) => Math.max(1, cell.blockWidth * cell.blockHeight));
+  let allocationWeights = cellAreas.map(
+    (area, index) => area * normalizeComplexityWeight(complexityWeights[index])
+  );
+  let totalWeight = sumNumbers(allocationWeights);
+  if (totalWeight <= 0) {
+    allocationWeights = cellAreas.slice();
+    totalWeight = sumNumbers(allocationWeights);
   }
-  const sampleSize = Math.max(0, Number(options.row.size) || 0);
-  const frameArea = Math.max(1, sumPartitionCellAreas(cells));
-  const frameAverageBytesPerPixel = sampleSize / frameArea;
-  for (const cell of cells) {
-    const byteEstimate = totalWeight > 0 ? sampleSize * cell.weight / totalWeight : 0;
-    const cellArea = Math.max(1, cell.blockWidth * cell.blockHeight);
-    const estimatedBytesPerPixel = byteEstimate / cellArea;
-    cell.estimatedBytes = byteEstimate;
-    cell.estimatedBytesPerPixel = estimatedBytesPerPixel;
-    cell.normalizedByteDensity = frameAverageBytesPerPixel > 0 ? estimatedBytesPerPixel / frameAverageBytesPerPixel : 0;
-    cell.localRatio = sampleSize > 0 ? byteEstimate * cells.length / sampleSize : 0;
-    delete cell.weight;
+  const frameArea = Math.max(1, sumNumbers(cellAreas));
+  const frameAverageBitsPerPixel = normalizedSampleBits / frameArea;
+  for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
+    const cell = cells[cellIndex];
+    const cellArea = cellAreas[cellIndex];
+    const bitEstimate = totalWeight > 0 ? normalizedSampleBits * allocationWeights[cellIndex] / totalWeight : 0;
+    const estimatedBitsPerPixel = bitEstimate / cellArea;
+    cell.estimatedBits = bitEstimate;
+    cell.estimatedBitsPerPixel = estimatedBitsPerPixel;
+    cell.normalizedBitDensity = frameAverageBitsPerPixel > 0 ? estimatedBitsPerPixel / frameAverageBitsPerPixel : 0;
   }
   return cells;
 }
 
-function sumPartitionCellAreas(cells) {
-  return cells.reduce((total, cell) => total + Math.max(1, cell.blockWidth * cell.blockHeight), 0);
+function normalizeComplexityWeight(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : 1;
+}
+
+function getSampleBitCount(row) {
+  const sampleByteCount = Number(row && row.size);
+  return Number.isFinite(sampleByteCount) && sampleByteCount > 0 ? sampleByteCount * BITS_PER_BYTE : 0;
+}
+
+function sumNumbers(values) {
+  return values.reduce((total, value) => total + (Number(value) || 0), 0);
 }
 
 function getPartitionCellIntrinsicBounds(cells, fallbackWidth, fallbackHeight) {
@@ -749,14 +767,6 @@ function clampDisplayCoordinate(value, maximum) {
   return clamp(value, 0, maximum);
 }
 
-function getPartitionModeWeight(mode) {
-  if (mode === "split") return 1.08;
-  if (mode === "vertical4" || mode === "horizontal4") return 1.18;
-  if (mode && /A$|B$/.test(mode)) return 1.12;
-  if (mode === "vertical" || mode === "horizontal") return 1.04;
-  return 1;
-}
-
 function summarizePartitionCells(cells) {
   const modes = new Map();
   let maxDepth = 0;
@@ -795,11 +805,11 @@ function applyVideoColorScale(cells, colorScale) {
 }
 
 function getCellHeatValue(cell) {
-  const value = Number(cell && cell.estimatedBytesPerPixel);
+  const value = Number(cell && cell.estimatedBitsPerPixel);
   if (Number.isFinite(value) && value >= 0) return value;
-  const bytes = Number(cell && cell.estimatedBytes) || 0;
+  const bits = Number(cell && cell.estimatedBits) || 0;
   const area = Math.max(1, Number(cell && cell.blockWidth) * Number(cell && cell.blockHeight) || 1);
-  return bytes / area;
+  return bits / area;
 }
 
 function buildValueDistribution(values, mode, sampleCount) {
@@ -892,19 +902,12 @@ function getNonlinearHeatPercentile(percentile) {
   return 0.8 + 0.2 * Math.pow((value - 0.9) / 0.1, 0.45);
 }
 
-function getSyntheticSpatialWeight(row, rowIndex, columnIndex, rowCount, columnCount) {
-  const x = columnCount <= 1 ? 0.5 : columnIndex / (columnCount - 1);
-  const y = rowCount <= 1 ? 0.5 : rowIndex / (rowCount - 1);
-  return getSyntheticSpatialWeightAt(row, x, y);
-}
-
 function getSyntheticSpatialWeightAt(row, x, y) {
   const centerX = x - 0.5;
   const centerY = y - 0.5;
   const centerBias = 1.1 - Math.min(0.65, Math.sqrt(centerX * centerX + centerY * centerY));
-  const type = row.frameType || "";
-  const typeBias = type === "I" || type === "IDR" ? 1.15 : type === "B" ? 0.92 : 1;
-  return Math.max(0.1, centerBias * typeBias * (0.72 + deterministicNoise(row, Math.round(y * 1000), Math.round(x * 1000)) * 0.56));
+  const noiseWeight = 0.72 + deterministicNoise(row, Math.round(y * 1000), Math.round(x * 1000)) * 0.56;
+  return Math.max(0.1, centerBias * noiseWeight);
 }
 
 function deterministicNoise(row, rowIndex, columnIndex) {
@@ -921,18 +924,18 @@ function deterministicNoise(row, rowIndex, columnIndex) {
 }
 
 function buildAudioInternalsModel(row, track) {
-  const sampleSize = Math.max(0, Number(row.size) || 0);
+  const sampleBits = getSampleBitCount(row);
   const sampleRate = getAudioSampleRate(track);
   const activeBandwidthHz = getActiveAudioBandwidth(row, track, sampleRate);
   const weights = AUDIO_BANDS.map((band, index) => getAudioBandWeight(band, index, row, activeBandwidthHz));
   const totalWeight = weights.reduce((sum, value) => sum + value, 0) || 1;
   const bands = AUDIO_BANDS.map((band, index) => {
-    const estimatedBytes = sampleSize * weights[index] / totalWeight;
+    const estimatedBits = sampleBits * weights[index] / totalWeight;
     return {
       ...band,
       active: band.startHz < activeBandwidthHz,
-      estimatedBytes,
-      ratio: sampleSize > 0 ? estimatedBytes / sampleSize : 0,
+      estimatedBits,
+      ratio: sampleBits > 0 ? estimatedBits / sampleBits : 0,
       intensity: clamp(weights[index] / Math.max(...weights), 0.12, 1)
     };
   });
@@ -941,11 +944,11 @@ function buildAudioInternalsModel(row, track) {
     title: (track.codecConfig && track.codecConfig.audioObjectTypeName || track.codec || "Audio") + " band budget",
     codec: track.codec,
     frameType: row.frameType || "audio",
-    sampleSize,
+    sampleBits,
     sampleRate,
     activeBandwidthHz,
     channelCount: track.channelCount || 0,
-    note: "This is a packet-size and codec-metadata estimate. Exact per-band bit allocation requires codec payload decoding.",
+    note: "This is a packet-bit-count and codec-metadata estimate. Exact per-band bit allocation requires codec payload decoding.",
     bands
   };
 }
@@ -979,6 +982,7 @@ function clamp(value, minimum, maximum) {
 export {
   AUDIO_BANDS,
   VIDEO_CODING_UNITS,
+  allocatePartitionBits,
   buildFrameInternalsColorScale,
   buildFrameInternalsModel
 };

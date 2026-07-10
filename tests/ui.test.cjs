@@ -567,7 +567,7 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
       { depth: 1, count: 2 }
     ],
     partitionModes: [{ mode: "vertical", count: 1 }],
-    sampleSize: 1000,
+    sampleBits: 8000,
     note: "nominal",
     colorScale: { mode: "global-track-percentile", sampleCount: 2, valueCount: 4 },
     cells: [
@@ -588,9 +588,9 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
         blockHeight: 16,
         depth: 1,
         partitionMode: "vertical",
-        estimatedBytes: 500,
-        estimatedBytesPerPixel: 1.953125,
-        normalizedByteDensity: 2,
+        estimatedBits: 4000,
+        estimatedBitsPerPixel: 15.625,
+        normalizedBitDensity: 2,
         globalPercentile: 0.75,
         nominalUnits: 1,
         color: { red: 1, green: 2, blue: 3 },
@@ -623,7 +623,7 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
     partitionBlockCount: 1,
     maxPartitionDepth: 0,
     partitionModes: [],
-    sampleSize: 10,
+    sampleBits: 80,
     note: "nominal",
     colorScale: { mode: "selected-frame-percentile" },
     cells: [
@@ -636,9 +636,9 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
         blockHeight: 16,
         depth: 0,
         partitionMode: "root",
-        estimatedBytes: 10,
-        estimatedBytesPerPixel: 0.0390625,
-        normalizedByteDensity: 1,
+        estimatedBits: 80,
+        estimatedBitsPerPixel: 0.3125,
+        normalizedBitDensity: 1,
         globalPercentile: 0.5,
         nominalUnits: 1
       }
@@ -648,18 +648,18 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
     kind: "audio-bands",
     title: "AAC",
     frameType: "AAC",
-    sampleSize: 200,
+    sampleBits: 1600,
     sampleRate: 48000,
     activeBandwidthHz: 12000,
     channelCount: 2,
     note: "estimated",
     bands: [
-      { label: "Low", range: "0-1 kHz", ratio: 0.5, active: true, intensity: 0.8, estimatedBytes: 100 }
+      { label: "Low", range: "0-1 kHz", ratio: 0.5, active: true, intensity: 0.8, estimatedBits: 800 }
     ]
   }, { frameLabel: "T2 #3" });
   const tooltipHtml = frameInternalsView.renderFrameInternalsTooltip({
     title: "Cell",
-    rows: [["Bytes", "500 B"]],
+    rows: [["Bits", "4.00 Kbits"]],
     note: "Estimated"
   });
   const videoTooltipHtml = frameInternalsView.renderFrameInternalsTooltip(
@@ -676,9 +676,9 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
       blockHeight: 16,
       depth: 1,
       partitionMode: "vertical",
-      estimatedBytes: 500,
-      estimatedBytesPerPixel: 1.953125,
-      normalizedByteDensity: 2,
+      estimatedBits: 4000,
+      estimatedBitsPerPixel: 15.625,
+      normalizedBitDensity: 2,
       globalPercentile: 0.75,
       nominalUnits: 1
     }, {
@@ -704,11 +704,14 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   assert.match(videoHtml, /16x32 \(rotated -90 deg, encoded 32x16\)/);
   assert.match(videoTooltipHtml, /Coded pixel range/);
   assert.match(videoTooltipHtml, /Display pixel range/);
-  assert.match(videoTooltipHtml, /Byte density/);
+  assert.match(videoTooltipHtml, /Estimated bits/);
+  assert.match(videoTooltipHtml, /Bit density/);
+  assert.match(videoTooltipHtml, /bits\/px/);
   assert.match(videoHtml, /Internal statistics/);
+  assert.match(videoHtml, /Sample bits/);
   assert.match(videoHtml, /Total bits/);
   assert.match(videoHtml, /Block size distribution/);
-  assert.match(videoHtml, /Byte density distribution/);
+  assert.match(videoHtml, /Bit density distribution/);
   assert.match(videoHtml, /Depth 0/);
   assert.match(videoHtml, /Depth 1/);
   assert.doesNotMatch(videoHtml, /data-inspection-tooltip=/);
@@ -716,7 +719,8 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   assert.match(videoHtml, /--cell-red:1;--cell-green:2;--cell-blue:3;--cell-alpha:0\.500/);
   assert.match(pendingOverlayHtml, /Frame overlay pending/);
   assert.match(audioHtml, /audio-band-row/);
-  assert.match(audioHtml, /Band byte share/);
+  assert.match(audioHtml, /Band bit share/);
+  assert.match(audioHtml, /800 bits/);
   assert.match(audioHtml, /Band activity/);
   assert.match(audioHtml, /12\.0 kHz/);
   assert.match(tooltipHtml, /tooltip-title/);
@@ -748,7 +752,7 @@ test("frame internals view covers empty internals and localized labels", async (
     partitionBlockCount: 0,
     maxPartitionDepth: 0,
     partitionModes: [],
-    sampleSize: 0,
+    sampleBits: 0,
     note: "empty",
     colorScale: { mode: "selected-frame-percentile" },
     cells: []
@@ -756,7 +760,7 @@ test("frame internals view covers empty internals and localized labels", async (
   const audioHtml = frameInternalsView.renderAudioFrameInternals({
     title: "Unknown audio",
     frameType: "audio",
-    sampleSize: 0,
+    sampleBits: 0,
     sampleRate: 0,
     activeBandwidthHz: 500,
     channelCount: 0,
@@ -778,7 +782,7 @@ test("frame internals view covers empty internals and localized labels", async (
   assert.match(videoHtml, /n\/a/);
   assert.doesNotMatch(videoHtml, /Internal statistics/);
   assert.match(audioHtml, /500 Hz/);
-  assert.doesNotMatch(audioHtml, /Band byte share/);
+  assert.doesNotMatch(audioHtml, /Band bit share/);
   assert.match(tooltipAttributes, /Visible/);
   assert.doesNotMatch(tooltipAttributes, /Missing/);
   assert.match(tooltipHtml, /&lt;Cell&gt;/);
@@ -818,7 +822,7 @@ test("frame internals view renders distributed density statistics and fallback c
       { mode: "split", count: 2 },
       { mode: "vertical", count: 1 }
     ],
-    sampleSize: 2_000_000,
+    sampleBits: 16_000_000,
     note: "distributed",
     colorScale: { mode: "unsupported" },
     cells: [
@@ -835,9 +839,9 @@ test("frame internals view renders distributed density statistics and fallback c
         blockHeight: 32,
         depth: 2,
         partitionMode: "split",
-        estimatedBytes: 500,
-        estimatedBytesPerPixel: 0.001,
-        normalizedByteDensity: -1,
+        estimatedBits: 4_000,
+        estimatedBitsPerPixel: 0.008,
+        normalizedBitDensity: -1,
         globalPercentile: 0,
         nominalUnits: 1,
         intensity: Number.NaN
@@ -851,9 +855,9 @@ test("frame internals view renders distributed density statistics and fallback c
         blockHeight: 64,
         depth: 2,
         partitionMode: "vertical",
-        estimatedBytes: 4_000,
-        estimatedBytesPerPixel: 2,
-        normalizedByteDensity: 3,
+        estimatedBits: 32_000,
+        estimatedBitsPerPixel: 16,
+        normalizedBitDensity: 3,
         globalPercentile: 1,
         nominalUnits: 1,
         color: { red: 9, green: 8, blue: 7 },
@@ -868,9 +872,9 @@ test("frame internals view renders distributed density statistics and fallback c
         blockHeight: 64,
         depth: 2,
         partitionMode: "split",
-        estimatedBytes: 8_000,
-        estimatedBytesPerPixel: 4,
-        normalizedByteDensity: 6,
+        estimatedBits: 64_000,
+        estimatedBitsPerPixel: 32,
+        normalizedBitDensity: 6,
         globalPercentile: 1,
         nominalUnits: 1,
         color: null,
@@ -888,9 +892,9 @@ test("frame internals view renders distributed density statistics and fallback c
       blockHeight: 64,
       depth: 2,
       partitionMode: "vertical",
-      estimatedBytes: 4_000,
-      estimatedBytesPerPixel: 2,
-      normalizedByteDensity: 3,
+      estimatedBits: 32_000,
+      estimatedBitsPerPixel: 16,
+      normalizedBitDensity: 3,
       globalPercentile: 1,
       nominalUnits: 1
     }, {
@@ -899,8 +903,8 @@ test("frame internals view renders distributed density statistics and fallback c
   );
 
   assert.match(videoHtml, /16\.0 Mbits/);
-  assert.match(videoHtml, /0\.0010 B\/px -/);
-  assert.match(distributedTooltipHtml, /2\.000 B\/px, 3\.00x/);
+  assert.match(videoHtml, /0\.008 bits\/px -/);
+  assert.match(distributedTooltipHtml, /16\.0 bits\/px, 3\.00x/);
   assert.match(videoHtml, /n\/a/);
   assert.match(videoHtml, /d="M5 7H32V32H5Z"/);
   assert.match(videoHtml, /--cell-alpha:0\.750/);
@@ -933,9 +937,9 @@ test("frame internals batches large heatmaps and spatially resolves hover cells"
       blockHeight: blockSize,
       depth: 2,
       partitionMode: "split",
-      estimatedBytes: 100 + cellIndex,
-      estimatedBytesPerPixel: (100 + cellIndex) / (blockSize * blockSize),
-      normalizedByteDensity: 1,
+      estimatedBits: (100 + cellIndex) * 8,
+      estimatedBitsPerPixel: (100 + cellIndex) * 8 / (blockSize * blockSize),
+      normalizedBitDensity: 1,
       globalPercentile,
       nominalUnits: 1,
       color: {
@@ -969,7 +973,7 @@ test("frame internals batches large heatmaps and spatially resolves hover cells"
     maxPartitionDepth: 2,
     partitionDepths: [{ depth: 0, count: cells.length }, { depth: 2, count: cells.length }],
     partitionModes: [{ mode: "split", count: cells.length }],
-    sampleSize: 10000000,
+    sampleBits: 80000000,
     note: "performance fixture",
     colorScale: { mode: "global-track-percentile", sampleCount: 1, valueCount: cells.length },
     cells
@@ -1637,6 +1641,10 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceFrameInternalsView, /renderFrameInternalsTooltipAttributes/);
   assert.match(sourceFrameInternalsView, /renderVideoFrameInternals/);
   assert.match(sourceFrameInternalsView, /renderAudioFrameInternals/);
+  assert.match(sourceFrameInternalsView, /estimatedBitsPerPixel/);
+  assert.match(sourceFrameInternalsView, /normalizedBitDensity/);
+  assert.match(sourceFrameInternalsView, /bits\/px/);
+  assert.doesNotMatch(sourceFrameInternalsView, /formatBytes|estimatedBytes|B\/px/);
   assert.doesNotMatch(sourceUi, /function renderVideoFrameInternals/);
   assert.match(sourceUi, /handleFrameInternalsTooltipPointerOver/);
   assert.match(sourceUi, /handleFrameInternalsMapWheel/);

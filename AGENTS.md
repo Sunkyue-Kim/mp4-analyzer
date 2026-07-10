@@ -63,10 +63,11 @@ These instructions are project-specific context for LLM coding agents. They capt
 ## Frame Internals View
 
 - Frame internals are an inspection aid, not a decoder. Be explicit when a value is estimated, nominal, or derived from lightweight syntax parsing.
-- Keep all numeric block statistics based on intrinsic codec block dimensions. Cropping at display edges must not change block-size or byte-density statistics.
+- Keep all numeric block statistics based on intrinsic codec block dimensions. Cropping at display edges must not change block-size or bit-density statistics.
+- Estimated block bits must sum to the complete encoded sample bit count (`sample size * 8`). Base allocation must scale linearly with intrinsic block area before the synthetic spatial-complexity factor is applied; block size, partition depth, and partition shape must not independently inflate bit density.
 - Apply track rotation and pixel aspect ratio only as display transforms for the block map and source-frame alignment.
 - Partition depth statistics should describe the partition model tree across depths, not only the final rendered leaf cells.
-- The optional source-frame overlay is a visual background captured from the preview element. Do not use decoded pixels to infer block structure or byte allocation.
+- The optional source-frame overlay is a visual background captured from the preview element. Do not use decoded pixels to infer block structure or bit allocation.
 - Source-frame overlay must remain optional and gracefully unavailable when browser CORS/canvas-taint rules prevent reading remote media pixels.
 - Preserve zoom/pan state across selected frames so users can inspect the same region over time.
 - Do not create one DOM/SVG element or serialized tooltip payload per block for large heatmaps. Keep vector cells batched into a bounded number of paths and resolve hover details through the spatial index.

@@ -286,7 +286,25 @@ test("codec registry provides interchangeable descriptors and scanners", async (
 
 test("frame internals model builds partition-ready video maps and audio band estimates", async () => {
   const loader = await createSourceModuleLoader();
-  const { buildFrameInternalsColorScale, buildFrameInternalsModel } = await loader.import("src/js/core/codecs/frame-internals.js");
+  const {
+    allocatePartitionBits,
+    buildFrameInternalsColorScale,
+    buildFrameInternalsModel
+  } = await loader.import("src/js/core/codecs/frame-internals.js");
+  const proportionalCells = allocatePartitionBits([
+    { blockWidth: 8, blockHeight: 8 },
+    { blockWidth: 16, blockHeight: 16 }
+  ], 320, [1, 1]);
+  assert.deepEqual(Array.from(proportionalCells.map((cell) => cell.estimatedBits)), [64, 256]);
+  assert.deepEqual(Array.from(proportionalCells.map((cell) => cell.estimatedBitsPerPixel)), [1, 1]);
+  assert.deepEqual(Array.from(proportionalCells.map((cell) => cell.normalizedBitDensity)), [1, 1]);
+  const fallbackAllocationCells = allocatePartitionBits([
+    { blockWidth: 8, blockHeight: 8 },
+    { blockWidth: 16, blockHeight: 16 }
+  ], 320, [0, 0]);
+  assert.deepEqual(Array.from(fallbackAllocationCells.map((cell) => cell.estimatedBits)), [64, 256]);
+  assert.equal(allocatePartitionBits([{ blockWidth: 1, blockHeight: 1 }], -10, [Number.NaN])[0].estimatedBits, 0);
+  assert.equal(allocatePartitionBits([{ blockWidth: 1, blockHeight: 1 }], Number.POSITIVE_INFINITY)[0].estimatedBits, 0);
   const videoTrack = { trackId: 1, handlerType: "vide", codec: "avc1", codecDescriptor: "avc", width: 1920, height: 1080 };
   const globalVideoRows = [
     { trackId: 1, sampleIndex: 1, size: 9000, frameType: "P" },
@@ -308,8 +326,8 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.equal(noDimensionScale.mode, "unavailable");
   const selectedFrameScale = buildFrameInternalsColorScale(videoTrack, [], {
     fallbackCells: [
-      { estimatedBytes: 256, blockWidth: 16, blockHeight: 16 },
-      { estimatedBytesPerPixel: 4, blockWidth: 16, blockHeight: 16 }
+      { estimatedBits: 2048, blockWidth: 16, blockHeight: 16 },
+      { estimatedBitsPerPixel: 32, blockWidth: 16, blockHeight: 16 }
     ]
   });
   assert.equal(selectedFrameScale.mode, "selected-frame-percentile");
@@ -344,14 +362,15 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.ok(videoModel.partitionModes.some((entry) => entry.mode === "split"));
   assert.ok(videoModel.cells.length > 9000);
   assert.ok(videoModel.cells.length <= 100000);
-  assert.equal(Math.round(sum(videoModel.cells.map((cell) => cell.estimatedBytes))), 120000);
+  assertVideoBitAccounting(assert, videoModel, 960000);
   assert.ok(videoModel.cells.every((cell) =>
     cell.pixelLeft < videoModel.intrinsicWidth && cell.pixelTop < videoModel.intrinsicHeight
   ));
   assert.ok(videoModel.cells.some((cell) => cell.pixelRight > 1920 || cell.pixelBottom > 1080));
   assert.ok(videoModel.cells.every((cell) => cell.displayPixelRight <= 1920 && cell.displayPixelBottom <= 1088));
   assert.ok(videoModel.cells.some((cell) => cell.displayPixelBottom > 1080));
-  assert.ok(videoModel.cells.every((cell) => Number.isFinite(cell.estimatedBytesPerPixel) && Number.isFinite(cell.normalizedByteDensity)));
+  assert.ok(videoModel.cells.every((cell) => Number.isFinite(cell.estimatedBitsPerPixel) && Number.isFinite(cell.normalizedBitDensity)));
+  assert.ok(videoModel.cells.every((cell) => !("estimatedBytes" in cell) && !("estimatedBytesPerPixel" in cell)));
   assert.ok(videoModel.cells.some((cell) => cell.blockWidth !== cell.blockHeight));
   const splitCells = videoModel.cells.filter((cell) => cell.depth > 0);
   const splitQuadrants = new Set(splitCells.map((cell) => {
@@ -382,6 +401,7 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.equal(ultraHighDefinitionVideoModel.aggregation, 1);
   assert.equal(ultraHighDefinitionVideoModel.partitionBlockCount, 32400);
   assert.ok(ultraHighDefinitionVideoModel.partitionBlockCount <= 100000);
+  assertVideoBitAccounting(assert, ultraHighDefinitionVideoModel, 3840000);
 
   const smallVideoModel = buildFrameInternalsModel(
     { trackId: 1, sampleIndex: 1, size: 9000, frameType: "P" },
@@ -396,6 +416,7 @@ test("frame internals model builds partition-ready video maps and audio band est
     videoModel.partitionDepths.map((entry) => entry.depth)
   );
   assertSingleExpandedDepth(assert, smallVideoModel);
+  assertVideoBitAccounting(assert, smallVideoModel, 72000);
 
   const rotatedVideoModel = buildFrameInternalsModel(
     { trackId: 7, sampleIndex: 1, size: 64000, frameType: "P" },
@@ -431,6 +452,7 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.ok(rotatedVideoModel.cells.some((cell) => cell.pixelRight !== cell.displayPixelRight || cell.pixelBottom !== cell.displayPixelBottom));
   assert.ok(rotatedVideoModel.cells.every((cell) => Number.isFinite(cell.displayBlockWidth) && Number.isFinite(cell.displayBlockHeight)));
   assert.ok(rotatedVideoModel.cells.every((cell) => cell.blockWidth % 8 === 0 && cell.blockHeight % 8 === 0));
+  assertVideoBitAccounting(assert, rotatedVideoModel, 512000);
 
   const croppedDisplayModel = buildFrameInternalsModel(
     { trackId: 8, sampleIndex: 1, size: 64000, frameType: "P" },
@@ -452,6 +474,7 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.equal(croppedDisplayModel.intrinsicWidth, 1920);
   assert.equal(croppedDisplayModel.intrinsicHeight, 1088);
   assert.ok(croppedDisplayModel.cells.every((cell) => cell.blockWidth % 4 === 0 && cell.blockHeight % 4 === 0));
+  assertVideoBitAccounting(assert, croppedDisplayModel, 512000);
 
   const pixelAspectRatioModel = buildFrameInternalsModel(
     { trackId: 9, sampleIndex: 1, size: 64000, frameType: "P" },
@@ -473,6 +496,7 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.equal(pixelAspectRatioModel.pixelAspectRatioNumerator, 8);
   assert.equal(pixelAspectRatioModel.pixelAspectRatioDenominator, 9);
   assert.ok(pixelAspectRatioModel.cells.every((cell) => cell.blockWidth % 4 === 0 && cell.blockHeight % 4 === 0));
+  assertVideoBitAccounting(assert, pixelAspectRatioModel, 512000);
 
   const hevcModel = buildFrameInternalsModel(
     { trackId: 2, sampleIndex: 1, size: 90000, frameType: "P" },
@@ -488,6 +512,7 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.ok(hevcModel.cells.some((cell) => cell.pixelBottom > 720));
   assert.ok(hevcModel.cells.every((cell) => cell.blockWidth % 8 === 0 && cell.blockHeight % 8 === 0));
   assert.ok(!hevcModel.cells.some((cell) => cell.blockWidth === 28 || cell.blockHeight === 28));
+  assertVideoBitAccounting(assert, hevcModel, 720000);
 
   const vp9Model = buildFrameInternalsModel(
     { trackId: 4, sampleIndex: 2, size: 24000, frameType: "P" },
@@ -495,6 +520,7 @@ test("frame internals model builds partition-ready video maps and audio band est
   );
   assert.equal(vp9Model.unitName, "superblock");
   assert.equal(vp9Model.unitWidth, 64);
+  assertVideoBitAccounting(assert, vp9Model, 192000);
 
   const av1Model = buildFrameInternalsModel(
     { trackId: 5, sampleIndex: 2, size: 24000, frameType: "I" },
@@ -505,6 +531,7 @@ test("frame internals model builds partition-ready video maps and audio band est
   assertSingleExpandedDepth(assert, av1Model);
   assert.ok(av1Model.partitionModes.some((entry) => ["vertical", "horizontal", "verticalA", "verticalB", "horizontalA", "horizontalB", "vertical4", "horizontal4"].includes(entry.mode)));
   assert.ok(av1Model.cells.some((cell) => cell.blockWidth !== cell.blockHeight));
+  assertVideoBitAccounting(assert, av1Model, 192000);
 
   assert.equal(buildFrameInternalsModel(
     { trackId: 9, sampleIndex: 1, size: 100 },
@@ -518,7 +545,8 @@ test("frame internals model builds partition-ready video maps and audio band est
   assert.equal(audioModel.kind, "audio-bands");
   assert.equal(audioModel.activeBandwidthHz, 4000);
   assert.equal(audioModel.bands.length, 8);
-  assert.equal(Math.round(sum(audioModel.bands.map((band) => band.estimatedBytes))), 960);
+  assert.equal(Math.round(sum(audioModel.bands.map((band) => band.estimatedBits))), 7680);
+  assert.ok(audioModel.bands.every((band) => !("estimatedBytes" in band)));
   assert.equal(audioModel.bands.find((band) => band.label === "Air").active, false);
 
   const zeroAudioModel = buildFrameInternalsModel(
@@ -558,6 +586,17 @@ function assertSingleExpandedDepth(assertModule, model) {
   const depths = new Set(model.cells.map((cell) => cell.depth || 0));
   assertModule.equal(depths.size, 1);
   assertModule.equal([...depths][0], model.maxPartitionDepth);
+}
+
+function assertVideoBitAccounting(assertModule, model, expectedBits) {
+  const estimatedBitTotal = sum(model.cells.map((cell) => cell.estimatedBits));
+  const intrinsicPartitionArea = sum(model.cells.map((cell) => cell.blockWidth * cell.blockHeight));
+  assertModule.equal(model.sampleBits, expectedBits);
+  assertModule.equal(Math.round(estimatedBitTotal), expectedBits);
+  assertModule.equal(
+    Math.round(intrinsicPartitionArea),
+    model.intrinsicWidth * model.intrinsicHeight
+  );
 }
 
 function makeMp3HeaderBytes(options = {}) {

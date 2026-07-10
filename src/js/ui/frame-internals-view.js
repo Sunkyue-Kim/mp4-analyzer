@@ -1,6 +1,5 @@
 import {
   clamp,
-  formatBytes,
   formatMetricNumber
 } from "../core/analyzer-core.js";
 import {
@@ -33,7 +32,7 @@ export function renderVideoFrameInternals(model, options = {}) {
     [t("frameInternals.nominalGrid"), model.nominalColumns + "x" + model.nominalRows + " (" + model.nominalUnitCount + ")"],
     [t("frameInternals.displayedGrid"), formatVideoDisplayedGrid(model)],
     [t("frameInternals.partitionModes"), formatPartitionModes(model.partitionModes)],
-    [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+    [t("frameInternals.sampleBits"), formatBits(model.sampleBits)],
     [t("frameInternals.colorScale"), formatFrameInternalsColorScale(model.colorScale)],
     [t("frameInternals.accuracy"), t("frameInternals.nominal")]
   ];
@@ -131,8 +130,8 @@ export function createVideoBlockTooltipPayload(cell, model) {
       [t("frameInternals.tooltip.blockSize"), (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)],
       [t("frameInternals.tooltip.partition"), cell.partitionMode || t("value.notAvailable")],
       [t("frameInternals.tooltip.depth"), cell.depth || 0],
-      [t("frameInternals.tooltip.estimatedBytes"), formatBytes(cell.estimatedBytes)],
-      [t("frameInternals.tooltip.byteDensity"), formatByteDensity(cell.estimatedBytesPerPixel, cell.normalizedByteDensity)],
+      [t("frameInternals.tooltip.estimatedBits"), formatBits(cell.estimatedBits)],
+      [t("frameInternals.tooltip.bitDensity"), formatBitDensity(cell.estimatedBitsPerPixel, cell.normalizedBitDensity)],
       [t("frameInternals.tooltip.globalPercentile"), formatMetricNumber((cell.globalPercentile || 0) * 100, 1) + "%"],
       [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
       [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
@@ -172,14 +171,14 @@ function formatCellCoordinate(value) {
     : formatMetricNumber(numberValue, 2);
 }
 
-function formatByteDensity(bytesPerPixel, normalizedByteDensity) {
-  const density = Number(bytesPerPixel);
-  const normalized = Number(normalizedByteDensity);
+function formatBitDensity(bitsPerPixel, normalizedBitDensity) {
+  const density = Number(bitsPerPixel);
+  const normalized = Number(normalizedBitDensity);
   if (!Number.isFinite(density) || density < 0) return t("value.notAvailable");
   const normalizedText = Number.isFinite(normalized) && normalized >= 0
     ? ", " + formatMetricNumber(normalized, 2) + "x"
     : "";
-  return formatMetricNumber(density, density < 0.01 ? 4 : 3) + " B/px" + normalizedText;
+  return formatMetricNumber(density, getBitPrecision(density)) + " bits/px" + normalizedText;
 }
 
 function formatFrameInternalsColorScale(colorScale) {
@@ -197,23 +196,23 @@ function formatFrameInternalsColorScale(colorScale) {
 function renderVideoInternalsMetrics(model) {
   const cells = Array.isArray(model.cells) ? model.cells : [];
   if (!cells.length) return "";
-  const densities = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBytesPerPixel)));
-  const estimatedBytes = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBytes)));
+  const densities = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBitsPerPixel)));
+  const estimatedBits = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBits)));
   const areas = sortFiniteMetricValues(cells.map((cell) => Math.max(1, Number(cell.blockWidth) * Number(cell.blockHeight) || 1)));
   const blockSizeGroups = getTopCountGroups(cells.map((cell) => (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)), 6);
   const depthGroups = getPartitionDepthGroups(model, cells);
   const modeGroups = getTopCountGroups(cells.map((cell) => cell.partitionMode || t("value.unknown")), 8);
   const commonBlock = blockSizeGroups[0];
-  const sampleBytes = Math.max(0, Number(model.sampleSize) || sumNumbers(estimatedBytes));
+  const sampleBits = Math.max(0, Number(model.sampleBits) || sumNumbers(estimatedBits));
   const cards = [
     [t("frameInternals.stats.blocks"), formatMetricNumber(cells.length, 0)],
-    [t("frameInternals.stats.totalBits"), formatBits(sampleBytes * 8)],
+    [t("frameInternals.stats.totalBits"), formatBits(sampleBits)],
     [t("frameInternals.stats.commonBlock"), commonBlock ? commonBlock.label + " (" + commonBlock.count + ")" : t("value.notAvailable")],
     [t("frameInternals.stats.medianArea"), formatArea(getSortedQuantile(areas, 0.5))],
     [t("frameInternals.stats.medianDensity"), formatDensityValue(getSortedQuantile(densities, 0.5))],
     [t("frameInternals.stats.p95Density"), formatDensityValue(getSortedQuantile(densities, 0.95))],
-    [t("frameInternals.stats.maxBlockBits"), formatBits((estimatedBytes.at(-1) || 0) * 8)],
-    [t("frameInternals.stats.p95BlockBits"), formatBits(getSortedQuantile(estimatedBytes, 0.95) * 8)]
+    [t("frameInternals.stats.maxBlockBits"), formatBits(estimatedBits.at(-1) || 0)],
+    [t("frameInternals.stats.p95BlockBits"), formatBits(getSortedQuantile(estimatedBits, 0.95))]
   ];
   return renderInternalsMetricsSection([
     renderInternalMetricCards(cards),
@@ -223,7 +222,7 @@ function renderVideoInternalsMetrics(model) {
         value: group.count,
         detail: t("frameInternals.stats.blockCount", { count: group.count })
       }))) +
-      renderInternalsBarChart(t("frameInternals.stats.byteDensityDistribution"), buildHistogramEntries(densities, 6, formatDensityValue, { sorted: true })) +
+      renderInternalsBarChart(t("frameInternals.stats.bitDensityDistribution"), buildHistogramEntries(densities, 6, formatDensityValue, { sorted: true })) +
       renderInternalsBarChart(t("frameInternals.stats.partitionModes"), modeGroups.map((group) => ({
         label: group.label,
         value: group.count,
@@ -261,7 +260,7 @@ export function renderAudioFrameInternals(model, options = {}) {
   const stats = [
     [t("frameInternals.codec"), model.title],
     [t("frameInternals.frame"), options.frameLabel || t("value.notAvailable")],
-    [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+    [t("frameInternals.sampleBits"), formatBits(model.sampleBits)],
     [t("frameInternals.sampleRate"), model.sampleRate ? formatMetricNumber(model.sampleRate, 0) + " Hz" : t("value.notAvailable")],
     [t("frameInternals.activeBandwidth"), formatAudioFrequency(model.activeBandwidthHz)],
     [t("frameInternals.channels"), model.channelCount || t("value.notAvailable")]
@@ -283,27 +282,27 @@ export function renderAudioFrameInternals(model, options = {}) {
 function renderAudioInternalsMetrics(model) {
   const bands = Array.isArray(model.bands) ? model.bands : [];
   if (!bands.length) return "";
-  const estimatedBytes = bands.map((band) => Number(band.estimatedBytes)).filter(isFiniteNonNegative);
-  const totalBytes = Math.max(0, Number(model.sampleSize) || sumNumbers(estimatedBytes));
+  const estimatedBits = bands.map((band) => Number(band.estimatedBits)).filter(isFiniteNonNegative);
+  const totalBits = Math.max(0, Number(model.sampleBits) || sumNumbers(estimatedBits));
   const activeBands = bands.filter((band) => band.active).length;
   const peakBand = bands.reduce((currentPeak, band) =>
-    Number(band.estimatedBytes) > Number(currentPeak && currentPeak.estimatedBytes || -1) ? band : currentPeak,
+    Number(band.estimatedBits) > Number(currentPeak && currentPeak.estimatedBits || -1) ? band : currentPeak,
   null);
   const cards = [
     [t("frameInternals.stats.bands"), formatMetricNumber(bands.length, 0)],
     [t("frameInternals.stats.activeBands"), formatMetricNumber(activeBands, 0)],
-    [t("frameInternals.stats.totalBits"), formatBits(totalBytes * 8)],
+    [t("frameInternals.stats.totalBits"), formatBits(totalBits)],
     [t("frameInternals.stats.peakBand"), peakBand ? peakBand.label : t("value.notAvailable")],
-    [t("frameInternals.stats.medianBandBits"), formatBits(getQuantile(estimatedBytes, 0.5) * 8)],
+    [t("frameInternals.stats.medianBandBits"), formatBits(getQuantile(estimatedBits, 0.5))],
     [t("frameInternals.activeBandwidth"), formatAudioFrequency(model.activeBandwidthHz)]
   ];
   return renderInternalsMetricsSection([
     renderInternalMetricCards(cards),
     '<div class="frame-internals-chart-grid">' +
-      renderInternalsBarChart(t("frameInternals.stats.bandByteShare"), bands.map((band) => ({
+      renderInternalsBarChart(t("frameInternals.stats.bandBitShare"), bands.map((band) => ({
         label: band.label,
-        value: Number(band.estimatedBytes) || 0,
-        detail: formatBits((Number(band.estimatedBytes) || 0) * 8) + " · " + formatMetricNumber((band.ratio || 0) * 100, 1) + "%"
+        value: Number(band.estimatedBits) || 0,
+        detail: formatBits(Number(band.estimatedBits) || 0) + " · " + formatMetricNumber((band.ratio || 0) * 100, 1) + "%"
       }))) +
       renderInternalsBarChart(t("frameInternals.stats.bandActivity"), bands.map((band) => ({
         label: band.label,
@@ -318,7 +317,7 @@ function renderAudioBandRow(band) {
   const widthPercent = clamp(band.ratio * 100, band.active ? 2 : 0.8, 100);
   const tooltipRows = [
     [t("frameInternals.tooltip.frequencyRange"), band.range],
-    [t("frameInternals.tooltip.estimatedBytes"), formatBytes(band.estimatedBytes)],
+    [t("frameInternals.tooltip.estimatedBits"), formatBits(band.estimatedBits)],
     [t("frameInternals.tooltip.relativeShare"), formatMetricNumber(band.ratio * 100, 1) + "%"],
     [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
   ];
@@ -331,7 +330,7 @@ function renderAudioBandRow(band) {
     '>' +
     '<div class="audio-band-label">' + escapeHtml(band.label) + '<br><small>' + escapeHtml(band.range) + '</small></div>' +
     '<div class="audio-band-bar"><span class="audio-band-fill" style="width:' + widthPercent.toFixed(3) + '%;--band-alpha:' + band.intensity.toFixed(3) + '"></span></div>' +
-    '<div class="audio-band-size">' + escapeHtml(formatBytes(band.estimatedBytes)) + '</div>' +
+    '<div class="audio-band-size">' + escapeHtml(formatBits(band.estimatedBits)) + '</div>' +
     '</div>';
 }
 
@@ -471,9 +470,17 @@ function sortFiniteMetricValues(values) {
 
 function formatBits(value) {
   const bits = Math.max(0, Number(value) || 0);
-  if (bits < 1000) return formatMetricNumber(bits, 0) + " bits";
+  if (bits < 1000) return formatMetricNumber(bits, getBitPrecision(bits)) + " bits";
   if (bits < 1000000) return formatMetricNumber(bits / 1000, bits < 10000 ? 2 : 1) + " Kbits";
   return formatMetricNumber(bits / 1000000, bits < 10000000 ? 2 : 1) + " Mbits";
+}
+
+function getBitPrecision(value) {
+  const bits = Math.max(0, Number(value) || 0);
+  if (bits < 1) return 3;
+  if (bits < 10) return 2;
+  if (bits < 100) return 1;
+  return 0;
 }
 
 function formatArea(value) {
@@ -482,7 +489,7 @@ function formatArea(value) {
 
 function formatDensityValue(value) {
   const density = Math.max(0, Number(value) || 0);
-  return formatMetricNumber(density, density < 0.01 ? 4 : 3) + " B/px";
+  return formatMetricNumber(density, getBitPrecision(density)) + " bits/px";
 }
 
 function sumNumbers(values) {

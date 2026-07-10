@@ -7087,7 +7087,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       codecFamily: descriptor.codecFamily,
       codec: track.codec,
       frameType: row.frameType || "unknown",
-      sampleSize: Number(row.size) || 0,
+      sampleBits: getSampleBitCount(row),
       unitName: descriptor.unitName,
       unitWidth: descriptor.unitWidth,
       unitHeight: descriptor.unitHeight,
@@ -7141,8 +7141,8 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     const sampledValues = [];
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex += rowStride) {
       const sampleRow = rows[rowIndex];
-      const sampleSize = Math.max(0, Number(sampleRow.size) || 0);
-      if (!sampleSize) continue;
+      const sampleBits = getSampleBitCount(sampleRow);
+      if (!sampleBits) continue;
       const cells = buildVideoPartitionCells({
         row: sampleRow,
         descriptor,
@@ -7229,7 +7229,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     const expansionDepth = getTrackPartitionExpansionDepth(cells.length, profile, options.maxCells);
     cells = refinePartitionCells(cells, options, profile, expansionDepth, depthCounts);
     return {
-      cells: assignPartitionByteEstimates(cells, options),
+      cells: assignPartitionBitEstimates(cells, options),
       partitionDepths: formatPartitionDepthCounts(depthCounts)
     };
   }
@@ -7507,38 +7507,52 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     }
     return Math.max(1, Math.min(MAX_VIDEO_DISPLAY_CELLS, cellCount));
   }
-  function assignPartitionByteEstimates(cells, options) {
-    let totalWeight = 0;
+  function assignPartitionBitEstimates(cells, options) {
     const intrinsicBounds = getPartitionCellIntrinsicBounds(cells, options.width, options.height);
     const intrinsicWidth = Math.max(1, intrinsicBounds.width);
     const intrinsicHeight = Math.max(1, intrinsicBounds.height);
-    for (const cell of cells) {
+    const complexityWeights = cells.map((cell) => {
       const centerColumn = clamp((cell.pixelLeft + cell.pixelRight) / 2 / intrinsicWidth, 0, 1);
       const centerRow = clamp((cell.pixelTop + cell.pixelBottom) / 2 / intrinsicHeight, 0, 1);
-      const area = Math.max(1, cell.blockWidth * cell.blockHeight);
-      const areaWeight = Math.sqrt(area / Math.max(1, options.descriptor.unitWidth * options.descriptor.unitHeight));
-      const depthWeight = 1 + cell.depth * 0.17;
-      const modeWeight = getPartitionModeWeight(cell.partitionMode);
-      cell.weight = areaWeight * depthWeight * modeWeight * getSyntheticSpatialWeightAt(options.row, centerColumn, centerRow);
-      totalWeight += cell.weight;
+      return getSyntheticSpatialWeightAt(options.row, centerColumn, centerRow);
+    });
+    return allocatePartitionBits(cells, getSampleBitCount(options.row), complexityWeights);
+  }
+  function allocatePartitionBits(cells, sampleBits, complexityWeights = []) {
+    const sampleBitCount = Number(sampleBits);
+    const normalizedSampleBits = Number.isFinite(sampleBitCount) && sampleBitCount > 0 ? sampleBitCount : 0;
+    const cellAreas = cells.map((cell) => Math.max(1, cell.blockWidth * cell.blockHeight));
+    let allocationWeights = cellAreas.map(
+      (area, index) => area * normalizeComplexityWeight(complexityWeights[index])
+    );
+    let totalWeight = sumNumbers(allocationWeights);
+    if (totalWeight <= 0) {
+      allocationWeights = cellAreas.slice();
+      totalWeight = sumNumbers(allocationWeights);
     }
-    const sampleSize = Math.max(0, Number(options.row.size) || 0);
-    const frameArea = Math.max(1, sumPartitionCellAreas(cells));
-    const frameAverageBytesPerPixel = sampleSize / frameArea;
-    for (const cell of cells) {
-      const byteEstimate = totalWeight > 0 ? sampleSize * cell.weight / totalWeight : 0;
-      const cellArea = Math.max(1, cell.blockWidth * cell.blockHeight);
-      const estimatedBytesPerPixel = byteEstimate / cellArea;
-      cell.estimatedBytes = byteEstimate;
-      cell.estimatedBytesPerPixel = estimatedBytesPerPixel;
-      cell.normalizedByteDensity = frameAverageBytesPerPixel > 0 ? estimatedBytesPerPixel / frameAverageBytesPerPixel : 0;
-      cell.localRatio = sampleSize > 0 ? byteEstimate * cells.length / sampleSize : 0;
-      delete cell.weight;
+    const frameArea = Math.max(1, sumNumbers(cellAreas));
+    const frameAverageBitsPerPixel = normalizedSampleBits / frameArea;
+    for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
+      const cell = cells[cellIndex];
+      const cellArea = cellAreas[cellIndex];
+      const bitEstimate = totalWeight > 0 ? normalizedSampleBits * allocationWeights[cellIndex] / totalWeight : 0;
+      const estimatedBitsPerPixel = bitEstimate / cellArea;
+      cell.estimatedBits = bitEstimate;
+      cell.estimatedBitsPerPixel = estimatedBitsPerPixel;
+      cell.normalizedBitDensity = frameAverageBitsPerPixel > 0 ? estimatedBitsPerPixel / frameAverageBitsPerPixel : 0;
     }
     return cells;
   }
-  function sumPartitionCellAreas(cells) {
-    return cells.reduce((total, cell) => total + Math.max(1, cell.blockWidth * cell.blockHeight), 0);
+  function normalizeComplexityWeight(value) {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : 1;
+  }
+  function getSampleBitCount(row) {
+    const sampleByteCount = Number(row && row.size);
+    return Number.isFinite(sampleByteCount) && sampleByteCount > 0 ? sampleByteCount * BITS_PER_BYTE : 0;
+  }
+  function sumNumbers(values) {
+    return values.reduce((total, value) => total + (Number(value) || 0), 0);
   }
   function getPartitionCellIntrinsicBounds(cells, fallbackWidth, fallbackHeight) {
     let maximumRight = Math.max(1, Number(fallbackWidth) || 1);
@@ -7619,13 +7633,6 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     if (!Number.isFinite(value)) return 0;
     return clamp(value, 0, maximum);
   }
-  function getPartitionModeWeight(mode) {
-    if (mode === "split") return 1.08;
-    if (mode === "vertical4" || mode === "horizontal4") return 1.18;
-    if (mode && /A$|B$/.test(mode)) return 1.12;
-    if (mode === "vertical" || mode === "horizontal") return 1.04;
-    return 1;
-  }
   function summarizePartitionCells(cells) {
     const modes = /* @__PURE__ */ new Map();
     let maxDepth = 0;
@@ -7660,11 +7667,11 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     }
   }
   function getCellHeatValue(cell) {
-    const value = Number(cell && cell.estimatedBytesPerPixel);
+    const value = Number(cell && cell.estimatedBitsPerPixel);
     if (Number.isFinite(value) && value >= 0) return value;
-    const bytes = Number(cell && cell.estimatedBytes) || 0;
+    const bits = Number(cell && cell.estimatedBits) || 0;
     const area = Math.max(1, Number(cell && cell.blockWidth) * Number(cell && cell.blockHeight) || 1);
-    return bytes / area;
+    return bits / area;
   }
   function buildValueDistribution(values, mode, sampleCount) {
     const sortedValues = values.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0).sort((left, right) => left - right);
@@ -7749,9 +7756,8 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     const centerX = x - 0.5;
     const centerY = y - 0.5;
     const centerBias = 1.1 - Math.min(0.65, Math.sqrt(centerX * centerX + centerY * centerY));
-    const type = row.frameType || "";
-    const typeBias = type === "I" || type === "IDR" ? 1.15 : type === "B" ? 0.92 : 1;
-    return Math.max(0.1, centerBias * typeBias * (0.72 + deterministicNoise(row, Math.round(y * 1e3), Math.round(x * 1e3)) * 0.56));
+    const noiseWeight = 0.72 + deterministicNoise(row, Math.round(y * 1e3), Math.round(x * 1e3)) * 0.56;
+    return Math.max(0.1, centerBias * noiseWeight);
   }
   function deterministicNoise(row, rowIndex, columnIndex) {
     let value = ((Number(row.trackId) || 0) * 73856093 ^ (Number(row.sampleIndex) || 0) * 19349663 ^ rowIndex * 83492791 ^ columnIndex * 2654435761) >>> 0;
@@ -7761,18 +7767,18 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     return (value >>> 0) % 1e3 / 999;
   }
   function buildAudioInternalsModel(row, track) {
-    const sampleSize = Math.max(0, Number(row.size) || 0);
+    const sampleBits = getSampleBitCount(row);
     const sampleRate = getAudioSampleRate(track);
     const activeBandwidthHz = getActiveAudioBandwidth(row, track, sampleRate);
     const weights = AUDIO_BANDS.map((band, index) => getAudioBandWeight(band, index, row, activeBandwidthHz));
     const totalWeight = weights.reduce((sum, value) => sum + value, 0) || 1;
     const bands = AUDIO_BANDS.map((band, index) => {
-      const estimatedBytes = sampleSize * weights[index] / totalWeight;
+      const estimatedBits = sampleBits * weights[index] / totalWeight;
       return {
         ...band,
         active: band.startHz < activeBandwidthHz,
-        estimatedBytes,
-        ratio: sampleSize > 0 ? estimatedBytes / sampleSize : 0,
+        estimatedBits,
+        ratio: sampleBits > 0 ? estimatedBits / sampleBits : 0,
         intensity: clamp(weights[index] / Math.max(...weights), 0.12, 1)
       };
     });
@@ -7781,11 +7787,11 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       title: (track.codecConfig && track.codecConfig.audioObjectTypeName || track.codec || "Audio") + " band budget",
       codec: track.codec,
       frameType: row.frameType || "audio",
-      sampleSize,
+      sampleBits,
       sampleRate,
       activeBandwidthHz,
       channelCount: track.channelCount || 0,
-      note: "This is a packet-size and codec-metadata estimate. Exact per-band bit allocation requires codec payload decoding.",
+      note: "This is a packet-bit-count and codec-metadata estimate. Exact per-band bit allocation requires codec payload decoding.",
       bands
     };
   }
@@ -7811,11 +7817,12 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
   }
-  var MAX_VIDEO_DISPLAY_CELLS, MAX_GLOBAL_DISTRIBUTION_VALUES, HEAT_COLOR_STOPS, VIDEO_CODING_UNITS, AUDIO_BANDS;
+  var MAX_VIDEO_DISPLAY_CELLS, MAX_GLOBAL_DISTRIBUTION_VALUES, BITS_PER_BYTE, HEAT_COLOR_STOPS, VIDEO_CODING_UNITS, AUDIO_BANDS;
   var init_frame_internals = __esm({
     "local-source:C:\\Users\\user\\Documents\\Codex\\2026-07-08\\js-html-mp4-html-mp4-i\\src\\js\\core\\codecs\\frame-internals.js"() {
       MAX_VIDEO_DISPLAY_CELLS = 1e5;
       MAX_GLOBAL_DISTRIBUTION_VALUES = 12e4;
+      BITS_PER_BYTE = 8;
       HEAT_COLOR_STOPS = [
         { percentile: 0, red: 226, green: 245, blue: 241 },
         { percentile: 0.25, red: 116, green: 209, blue: 188 },
@@ -8175,7 +8182,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.depthLabel": "Depth {depth}",
           "frameInternals.maxDepth": "depth {depth}",
           "frameInternals.rootAggregation": "x{value} root aggregation",
-          "frameInternals.sampleSize": "Sample size",
+          "frameInternals.sampleBits": "Sample bits",
           "frameInternals.colorScale": "Color scale",
           "frameInternals.globalTrackPercentile": "global percentile ({count} samples, {values} values)",
           "frameInternals.selectedFramePercentile": "selected-frame percentile",
@@ -8184,18 +8191,18 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.sampleRate": "Sample rate",
           "frameInternals.activeBandwidth": "Active bandwidth",
           "frameInternals.channels": "Channels",
-          "frameInternals.audioBands": "Audio band budget",
+          "frameInternals.audioBands": "Audio band bit estimate",
           "frameInternals.zoomPlotAria": "Use mouse wheel or pinch to zoom the frame internals plot. Drag to pan while zoomed.",
-          "frameInternals.videoEstimateNote": "Color uses this partition-ready block estimate's percentile within the whole selected video track's area-normalized estimated byte-density distribution. Rectangle layout supports codec partition shapes, including non-square AV1-style splits, but it is not decoded per-block entropy or exact syntax data yet.",
-          "frameInternals.audioEstimateNote": "Band sizes are estimated from packet size and codec metadata; scalefactor or spectral payload decoding is not implemented.",
+          "frameInternals.videoEstimateNote": "Color uses this partition-ready block estimate's percentile within the whole selected video track's area-normalized estimated bit-density distribution. The estimate distributes the complete encoded sample bit count, including NAL or packet headers, across intrinsic partition cells; it is not decoded per-block entropy or exact syntax data yet.",
+          "frameInternals.audioEstimateNote": "Band bits are estimated from the complete packet bit count and codec metadata; scalefactor or spectral payload decoding is not implemented.",
           "frameInternals.tooltip.pixelRange": "Pixel range",
           "frameInternals.tooltip.encodedPixelRange": "Coded pixel range",
           "frameInternals.tooltip.displayPixelRange": "Display pixel range",
           "frameInternals.tooltip.blockSize": "Block size",
           "frameInternals.tooltip.partition": "Partition",
           "frameInternals.tooltip.depth": "Depth",
-          "frameInternals.tooltip.estimatedBytes": "Estimated bytes",
-          "frameInternals.tooltip.byteDensity": "Byte density",
+          "frameInternals.tooltip.estimatedBits": "Estimated bits",
+          "frameInternals.tooltip.bitDensity": "Bit density",
           "frameInternals.tooltip.globalPercentile": "Global percentile",
           "frameInternals.tooltip.nominalUnits": "Nominal units",
           "frameInternals.tooltip.frequencyRange": "Frequency range",
@@ -8208,12 +8215,12 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.stats.totalBits": "Total bits",
           "frameInternals.stats.commonBlock": "Common block",
           "frameInternals.stats.medianArea": "Median area",
-          "frameInternals.stats.medianDensity": "Median density",
-          "frameInternals.stats.p95Density": "P95 density",
+          "frameInternals.stats.medianDensity": "Median bit density",
+          "frameInternals.stats.p95Density": "P95 bit density",
           "frameInternals.stats.maxBlockBits": "Max block bits",
           "frameInternals.stats.p95BlockBits": "P95 block bits",
           "frameInternals.stats.blockSizeDistribution": "Block size distribution",
-          "frameInternals.stats.byteDensityDistribution": "Byte density distribution",
+          "frameInternals.stats.bitDensityDistribution": "Bit density distribution",
           "frameInternals.stats.partitionModes": "Partition modes",
           "frameInternals.stats.partitionDepth": "Partition depth",
           "frameInternals.stats.blockCount": "{count} blocks",
@@ -8221,7 +8228,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.stats.activeBands": "Active bands",
           "frameInternals.stats.peakBand": "Peak band",
           "frameInternals.stats.medianBandBits": "Median band bits",
-          "frameInternals.stats.bandByteShare": "Band byte share",
+          "frameInternals.stats.bandBitShare": "Band bit share",
           "frameInternals.stats.bandActivity": "Band activity",
           "frameInternals.stats.active": "active",
           "frameInternals.stats.inactive": "inactive",
@@ -8433,7 +8440,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.depthLabel": "Depth {depth}",
           "frameInternals.maxDepth": "depth {depth}",
           "frameInternals.rootAggregation": "root x{value} \uC9D1\uACC4",
-          "frameInternals.sampleSize": "\uC0D8\uD50C \uD06C\uAE30",
+          "frameInternals.sampleBits": "\uC0D8\uD50C bit \uC218",
           "frameInternals.colorScale": "\uC0C9\uC0C1 \uAE30\uC900",
           "frameInternals.globalTrackPercentile": "\uC804\uCCB4 track percentile ({count} samples, {values} values)",
           "frameInternals.selectedFramePercentile": "\uC120\uD0DD \uD504\uB808\uC784 percentile",
@@ -8442,18 +8449,18 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.sampleRate": "\uC0D8\uD50C \uB808\uC774\uD2B8",
           "frameInternals.activeBandwidth": "\uD65C\uC131 \uB300\uC5ED\uD3ED",
           "frameInternals.channels": "\uCC44\uB110",
-          "frameInternals.audioBands": "\uC624\uB514\uC624 \uB300\uC5ED\uBCC4 byte \uCD94\uC815",
+          "frameInternals.audioBands": "\uC624\uB514\uC624 \uB300\uC5ED\uBCC4 bit \uCD94\uC815",
           "frameInternals.zoomPlotAria": "\uB9C8\uC6B0\uC2A4 \uD720 \uB610\uB294 \uD540\uCE58\uB85C \uD504\uB808\uC784 \uB0B4\uBD80 plot\uC744 \uD655\uB300\uD569\uB2C8\uB2E4. \uD655\uB300\uB41C \uC0C1\uD0DC\uC5D0\uC11C\uB294 \uB4DC\uB798\uADF8\uB85C \uC774\uB3D9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
-          "frameInternals.videoEstimateNote": "\uC0C9\uC0C1\uC740 \uC120\uD0DD\uB41C \uC804\uCCB4 video track\uC758 \uBA74\uC801 \uC815\uADDC\uD654 estimated byte-density \uBD84\uD3EC\uC5D0\uC11C \uC774 partition-ready block \uCD94\uC815\uCE58\uAC00 \uC704\uCE58\uD55C percentile\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4. Rectangle layout\uC740 \uBE44\uC815\uC0AC\uAC01 AV1-style split\uC744 \uD3EC\uD568\uD55C codec partition \uD615\uD0DC\uB97C \uD45C\uD604\uD560 \uC218 \uC788\uC9C0\uB9CC, \uC544\uC9C1 decoded per-block entropy \uB610\uB294 \uC815\uD655\uD55C syntax \uB370\uC774\uD130\uB294 \uC544\uB2D9\uB2C8\uB2E4.",
-          "frameInternals.audioEstimateNote": "\uB300\uC5ED\uBCC4 \uD06C\uAE30\uB294 packet size\uC640 codec metadata \uAE30\uBC18 \uCD94\uC815\uCE58\uC785\uB2C8\uB2E4. scalefactor \uB610\uB294 spectral payload decode\uB294 \uAD6C\uD604\uB418\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+          "frameInternals.videoEstimateNote": "\uC0C9\uC0C1\uC740 \uC120\uD0DD\uB41C \uC804\uCCB4 video track\uC758 \uBA74\uC801 \uC815\uADDC\uD654 estimated bit-density \uBD84\uD3EC\uC5D0\uC11C \uC774 partition-ready block \uCD94\uC815\uCE58\uAC00 \uC704\uCE58\uD55C percentile\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4. NAL \uB610\uB294 packet header\uB97C \uD3EC\uD568\uD55C encoded sample \uC804\uCCB4 bit \uC218\uB97C intrinsic partition cell\uC5D0 \uBC30\uBD84\uD55C \uCD94\uC815\uCE58\uC774\uBA70, \uC544\uC9C1 decoded per-block entropy \uB610\uB294 \uC815\uD655\uD55C syntax \uB370\uC774\uD130\uB294 \uC544\uB2D9\uB2C8\uB2E4.",
+          "frameInternals.audioEstimateNote": "\uB300\uC5ED\uBCC4 bit \uC218\uB294 packet \uC804\uCCB4 bit \uC218\uC640 codec metadata \uAE30\uBC18 \uCD94\uC815\uCE58\uC785\uB2C8\uB2E4. scalefactor \uB610\uB294 spectral payload decode\uB294 \uAD6C\uD604\uB418\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
           "frameInternals.tooltip.pixelRange": "\uD53D\uC140 \uBC94\uC704",
           "frameInternals.tooltip.encodedPixelRange": "Coded \uD53D\uC140 \uBC94\uC704",
           "frameInternals.tooltip.displayPixelRange": "Display \uD53D\uC140 \uBC94\uC704",
           "frameInternals.tooltip.blockSize": "Block \uD06C\uAE30",
           "frameInternals.tooltip.partition": "Partition",
           "frameInternals.tooltip.depth": "Depth",
-          "frameInternals.tooltip.estimatedBytes": "\uCD94\uC815 byte",
-          "frameInternals.tooltip.byteDensity": "Byte density",
+          "frameInternals.tooltip.estimatedBits": "\uCD94\uC815 bit",
+          "frameInternals.tooltip.bitDensity": "Bit density",
           "frameInternals.tooltip.globalPercentile": "\uC804\uCCB4 percentile",
           "frameInternals.tooltip.nominalUnits": "Nominal \uB2E8\uC704 \uC218",
           "frameInternals.tooltip.frequencyRange": "\uC8FC\uD30C\uC218 \uBC94\uC704",
@@ -8466,12 +8473,12 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.stats.totalBits": "\uC804\uCCB4 bit",
           "frameInternals.stats.commonBlock": "\uC8FC\uC694 block",
           "frameInternals.stats.medianArea": "\uC911\uC559\uAC12 \uBA74\uC801",
-          "frameInternals.stats.medianDensity": "\uC911\uC559\uAC12 density",
-          "frameInternals.stats.p95Density": "P95 density",
+          "frameInternals.stats.medianDensity": "\uC911\uC559\uAC12 bit density",
+          "frameInternals.stats.p95Density": "P95 bit density",
           "frameInternals.stats.maxBlockBits": "\uCD5C\uB300 block bit",
           "frameInternals.stats.p95BlockBits": "P95 block bit",
           "frameInternals.stats.blockSizeDistribution": "Block \uD06C\uAE30 \uBD84\uD3EC",
-          "frameInternals.stats.byteDensityDistribution": "Byte density \uBD84\uD3EC",
+          "frameInternals.stats.bitDensityDistribution": "Bit density \uBD84\uD3EC",
           "frameInternals.stats.partitionModes": "Partition mode",
           "frameInternals.stats.partitionDepth": "Partition depth",
           "frameInternals.stats.blockCount": "{count} blocks",
@@ -8479,7 +8486,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
           "frameInternals.stats.activeBands": "\uD65C\uC131 \uB300\uC5ED",
           "frameInternals.stats.peakBand": "\uCD5C\uB300 \uB300\uC5ED",
           "frameInternals.stats.medianBandBits": "\uC911\uC559\uAC12 \uB300\uC5ED bit",
-          "frameInternals.stats.bandByteShare": "\uB300\uC5ED\uBCC4 byte \uBE44\uC911",
+          "frameInternals.stats.bandBitShare": "\uB300\uC5ED\uBCC4 bit \uBE44\uC911",
           "frameInternals.stats.bandActivity": "\uB300\uC5ED \uD65C\uC131 \uC0C1\uD0DC",
           "frameInternals.stats.active": "active",
           "frameInternals.stats.inactive": "inactive",
@@ -10198,7 +10205,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       [t("frameInternals.nominalGrid"), model.nominalColumns + "x" + model.nominalRows + " (" + model.nominalUnitCount + ")"],
       [t("frameInternals.displayedGrid"), formatVideoDisplayedGrid(model)],
       [t("frameInternals.partitionModes"), formatPartitionModes(model.partitionModes)],
-      [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+      [t("frameInternals.sampleBits"), formatBits(model.sampleBits)],
       [t("frameInternals.colorScale"), formatFrameInternalsColorScale(model.colorScale)],
       [t("frameInternals.accuracy"), t("frameInternals.nominal")]
     ];
@@ -10264,8 +10271,8 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         [t("frameInternals.tooltip.blockSize"), (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)],
         [t("frameInternals.tooltip.partition"), cell.partitionMode || t("value.notAvailable")],
         [t("frameInternals.tooltip.depth"), cell.depth || 0],
-        [t("frameInternals.tooltip.estimatedBytes"), formatBytes(cell.estimatedBytes)],
-        [t("frameInternals.tooltip.byteDensity"), formatByteDensity(cell.estimatedBytesPerPixel, cell.normalizedByteDensity)],
+        [t("frameInternals.tooltip.estimatedBits"), formatBits(cell.estimatedBits)],
+        [t("frameInternals.tooltip.bitDensity"), formatBitDensity(cell.estimatedBitsPerPixel, cell.normalizedBitDensity)],
         [t("frameInternals.tooltip.globalPercentile"), formatMetricNumber((cell.globalPercentile || 0) * 100, 1) + "%"],
         [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
         [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
@@ -10289,12 +10296,12 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     if (!Number.isFinite(numberValue)) return "0";
     return Math.abs(numberValue - Math.round(numberValue)) < 1e-3 ? String(Math.round(numberValue)) : formatMetricNumber(numberValue, 2);
   }
-  function formatByteDensity(bytesPerPixel, normalizedByteDensity) {
-    const density = Number(bytesPerPixel);
-    const normalized = Number(normalizedByteDensity);
+  function formatBitDensity(bitsPerPixel, normalizedBitDensity) {
+    const density = Number(bitsPerPixel);
+    const normalized = Number(normalizedBitDensity);
     if (!Number.isFinite(density) || density < 0) return t("value.notAvailable");
     const normalizedText = Number.isFinite(normalized) && normalized >= 0 ? ", " + formatMetricNumber(normalized, 2) + "x" : "";
-    return formatMetricNumber(density, density < 0.01 ? 4 : 3) + " B/px" + normalizedText;
+    return formatMetricNumber(density, getBitPrecision(density)) + " bits/px" + normalizedText;
   }
   function formatFrameInternalsColorScale(colorScale) {
     if (!colorScale) return t("value.notAvailable");
@@ -10310,23 +10317,23 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   function renderVideoInternalsMetrics(model) {
     const cells = Array.isArray(model.cells) ? model.cells : [];
     if (!cells.length) return "";
-    const densities = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBytesPerPixel)));
-    const estimatedBytes = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBytes)));
+    const densities = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBitsPerPixel)));
+    const estimatedBits = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBits)));
     const areas = sortFiniteMetricValues(cells.map((cell) => Math.max(1, Number(cell.blockWidth) * Number(cell.blockHeight) || 1)));
     const blockSizeGroups = getTopCountGroups(cells.map((cell) => (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)), 6);
     const depthGroups = getPartitionDepthGroups(model, cells);
     const modeGroups = getTopCountGroups(cells.map((cell) => cell.partitionMode || t("value.unknown")), 8);
     const commonBlock = blockSizeGroups[0];
-    const sampleBytes = Math.max(0, Number(model.sampleSize) || sumNumbers(estimatedBytes));
+    const sampleBits = Math.max(0, Number(model.sampleBits) || sumNumbers2(estimatedBits));
     const cards = [
       [t("frameInternals.stats.blocks"), formatMetricNumber(cells.length, 0)],
-      [t("frameInternals.stats.totalBits"), formatBits(sampleBytes * 8)],
+      [t("frameInternals.stats.totalBits"), formatBits(sampleBits)],
       [t("frameInternals.stats.commonBlock"), commonBlock ? commonBlock.label + " (" + commonBlock.count + ")" : t("value.notAvailable")],
       [t("frameInternals.stats.medianArea"), formatArea(getSortedQuantile(areas, 0.5))],
       [t("frameInternals.stats.medianDensity"), formatDensityValue(getSortedQuantile(densities, 0.5))],
       [t("frameInternals.stats.p95Density"), formatDensityValue(getSortedQuantile(densities, 0.95))],
-      [t("frameInternals.stats.maxBlockBits"), formatBits((estimatedBytes.at(-1) || 0) * 8)],
-      [t("frameInternals.stats.p95BlockBits"), formatBits(getSortedQuantile(estimatedBytes, 0.95) * 8)]
+      [t("frameInternals.stats.maxBlockBits"), formatBits(estimatedBits.at(-1) || 0)],
+      [t("frameInternals.stats.p95BlockBits"), formatBits(getSortedQuantile(estimatedBits, 0.95))]
     ];
     return renderInternalsMetricsSection([
       renderInternalMetricCards(cards),
@@ -10334,7 +10341,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
         label: group.label,
         value: group.count,
         detail: t("frameInternals.stats.blockCount", { count: group.count })
-      }))) + renderInternalsBarChart(t("frameInternals.stats.byteDensityDistribution"), buildHistogramEntries(densities, 6, formatDensityValue, { sorted: true })) + renderInternalsBarChart(t("frameInternals.stats.partitionModes"), modeGroups.map((group) => ({
+      }))) + renderInternalsBarChart(t("frameInternals.stats.bitDensityDistribution"), buildHistogramEntries(densities, 6, formatDensityValue, { sorted: true })) + renderInternalsBarChart(t("frameInternals.stats.partitionModes"), modeGroups.map((group) => ({
         label: group.label,
         value: group.count,
         detail: t("frameInternals.stats.blockCount", { count: group.count })
@@ -10364,7 +10371,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     const stats = [
       [t("frameInternals.codec"), model.title],
       [t("frameInternals.frame"), options.frameLabel || t("value.notAvailable")],
-      [t("frameInternals.sampleSize"), formatBytes(model.sampleSize)],
+      [t("frameInternals.sampleBits"), formatBits(model.sampleBits)],
       [t("frameInternals.sampleRate"), model.sampleRate ? formatMetricNumber(model.sampleRate, 0) + " Hz" : t("value.notAvailable")],
       [t("frameInternals.activeBandwidth"), formatAudioFrequency(model.activeBandwidthHz)],
       [t("frameInternals.channels"), model.channelCount || t("value.notAvailable")]
@@ -10374,27 +10381,27 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   function renderAudioInternalsMetrics(model) {
     const bands = Array.isArray(model.bands) ? model.bands : [];
     if (!bands.length) return "";
-    const estimatedBytes = bands.map((band) => Number(band.estimatedBytes)).filter(isFiniteNonNegative);
-    const totalBytes = Math.max(0, Number(model.sampleSize) || sumNumbers(estimatedBytes));
+    const estimatedBits = bands.map((band) => Number(band.estimatedBits)).filter(isFiniteNonNegative);
+    const totalBits = Math.max(0, Number(model.sampleBits) || sumNumbers2(estimatedBits));
     const activeBands = bands.filter((band) => band.active).length;
     const peakBand = bands.reduce(
-      (currentPeak, band) => Number(band.estimatedBytes) > Number(currentPeak && currentPeak.estimatedBytes || -1) ? band : currentPeak,
+      (currentPeak, band) => Number(band.estimatedBits) > Number(currentPeak && currentPeak.estimatedBits || -1) ? band : currentPeak,
       null
     );
     const cards = [
       [t("frameInternals.stats.bands"), formatMetricNumber(bands.length, 0)],
       [t("frameInternals.stats.activeBands"), formatMetricNumber(activeBands, 0)],
-      [t("frameInternals.stats.totalBits"), formatBits(totalBytes * 8)],
+      [t("frameInternals.stats.totalBits"), formatBits(totalBits)],
       [t("frameInternals.stats.peakBand"), peakBand ? peakBand.label : t("value.notAvailable")],
-      [t("frameInternals.stats.medianBandBits"), formatBits(getQuantile2(estimatedBytes, 0.5) * 8)],
+      [t("frameInternals.stats.medianBandBits"), formatBits(getQuantile2(estimatedBits, 0.5))],
       [t("frameInternals.activeBandwidth"), formatAudioFrequency(model.activeBandwidthHz)]
     ];
     return renderInternalsMetricsSection([
       renderInternalMetricCards(cards),
-      '<div class="frame-internals-chart-grid">' + renderInternalsBarChart(t("frameInternals.stats.bandByteShare"), bands.map((band) => ({
+      '<div class="frame-internals-chart-grid">' + renderInternalsBarChart(t("frameInternals.stats.bandBitShare"), bands.map((band) => ({
         label: band.label,
-        value: Number(band.estimatedBytes) || 0,
-        detail: formatBits((Number(band.estimatedBytes) || 0) * 8) + " \xB7 " + formatMetricNumber((band.ratio || 0) * 100, 1) + "%"
+        value: Number(band.estimatedBits) || 0,
+        detail: formatBits(Number(band.estimatedBits) || 0) + " \xB7 " + formatMetricNumber((band.ratio || 0) * 100, 1) + "%"
       }))) + renderInternalsBarChart(t("frameInternals.stats.bandActivity"), bands.map((band) => ({
         label: band.label,
         value: band.active ? 1 : 0.08,
@@ -10406,7 +10413,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     const widthPercent = clamp2(band.ratio * 100, band.active ? 2 : 0.8, 100);
     const tooltipRows = [
       [t("frameInternals.tooltip.frequencyRange"), band.range],
-      [t("frameInternals.tooltip.estimatedBytes"), formatBytes(band.estimatedBytes)],
+      [t("frameInternals.tooltip.estimatedBits"), formatBits(band.estimatedBits)],
       [t("frameInternals.tooltip.relativeShare"), formatMetricNumber(band.ratio * 100, 1) + "%"],
       [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
     ];
@@ -10414,7 +10421,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       title: band.label,
       rows: tooltipRows,
       note: t("frameInternals.audioEstimateNote")
-    }) + '><div class="audio-band-label">' + escapeHtml2(band.label) + "<br><small>" + escapeHtml2(band.range) + '</small></div><div class="audio-band-bar"><span class="audio-band-fill" style="width:' + widthPercent.toFixed(3) + "%;--band-alpha:" + band.intensity.toFixed(3) + '"></span></div><div class="audio-band-size">' + escapeHtml2(formatBytes(band.estimatedBytes)) + "</div></div>";
+    }) + '><div class="audio-band-label">' + escapeHtml2(band.label) + "<br><small>" + escapeHtml2(band.range) + '</small></div><div class="audio-band-bar"><span class="audio-band-fill" style="width:' + widthPercent.toFixed(3) + "%;--band-alpha:" + band.intensity.toFixed(3) + '"></span></div><div class="audio-band-size">' + escapeHtml2(formatBits(band.estimatedBits)) + "</div></div>";
   }
   function renderFrameInternalsTooltipAttributes(payload) {
     const rows = Array.isArray(payload.rows) ? payload.rows.filter((row) => row && row[0] !== void 0 && row[1] !== void 0) : [];
@@ -10515,18 +10522,25 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   }
   function formatBits(value) {
     const bits = Math.max(0, Number(value) || 0);
-    if (bits < 1e3) return formatMetricNumber(bits, 0) + " bits";
+    if (bits < 1e3) return formatMetricNumber(bits, getBitPrecision(bits)) + " bits";
     if (bits < 1e6) return formatMetricNumber(bits / 1e3, bits < 1e4 ? 2 : 1) + " Kbits";
     return formatMetricNumber(bits / 1e6, bits < 1e7 ? 2 : 1) + " Mbits";
+  }
+  function getBitPrecision(value) {
+    const bits = Math.max(0, Number(value) || 0);
+    if (bits < 1) return 3;
+    if (bits < 10) return 2;
+    if (bits < 100) return 1;
+    return 0;
   }
   function formatArea(value) {
     return formatMetricNumber(Math.max(0, Number(value) || 0), 0) + " px";
   }
   function formatDensityValue(value) {
     const density = Math.max(0, Number(value) || 0);
-    return formatMetricNumber(density, density < 0.01 ? 4 : 3) + " B/px";
+    return formatMetricNumber(density, getBitPrecision(density)) + " bits/px";
   }
-  function sumNumbers(values) {
+  function sumNumbers2(values) {
     return values.reduce((sum, value) => sum + (Number(value) || 0), 0);
   }
   function isFiniteNonNegative(value) {
