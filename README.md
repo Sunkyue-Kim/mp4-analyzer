@@ -198,8 +198,8 @@ Validation samples live under `validation/generated/` and are exposed by the Git
 
 Current coverage snapshot from `npm run test:coverage`:
 
-- Tests: 51 passed, 0 failed
-- All files: 96.88% line coverage, 74.83% branch coverage, 95.45% function coverage
+- Tests: 58 passed, 0 failed
+- All files: 96.55% line coverage, 75.77% branch coverage, 95.72% function coverage
 - Strong coverage areas: binary readers, HTTP range readers and range failures, remote URL fallback/progress/abort handling, shared media-source preview/download policy, browser worker client message flow, bitstream helpers, formatting edge cases, AAC/MP3/Opus parser branches, MP3 ID3v2/ID3v1/Info frame handling, nominal frame internals models, codec registry, i18n, data grid/recycler helpers, UI box-detail/json-viewer/frame-internals/media-row/metrics model boundaries, ISO BMFF sample modeling, ISO BMFF rare/private box parsing, WebM Xiph/fixed/EBML lacing, source-map build wiring, and bundled sample container integration
 - Lower branch coverage remains mainly in browser-worker runtime branches and malformed/edge container branches such as oversized/invalid MP4 boxes, Ogg page edge cases, and uncommon WebM element variants
 

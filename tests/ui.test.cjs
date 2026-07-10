@@ -10,14 +10,22 @@ test("UI helpers keep sample catalog, media detection, escaping, CSV, and frame 
 
   assert.equal(helpers.canUseSampleCatalogLocation({ protocol: "file:" }), false);
   assert.equal(helpers.canUseSampleCatalogLocation({ protocol: "https:" }), true);
+  assert.equal(helpers.canUseSampleCatalogLocation(null), false);
   assert.equal(helpers.isLikelyMediaFile({ name: "clip.MOV", type: "" }), true);
   assert.equal(helpers.isLikelyMediaFile({ name: "notes.txt", type: "text/plain" }), false);
   assert.equal(helpers.isLikelyMediaFile({ name: "", type: "audio/ogg" }), true);
+  assert.equal(helpers.isLikelyMediaFile(null), false);
+  assert.equal(helpers.isLikelyMediaFile({ name: "", type: "video/quicktime" }), true);
   assert.equal(helpers.getFrameRowKey({ trackId: 3, sampleIndex: 99 }), "3:99");
   assert.equal(helpers.getFrameTypeClass("I"), "i");
+  assert.equal(helpers.getFrameTypeClass("IDR"), "i");
+  assert.equal(helpers.getFrameTypeClass("MP3"), "aac");
+  assert.equal(helpers.getFrameTypeClass("unknown"), "warn");
   assert.equal(helpers.getFrameTypeClass("mixed(I/P)"), "err");
+  assert.equal(helpers.getFrameTypeClass("metadata"), "");
   assert.equal(helpers.escapeHtml("<tag attr=\"x\">&'"), "&lt;tag attr=&quot;x&quot;&gt;&amp;&#39;");
   assert.equal(helpers.csvCell("a,b\n\"c\""), "\"a,b\n\"\"c\"\"\"");
+  assert.equal(helpers.csvCell(null), "");
 });
 
 test("media source policy shares preload behavior for local blobs and remote URLs", async () => {
@@ -56,6 +64,34 @@ test("media source policy shares preload behavior for local blobs and remote URL
     preload: "metadata",
     title: ""
   });
+
+  const suppliedPreviewPlan = mediaSource.createMediaPreviewPlan({
+    kind: "local-file",
+    name: "prebuilt.mp4",
+    previewUrl: "blob:prebuilt"
+  });
+  assert.equal(suppliedPreviewPlan.url, "blob:prebuilt");
+  assert.equal(suppliedPreviewPlan.isObjectUrl, false);
+
+  const defaultUrlLoader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: {
+      URL: {
+        createObjectURL(resource) {
+          return "blob:default-" + resource.name;
+        }
+      }
+    }
+  });
+  const defaultUrlMediaSource = await defaultUrlLoader.import("src/js/ui/media-source.js");
+  assert.equal(defaultUrlMediaSource.createMediaPreviewPlan({ name: "generated.mp3" }).url, "blob:default-generated.mp3");
+
+  const missingUrlLoader = new SourceModuleLoader({
+    rootDirectory: path.resolve(__dirname, ".."),
+    globals: { URL: {} }
+  });
+  const missingUrlMediaSource = await missingUrlLoader.import("src/js/ui/media-source.js");
+  assert.throws(() => missingUrlMediaSource.createMediaPreviewPlan({ name: "missing.mp4" }), /Object URL creation is not available/);
 });
 
 test("data grid renderer builds reusable scrollable grid markup", async () => {
@@ -316,6 +352,51 @@ test("media row and metrics models keep timing calculations reusable outside UI 
   assert.deepEqual(metrics.topSizeRows.map((row) => row.sampleIndex), [3, 2, 1]);
 });
 
+test("media row and metrics models cover fallback timing and empty metrics", async () => {
+  const loader = await createSourceModuleLoader();
+  const rowModel = await loader.import("src/js/ui/media-row-model.js");
+  const metricsModel = await loader.import("src/js/ui/metrics-model.js");
+  const track = { trackId: 1, handlerType: "soun", timescale: 1000, duration: 2500 };
+  const fallbackRows = [
+    { trackId: 1, sampleIndex: 1, pts: 1000, size: 50 },
+    { trackId: 1, sampleIndex: 2, pts: 1600, size: 75 },
+    { trackId: 1, sampleIndex: 3, pts: 1600, size: 25 }
+  ];
+
+  assert.equal(rowModel.getRowTimeSeconds({ sampleIndex: 7, pts: "", dts: null }), 7);
+  assert.equal(rowModel.getRowDecodeTimeSeconds({ sampleIndex: 8, dts: "12" }), 12);
+  assert.equal(rowModel.getRowDurationSeconds({ duration: -1 }, () => track), 0);
+  assert.equal(rowModel.getFirstFiniteNumber(["bad", Number.NaN, 9], 0), 9);
+  assert.equal(Number(rowModel.getSampleDurationSeconds(fallbackRows[0], track, fallbackRows, 0).toFixed(6)), 0.6);
+  assert.equal(rowModel.getSampleDurationSeconds(fallbackRows[1], track, fallbackRows, 1), 0);
+  assert.equal(rowModel.getRowsDurationSeconds(track, [{ trackId: 1, sampleIndex: 1, size: 10 }]), 2.5);
+  assert.equal(metricsModel.getTrackSummaryMetrics(null, fallbackRows), null);
+  assert.equal(metricsModel.getTrackSummaryMetrics(track, []), null);
+
+  const boundedPoints = metricsModel.buildMovingAveragePoints(track, fallbackRows, 99);
+  const zeroDurationPoints = metricsModel.buildMovingAveragePoints(track, [
+    { trackId: 1, sampleIndex: 1, pts: 1000, size: 10 },
+    { trackId: 1, sampleIndex: 2, pts: 1000, size: 20 }
+  ], 2);
+  const fallbackMetrics = metricsModel.buildTrackMetrics(track, [
+    { trackId: 1, sampleIndex: 1, pts: 0, duration: 500, size: 10 },
+    { trackId: 1, sampleIndex: 2, pts: 500, duration: 500, size: 20, frameType: "" }
+  ], 1, { getDefaultSampleFrameType: () => "AAC" });
+  const positiveSyncMetrics = metricsModel.buildTrackMetrics(track, [
+    { trackId: 1, sampleIndex: 1, pts: 0, duration: 500, size: 10, isSync: true },
+    { trackId: 1, sampleIndex: 2, pts: 500, duration: 500, size: 20 },
+    { trackId: 1, sampleIndex: 3, pts: 1500, duration: 500, size: 30, isSync: true }
+  ], 1);
+
+  assert.equal(boundedPoints.length, 1);
+  assert.equal(zeroDurationPoints[0].bitrate, 0);
+  assert.equal(zeroDurationPoints[0].fps, 0);
+  assert.equal(metricsModel.getMedian([]), 0);
+  assert.equal(fallbackMetrics.frameTypeCounts.get("AAC"), 2);
+  assert.equal(fallbackMetrics.summary.averageKeyframeInterval, 0);
+  assert.equal(positiveSyncMetrics.summary.averageKeyframeInterval, 1.5);
+});
+
 test("JSON viewer module renders bytes, hex dumps, and empty values", async () => {
   const loader = await createSourceModuleLoader();
   const jsonViewer = await loader.import("src/js/ui/json-viewer.js");
@@ -325,6 +406,10 @@ test("JSON viewer module renders bytes, hex dumps, and empty values", async () =
   assert.equal(jsonViewer.isHexDumpField("hexDump", ["00"]), true);
   assert.equal(jsonViewer.isHexDumpField("hexDump", [0]), false);
   assert.match(jsonViewer.renderJsonViewer({ value: 9n }), /&quot;9&quot;|9/);
+  assert.match(jsonViewer.renderJsonViewer([1, "two", null]), /json-inline-preview/);
+  assert.match(jsonViewer.renderJsonViewer({ bytes: Array.from({ length: 2050 }, (_, index) => index % 256) }), /json-byte-truncation/);
+  assert.match(jsonViewer.renderJsonViewer({ bytes: [256] }), /<span class="json-scalar number">256<\/span>/);
+  assert.match(jsonViewer.renderJsonViewer(undefined), /json-empty/);
   assert.match(jsonViewer.renderJsonViewer({}), /json-empty/);
 });
 
@@ -377,6 +462,62 @@ test("box detail model separates actual stsd fields, synthetic children, and der
   assert.equal(syntheticChildren[0].children[0].type, "esds");
   assert.match(boxDetailModel.formatBoxTypeLabel("stsd"), /stsd \(/);
   assert.match(boxDetailModel.getBoxTypeDescription("unknown-box"), /No built-in description|사용 가능한 기본 설명/);
+});
+
+test("box detail model covers synthetic and derived fallbacks", async () => {
+  const loader = await createSourceModuleLoader();
+  const boxDetailModel = await loader.import("src/js/ui/box-detail-model.js");
+  const { setLanguage } = await loader.import("src/js/i18n/catalogs.js");
+  const stsdWithoutDerived = {
+    type: "stsd",
+    path: "/stsd",
+    offset: "",
+    size: "bad",
+    fields: {
+      version: 0,
+      flags: 0,
+      entryCount: 1,
+      entries: [
+        {
+          index: 1,
+          format: "raw ",
+          size: 16,
+          boxes: null,
+          dataReferenceIndex: 1
+        }
+      ]
+    },
+    children: [{ type: "free", path: "/stsd/free", offset: 20, size: 8, fields: {} }]
+  };
+
+  assert.deepEqual(JSON.parse(JSON.stringify(boxDetailModel.getBoxNodeChildren(null))), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(boxDetailModel.getSyntheticBoxChildren({ type: "free", fields: {} }))), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(boxDetailModel.getActualBoxFields(null))), {});
+  assert.deepEqual(JSON.parse(JSON.stringify(boxDetailModel.createActualStsdFields({ version: 0, flags: 0, entryCount: 0, entries: null }))), {
+    version: 0,
+    flags: 0,
+    entryCount: 0,
+    entries: []
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(boxDetailModel.createActualSampleEntryFields(stsdWithoutDerived.fields.entries[0]))), {
+    index: 1,
+    format: "raw ",
+    size: 16,
+    boxes: [],
+    dataReferenceIndex: 1
+  });
+  assert.equal(boxDetailModel.getDerivedBoxFields(stsdWithoutDerived), null);
+  assert.equal(boxDetailModel.getDerivedBoxFields({ type: "free", fields: {} }), null);
+  assert.equal(boxDetailModel.createSampleEntryDerivedFields({ index: 1, format: "raw " }), null);
+  assert.match(boxDetailModel.formatBoxNodeSize(stsdWithoutDerived), /n\/a @/);
+
+  const syntheticEntry = boxDetailModel.getSyntheticBoxChildren(stsdWithoutDerived)[0];
+  assert.equal(boxDetailModel.getActualBoxFields(syntheticEntry).format, "raw ");
+  assert.match(boxDetailModel.formatBoxNodeSize(syntheticEntry), /16 \(16 B\) · synthetic/);
+  assert.match(boxDetailModel.formatBoxTypeLabel("not-a-box"), /Unknown or unregistered box type/);
+  setLanguage("ko");
+  assert.match(boxDetailModel.formatBoxTypeLabel("stsd"), /stsd \(/);
+  setLanguage("en");
 });
 
 test("frame internals view renders reusable video, audio, and tooltip markup", async () => {
@@ -487,6 +628,74 @@ test("frame internals view renders reusable video, audio, and tooltip markup", a
   assert.match(audioHtml, /12\.0 kHz/);
   assert.match(tooltipHtml, /tooltip-title/);
   assert.equal(frameInternalsView.formatFrameTypeLabel("unknown"), "unknown");
+});
+
+test("frame internals view covers empty internals and localized labels", async () => {
+  const loader = await createSourceModuleLoader();
+  const frameInternalsView = await loader.import("src/js/ui/frame-internals-view.js");
+  const { setLanguage } = await loader.import("src/js/i18n/catalogs.js");
+  const videoHtml = frameInternalsView.renderVideoFrameInternals({
+    title: "Unknown video grid",
+    codecFamily: "Unknown",
+    frameType: "sample",
+    unitName: "unit",
+    unitWidth: 0,
+    unitHeight: 0,
+    mediaWidth: 1.5,
+    mediaHeight: 1,
+    encodedWidth: 0,
+    encodedHeight: 0,
+    displayRotationDegrees: 0,
+    nominalColumns: 0,
+    nominalRows: 0,
+    nominalUnitCount: 0,
+    displayColumns: 0,
+    displayRows: 0,
+    aggregation: 2,
+    partitionBlockCount: 0,
+    maxPartitionDepth: 0,
+    partitionModes: [],
+    sampleSize: 0,
+    note: "empty",
+    colorScale: { mode: "selected-frame-percentile" },
+    cells: []
+  });
+  const audioHtml = frameInternalsView.renderAudioFrameInternals({
+    title: "Unknown audio",
+    frameType: "audio",
+    sampleSize: 0,
+    sampleRate: 0,
+    activeBandwidthHz: 500,
+    channelCount: 0,
+    note: "empty",
+    bands: []
+  });
+  const tooltipAttributes = frameInternalsView.renderFrameInternalsTooltipAttributes({
+    title: null,
+    rows: [["Visible", 0], ["Missing", undefined], null],
+    note: null
+  });
+  const tooltipHtml = frameInternalsView.renderFrameInternalsTooltip({
+    title: "<Cell>",
+    rows: [["", "skip"], ["Bytes", 0], null],
+    note: ""
+  });
+
+  assert.match(videoHtml, /selected-frame percentile/);
+  assert.match(videoHtml, /n\/a/);
+  assert.doesNotMatch(videoHtml, /Internal statistics/);
+  assert.match(audioHtml, /500 Hz/);
+  assert.doesNotMatch(audioHtml, /Band byte share/);
+  assert.match(tooltipAttributes, /Visible/);
+  assert.doesNotMatch(tooltipAttributes, /Missing/);
+  assert.match(tooltipHtml, /&lt;Cell&gt;/);
+  assert.match(tooltipHtml, /<strong>0<\/strong>/);
+  assert.doesNotMatch(tooltipHtml, /tooltip-note/);
+  assert.equal(frameInternalsView.formatFrameTypeLabel("audio"), "audio");
+  assert.equal(frameInternalsView.formatFrameTypeLabel("sample"), "sample");
+  setLanguage("ko");
+  assert.equal(frameInternalsView.formatFrameTypeLabel("mixed(I/P)"), "혼합(I/P)");
+  setLanguage("en");
 });
 
 test("analysis worker client falls back to direct core and preserves progress, scan, and cancel hooks", async () => {
