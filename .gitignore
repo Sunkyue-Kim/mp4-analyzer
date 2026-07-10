@@ -2,6 +2,7 @@ node_modules/
 .tools/
 
 validation/*
+!validation/README.md
 !validation/generated/
 !validation/generated/*.mp4
 !validation/generated/*.mp3

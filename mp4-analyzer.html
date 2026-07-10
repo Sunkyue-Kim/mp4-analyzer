@@ -2680,6 +2680,145 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
+  // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\samples\sample-manifest.js
+  var SAMPLE_FILES;
+  var init_sample_manifest = __esm({
+    "local-source:C:\\Users\\user\\Documents\\Codex\\2026-07-08\\js-html-mp4-html-mp4-i\\src\\js\\samples\\sample-manifest.js"() {
+      SAMPLE_FILES = [
+        {
+          id: "android-avc-aac-co64",
+          fileName: "1000024017.mp4",
+          path: "validation/generated/1000024017.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "Android AVC + AAC co64 sample",
+            ko: "Android AVC + AAC co64 \uC0D8\uD50C"
+          }
+        },
+        {
+          id: "android-hevc-main10-aac-co64",
+          fileName: "20260612_091058.mp4",
+          path: "validation/generated/20260612_091058.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "Android HEVC Main10 + AAC co64 sample",
+            ko: "Android HEVC Main10 + AAC co64 \uC0D8\uD50C"
+          }
+        },
+        {
+          id: "hevc-4k-5s",
+          fileName: "hevc_4k_5s.mp4",
+          path: "validation/generated/hevc_4k_5s.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "HEVC 4K 5s sample (64x64 CTU)",
+            ko: "HEVC 4K 5\uCD08 \uC0D8\uD50C (64x64 CTU)"
+          }
+        },
+        {
+          id: "avc-bframes",
+          fileName: "avc_bframes.mp4",
+          path: "validation/generated/avc_bframes.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "AVC H.264 with B-frames",
+            ko: "AVC H.264 B-frame \uD3EC\uD568"
+          }
+        },
+        {
+          id: "avc-fragmented",
+          fileName: "avc_fragmented.mp4",
+          path: "validation/generated/avc_fragmented.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "Fragmented MP4 AVC",
+            ko: "Fragmented MP4 AVC"
+          }
+        },
+        {
+          id: "avc-no-bframes",
+          fileName: "avc_no_bframes.mp4",
+          path: "validation/generated/avc_no_bframes.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "AVC H.264 without B-frames",
+            ko: "AVC H.264 B-frame \uC5C6\uC74C"
+          }
+        },
+        {
+          id: "avc-moving-detail-patch",
+          fileName: "avc_moving_detail_patch.mp4",
+          path: "validation/generated/avc_moving_detail_patch.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "AVC moving high-detail patch",
+            ko: "AVC \uACE0\uC8FC\uD30C \uB514\uD14C\uC77C \uD328\uCE58 \uC774\uB3D9"
+          }
+        },
+        {
+          id: "avc-10020-samples",
+          fileName: "avc_10020.mp4",
+          path: "validation/generated/avc_10020.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "AVC 10,020 sample stress file",
+            ko: "AVC 10,020 sample \uC2A4\uD2B8\uB808\uC2A4 \uD30C\uC77C"
+          }
+        },
+        {
+          id: "av1-mp4",
+          fileName: "av1_mp4.mp4",
+          path: "validation/generated/av1_mp4.mp4",
+          type: "video/mp4",
+          labels: {
+            en: "AV1 MP4 sample",
+            ko: "AV1 MP4 \uC0D8\uD50C"
+          }
+        },
+        {
+          id: "webm-av1",
+          fileName: "webm_av1.webm",
+          path: "validation/generated/webm_av1.webm",
+          type: "video/webm",
+          labels: {
+            en: "WebM AV1 sample",
+            ko: "WebM AV1 \uC0D8\uD50C"
+          }
+        },
+        {
+          id: "mp3-audio",
+          fileName: "audio_mp3.mp3",
+          path: "validation/generated/audio_mp3.mp3",
+          type: "audio/mpeg",
+          labels: {
+            en: "MP3 audio sample",
+            ko: "MP3 \uC624\uB514\uC624 \uC0D8\uD50C"
+          }
+        },
+        {
+          id: "ogg-opus-audio",
+          fileName: "audio_opus.opus",
+          path: "validation/generated/audio_opus.opus",
+          type: "audio/ogg",
+          labels: {
+            en: "Ogg Opus audio sample",
+            ko: "Ogg Opus \uC624\uB514\uC624 \uC0D8\uD50C"
+          }
+        },
+        {
+          id: "webm-vp9-opus",
+          fileName: "webm_vp9_opus.webm",
+          path: "validation/generated/webm_vp9_opus.webm",
+          type: "video/webm",
+          labels: {
+            en: "WebM VP9 + Opus sample",
+            ko: "WebM VP9 + Opus \uC0D8\uD50C"
+          }
+        }
+      ];
+    }
+  });
+
   // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\core\containers\isobmff\box-types.js
   var CONTAINER_BOXES, FULLBOX_CONTAINER_OFFSETS, PARSED_FIELD_BOXES, BOX_TYPE_INFO;
   var init_box_types = __esm({
@@ -8826,125 +8965,6 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
     }
   });
 
-  // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\samples\sample-manifest.js
-  var SAMPLE_FILES;
-  var init_sample_manifest = __esm({
-    "local-source:C:\\Users\\user\\Documents\\Codex\\2026-07-08\\js-html-mp4-html-mp4-i\\src\\js\\samples\\sample-manifest.js"() {
-      SAMPLE_FILES = [
-        {
-          id: "android-avc-aac-co64",
-          fileName: "1000024017.mp4",
-          path: "validation/generated/1000024017.mp4",
-          type: "video/mp4",
-          labels: {
-            en: "Android AVC + AAC co64 sample",
-            ko: "Android AVC + AAC co64 \uC0D8\uD50C"
-          }
-        },
-        {
-          id: "android-hevc-main10-aac-co64",
-          fileName: "20260612_091058.mp4",
-          path: "validation/generated/20260612_091058.mp4",
-          type: "video/mp4",
-          labels: {
-            en: "Android HEVC Main10 + AAC co64 sample",
-            ko: "Android HEVC Main10 + AAC co64 \uC0D8\uD50C"
-          }
-        },
-        {
-          id: "avc-bframes",
-          fileName: "avc_bframes.mp4",
-          path: "validation/generated/avc_bframes.mp4",
-          type: "video/mp4",
-          labels: {
-            en: "AVC H.264 with B-frames",
-            ko: "AVC H.264 B-frame \uD3EC\uD568"
-          }
-        },
-        {
-          id: "avc-fragmented",
-          fileName: "avc_fragmented.mp4",
-          path: "validation/generated/avc_fragmented.mp4",
-          type: "video/mp4",
-          labels: {
-            en: "Fragmented MP4 AVC",
-            ko: "Fragmented MP4 AVC"
-          }
-        },
-        {
-          id: "avc-no-bframes",
-          fileName: "avc_no_bframes.mp4",
-          path: "validation/generated/avc_no_bframes.mp4",
-          type: "video/mp4",
-          labels: {
-            en: "AVC H.264 without B-frames",
-            ko: "AVC H.264 B-frame \uC5C6\uC74C"
-          }
-        },
-        {
-          id: "avc-10020-samples",
-          fileName: "avc_10020.mp4",
-          path: "validation/generated/avc_10020.mp4",
-          type: "video/mp4",
-          labels: {
-            en: "AVC 10,020 sample stress file",
-            ko: "AVC 10,020 sample \uC2A4\uD2B8\uB808\uC2A4 \uD30C\uC77C"
-          }
-        },
-        {
-          id: "av1-mp4",
-          fileName: "av1_mp4.mp4",
-          path: "validation/generated/av1_mp4.mp4",
-          type: "video/mp4",
-          labels: {
-            en: "AV1 MP4 sample",
-            ko: "AV1 MP4 \uC0D8\uD50C"
-          }
-        },
-        {
-          id: "webm-av1",
-          fileName: "webm_av1.webm",
-          path: "validation/generated/webm_av1.webm",
-          type: "video/webm",
-          labels: {
-            en: "WebM AV1 sample",
-            ko: "WebM AV1 \uC0D8\uD50C"
-          }
-        },
-        {
-          id: "mp3-audio",
-          fileName: "audio_mp3.mp3",
-          path: "validation/generated/audio_mp3.mp3",
-          type: "audio/mpeg",
-          labels: {
-            en: "MP3 audio sample",
-            ko: "MP3 \uC624\uB514\uC624 \uC0D8\uD50C"
-          }
-        },
-        {
-          id: "ogg-opus-audio",
-          fileName: "audio_opus.opus",
-          path: "validation/generated/audio_opus.opus",
-          type: "audio/ogg",
-          labels: {
-            en: "Ogg Opus audio sample",
-            ko: "Ogg Opus \uC624\uB514\uC624 \uC0D8\uD50C"
-          }
-        },
-        {
-          id: "webm-vp9-opus",
-          fileName: "webm_vp9_opus.webm",
-          path: "validation/generated/webm_vp9_opus.webm",
-          type: "video/webm",
-          labels: {
-            en: "WebM VP9 + Opus sample",
-            ko: "WebM VP9 + Opus \uC0D8\uD50C"
-          }
-        }
-      ];
-    }
-  });
-
   // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\ui\analysis-worker-client.js
   function createAnalysisWorkerClient(options) {
     const workerModuleUrl = getWorkerModuleUrl();
@@ -13426,6 +13446,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
   });
 
   // local-source:C:\Users\user\Documents\Codex\2026-07-08\js-html-mp4-html-mp4-i\src\js\ui\bootstrap-ui.js
+  init_sample_manifest();
   var BOOTSTRAP_I18N = {
     en: {
       "app.title": "Standalone Web Media Analyzer",
@@ -13506,17 +13527,7 @@ if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = "(() => {\n 
       "drop.subtitle": "\uC774 \uCC3D \uC5B4\uB514\uC5D0\uC11C\uB4E0 MP4/fMP4/MOV, WebM, MP3, Ogg Opus \uD30C\uC77C\uC744 \uB193\uC73C\uBA74 \uD30C\uC2F1\uD569\uB2C8\uB2E4."
     }
   };
-  var BOOTSTRAP_SAMPLE_FILES = [
-    { id: "android-avc-aac-co64", fileName: "1000024017.mp4", labels: { en: "Android AVC + AAC co64 sample", ko: "Android AVC + AAC co64 \uC0D8\uD50C" } },
-    { id: "android-hevc-main10-aac-co64", fileName: "20260612_091058.mp4", labels: { en: "Android HEVC Main10 + AAC co64 sample", ko: "Android HEVC Main10 + AAC co64 \uC0D8\uD50C" } },
-    { id: "avc-bframes", fileName: "avc_bframes.mp4", labels: { en: "AVC H.264 with B-frames", ko: "AVC H.264 B-frame \uD3EC\uD568" } },
-    { id: "avc-fragmented", fileName: "avc_fragmented.mp4", labels: { en: "Fragmented MP4 AVC", ko: "Fragmented MP4 AVC" } },
-    { id: "avc-no-bframes", fileName: "avc_no_bframes.mp4", labels: { en: "AVC H.264 without B-frames", ko: "AVC H.264 B-frame \uC5C6\uC74C" } },
-    { id: "avc-10020-samples", fileName: "avc_10020.mp4", labels: { en: "AVC 10,020 sample stress file", ko: "AVC 10,020 sample \uC2A4\uD2B8\uB808\uC2A4 \uD30C\uC77C" } },
-    { id: "mp3-audio", fileName: "audio_mp3.mp3", labels: { en: "MP3 audio sample", ko: "MP3 \uC624\uB514\uC624 \uC0D8\uD50C" } },
-    { id: "ogg-opus-audio", fileName: "audio_opus.opus", labels: { en: "Ogg Opus audio sample", ko: "Ogg Opus \uC624\uB514\uC624 \uC0D8\uD50C" } },
-    { id: "webm-vp9-opus", fileName: "webm_vp9_opus.webm", labels: { en: "WebM VP9 + Opus sample", ko: "WebM VP9 + Opus \uC0D8\uD50C" } }
-  ];
+  var BOOTSTRAP_SAMPLE_FILES = SAMPLE_FILES;
   function startBootstrapUserInterface({ loadRuntime }) {
     if (typeof document === "undefined" || !document.getElementById) return null;
     const elements = collectBootstrapElements();

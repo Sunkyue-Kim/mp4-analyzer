@@ -10,8 +10,10 @@ const samplesDirectory = path.join(rootDirectory, "validation", "generated");
 const sampleExpectations = [
   ["1000024017.mp4", "video/mp4", "isobmff", 2, 1752, ["I", "P", "AAC"]],
   ["20260612_091058.mp4", "video/mp4", "isobmff", 2, 1752, ["I", "P", "B", "AAC"]],
+  ["hevc_4k_5s.mp4", "video/mp4", "isobmff", 1, 120, ["I", "P", "B"]],
   ["avc_bframes.mp4", "video/mp4", "isobmff", 1, 120, ["I", "P", "B"]],
   ["avc_fragmented.mp4", "video/mp4", "isobmff", 1, 120, ["I", "P", "B"]],
+  ["avc_moving_detail_patch.mp4", "video/mp4", "isobmff", 1, 150, ["I", "P", "B"]],
   ["av1_mp4.mp4", "video/mp4", "isobmff", 1, 15, ["I", "P"]],
   ["audio_mp3.mp3", "audio/mpeg", "mp3", 1, 78, ["MP3"]],
   ["audio_opus.opus", "audio/ogg", "ogg-opus", 1, 101, ["Opus"]],

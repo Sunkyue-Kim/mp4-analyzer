@@ -1,3 +1,5 @@
+import { SAMPLE_FILES } from "../samples/sample-manifest.js";
+
 const BOOTSTRAP_I18N = {
   en: {
     "app.title": "Standalone Web Media Analyzer",
@@ -79,17 +81,7 @@ const BOOTSTRAP_I18N = {
   }
 };
 
-const BOOTSTRAP_SAMPLE_FILES = [
-  { id: "android-avc-aac-co64", fileName: "1000024017.mp4", labels: { en: "Android AVC + AAC co64 sample", ko: "Android AVC + AAC co64 샘플" } },
-  { id: "android-hevc-main10-aac-co64", fileName: "20260612_091058.mp4", labels: { en: "Android HEVC Main10 + AAC co64 sample", ko: "Android HEVC Main10 + AAC co64 샘플" } },
-  { id: "avc-bframes", fileName: "avc_bframes.mp4", labels: { en: "AVC H.264 with B-frames", ko: "AVC H.264 B-frame 포함" } },
-  { id: "avc-fragmented", fileName: "avc_fragmented.mp4", labels: { en: "Fragmented MP4 AVC", ko: "Fragmented MP4 AVC" } },
-  { id: "avc-no-bframes", fileName: "avc_no_bframes.mp4", labels: { en: "AVC H.264 without B-frames", ko: "AVC H.264 B-frame 없음" } },
-  { id: "avc-10020-samples", fileName: "avc_10020.mp4", labels: { en: "AVC 10,020 sample stress file", ko: "AVC 10,020 sample 스트레스 파일" } },
-  { id: "mp3-audio", fileName: "audio_mp3.mp3", labels: { en: "MP3 audio sample", ko: "MP3 오디오 샘플" } },
-  { id: "ogg-opus-audio", fileName: "audio_opus.opus", labels: { en: "Ogg Opus audio sample", ko: "Ogg Opus 오디오 샘플" } },
-  { id: "webm-vp9-opus", fileName: "webm_vp9_opus.webm", labels: { en: "WebM VP9 + Opus sample", ko: "WebM VP9 + Opus 샘플" } }
-];
+const BOOTSTRAP_SAMPLE_FILES = SAMPLE_FILES;
 
 function startBootstrapUserInterface({ loadRuntime }) {
   if (typeof document === "undefined" || !document.getElementById) return null;

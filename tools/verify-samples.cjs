@@ -8,10 +8,12 @@ const samplesDirectory = path.join(rootDirectory, "validation", "generated");
 const expectedSamples = new Map([
   ["1000024017.mp4", { type: "video/mp4", container: "isobmff", tracks: 2, samples: 1752, frameTypes: ["I", "P", "AAC"], moofs: 0, codecs: ["avc1", "mp4a"] }],
   ["20260612_091058.mp4", { type: "video/mp4", container: "isobmff", tracks: 2, samples: 1752, frameTypes: ["I", "P", "B", "AAC"], moofs: 0, codecs: ["hvc1", "mp4a"] }],
+  ["hevc_4k_5s.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 120, frameTypes: ["I", "P", "B"], moofs: 0, codecs: ["hvc1"] }],
   ["avc_10020.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 10020, frameTypes: ["I", "P"], moofs: 0, codecs: ["avc1"] }],
   ["avc_bframes.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 120, frameTypes: ["I", "P", "B"], moofs: 0, codecs: ["avc1"] }],
   ["avc_fragmented.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 120, frameTypes: ["I", "P", "B"], moofs: 5, codecs: ["avc1"] }],
   ["avc_no_bframes.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 90, frameTypes: ["I", "P"], moofs: 0, codecs: ["avc1"] }],
+  ["avc_moving_detail_patch.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 150, frameTypes: ["I", "P", "B"], moofs: 0, codecs: ["avc1"] }],
   ["av1_mp4.mp4", { type: "video/mp4", container: "isobmff", tracks: 1, samples: 15, frameTypes: ["I", "P"], moofs: 0, codecs: ["av01"] }],
   ["audio_mp3.mp3", { type: "audio/mpeg", container: "mp3", tracks: 1, samples: 78, frameTypes: ["MP3"], moofs: 0, codecs: ["mp3"] }],
   ["audio_opus.opus", { type: "audio/ogg", container: "ogg-opus", tracks: 1, samples: 101, frameTypes: ["Opus"], moofs: 0, codecs: ["opus"] }],

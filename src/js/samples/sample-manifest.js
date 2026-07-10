@@ -20,6 +20,16 @@ export const SAMPLE_FILES = [
     }
   },
   {
+    id: "hevc-4k-5s",
+    fileName: "hevc_4k_5s.mp4",
+    path: "validation/generated/hevc_4k_5s.mp4",
+    type: "video/mp4",
+    labels: {
+      en: "HEVC 4K 5s sample (64x64 CTU)",
+      ko: "HEVC 4K 5초 샘플 (64x64 CTU)"
+    }
+  },
+  {
     id: "avc-bframes",
     fileName: "avc_bframes.mp4",
     path: "validation/generated/avc_bframes.mp4",
@@ -47,6 +57,16 @@ export const SAMPLE_FILES = [
     labels: {
       en: "AVC H.264 without B-frames",
       ko: "AVC H.264 B-frame 없음"
+    }
+  },
+  {
+    id: "avc-moving-detail-patch",
+    fileName: "avc_moving_detail_patch.mp4",
+    path: "validation/generated/avc_moving_detail_patch.mp4",
+    type: "video/mp4",
+    labels: {
+      en: "AVC moving high-detail patch",
+      ko: "AVC 고주파 디테일 패치 이동"
     }
   },
   {

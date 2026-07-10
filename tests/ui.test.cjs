@@ -28,6 +28,30 @@ test("UI helpers keep sample catalog, media detection, escaping, CSV, and frame 
   assert.equal(helpers.csvCell(null), "");
 });
 
+test("sample manifest exposes generated media through the shared bootstrap catalog", async () => {
+  const loader = await createSourceModuleLoader();
+  const { SAMPLE_FILES } = await loader.import("src/js/samples/sample-manifest.js");
+  const bootstrapSource = fs.readFileSync(
+    path.resolve(__dirname, "..", "src", "js", "ui", "bootstrap-ui.js"),
+    "utf8"
+  );
+  const expectedSamples = new Map([
+    ["avc-moving-detail-patch", "avc_moving_detail_patch.mp4"],
+    ["hevc-4k-5s", "hevc_4k_5s.mp4"]
+  ]);
+
+  for (const [sampleId, expectedFileName] of expectedSamples) {
+    const sample = SAMPLE_FILES.find((candidate) => candidate.id === sampleId);
+    assert.ok(sample, "missing sample " + sampleId);
+    assert.equal(sample.fileName, expectedFileName);
+    assert.ok(sample.labels.en);
+    assert.ok(sample.labels.ko);
+    assert.equal(fs.existsSync(path.resolve(__dirname, "..", sample.path)), true);
+  }
+  assert.match(bootstrapSource, /import \{ SAMPLE_FILES \} from "\.\.\/samples\/sample-manifest\.js"/);
+  assert.match(bootstrapSource, /const BOOTSTRAP_SAMPLE_FILES = SAMPLE_FILES;/);
+});
+
 test("media source policy shares preload behavior for local blobs and remote URLs", async () => {
   const loader = await createSourceModuleLoader();
   const mediaSource = await loader.import("src/js/ui/media-source.js");
