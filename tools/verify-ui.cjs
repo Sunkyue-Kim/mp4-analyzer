@@ -9,6 +9,9 @@ const sourceStylePath = path.join(rootDirectory, "src", "styles.css");
 const sourceUiPath = path.join(rootDirectory, "src", "js", "ui", "analyzer-ui.js");
 const sourceBoxDetailModelPath = path.join(rootDirectory, "src", "js", "ui", "box-detail-model.js");
 const sourceFrameInternalsViewPath = path.join(rootDirectory, "src", "js", "ui", "frame-internals-view.js");
+const sourceFrameInternalsMapPath = path.join(rootDirectory, "src", "js", "ui", "frame-internals-map.js");
+const sourceAnalysisWorkerClientPath = path.join(rootDirectory, "src", "js", "ui", "analysis-worker-client.js");
+const sourceFrameInternalsWorkerPath = path.join(rootDirectory, "src", "js", "worker", "frame-internals-worker.js");
 const sourceJsonViewerPath = path.join(rootDirectory, "src", "js", "ui", "json-viewer.js");
 const samplePath = path.join(rootDirectory, "validation", "generated", "avc_fragmented.mp4");
 const webmSamplePath = path.join(rootDirectory, "validation", "generated", "webm_vp9_opus.webm");
@@ -483,6 +486,9 @@ async function main() {
   const sourceUi = fs.readFileSync(sourceUiPath, "utf8");
   const sourceBoxDetailModel = fs.readFileSync(sourceBoxDetailModelPath, "utf8");
   const sourceFrameInternalsView = fs.readFileSync(sourceFrameInternalsViewPath, "utf8");
+  const sourceFrameInternalsMap = fs.readFileSync(sourceFrameInternalsMapPath, "utf8");
+  const sourceAnalysisWorkerClient = fs.readFileSync(sourceAnalysisWorkerClientPath, "utf8");
+  const sourceFrameInternalsWorker = fs.readFileSync(sourceFrameInternalsWorkerPath, "utf8");
   const sourceJsonViewer = fs.readFileSync(sourceJsonViewerPath, "utf8");
   verifyResponsiveLayoutCss();
   verifyNoExecutableStatementsAfterUserInterfaceReturn(sourceUi);
@@ -547,11 +553,28 @@ async function main() {
   if (!/renderFrameInternalsTooltipAttributes/.test(sourceFrameInternalsView) || !/handleFrameInternalsTooltipPointerOver/.test(sourceUi)) {
     throw new Error("Frame internals block details must use the custom tooltip controller.");
   }
-  if (!/buildFrameInternalsColorScale/.test(sourceUi) || !/frameInternalsColorScaleCache/.test(sourceUi)) {
-    throw new Error("Frame internals must cache a global percentile color scale per video track.");
+  if (/buildFrameInternalsColorScale|frameInternalsColorScaleCache/.test(sourceUi)) {
+    throw new Error("Frame internals must not synthesize a track-wide color distribution before parsing actual block syntax.");
   }
-  if (!/globalPercentile/.test(sourceFrameInternalsView) || !/--cell-red:/.test(sourceFrameInternalsView)) {
-    throw new Error("Frame internals block colors must render percentile-based RGB heatmap variables.");
+  if (!/globalPercentile/.test(sourceFrameInternalsMap) || !/--cell-red:/.test(sourceFrameInternalsView)) {
+    throw new Error("Frame internals block colors must render selected-frame actual-value RGB heatmap variables.");
+  }
+  if (
+    !/FRAME_INTERNALS_WORKER_COUNT\s*=\s*8/.test(sourceAnalysisWorkerClient) ||
+    !/new FrameInternalsWorkerPool/.test(sourceAnalysisWorkerClient) ||
+    !/analyzeFrameInternals/.test(sourceFrameInternalsWorker)
+  ) {
+    throw new Error("Frame internals parsing must use the dedicated eight-Web-Worker pool.");
+  }
+  if (!/frameInternalsAnalysisRequests\.size\s*>=\s*FRAME_INTERNALS_PREFETCH_COUNT/.test(sourceUi)) {
+    throw new Error("Frame internals prefetch must remain bounded to the eight-worker concurrency limit.");
+  }
+  if (
+    !/FRAME_INTERNALS_ANALYSIS_CACHE_RECORD_LIMIT\s*=\s*200_000/.test(sourceUi) ||
+    !/getFrameInternalsStructureRecordCount/.test(sourceUi) ||
+    !/terminateWorker/.test(sourceAnalysisWorkerClient)
+  ) {
+    throw new Error("Frame internals results, cache records, and cancellation must remain resource-bounded.");
   }
   if (!/data-inspection-tooltip=/.test(sourceFrameInternalsView)) {
     throw new Error("Frame internals hover targets must carry structured custom tooltip data.");

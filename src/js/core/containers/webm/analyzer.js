@@ -1,6 +1,6 @@
 import { createRangeReader, getResourceInfo, readResourcePrefix } from "../../common/binary.js";
 import { parseOpusHead, parseOpusPacket } from "../../codecs/audio/opus.js";
-import { parseAv1Sample } from "../../codecs/video/av1.js";
+import { parseAv1C, parseAv1Sample } from "../../codecs/video/av1.js";
 
 const UNKNOWN_SIZE = -1n;
 const MAX_INLINE_FIELD_BYTES = 256 * 1024;
@@ -271,6 +271,7 @@ function buildWebmTracks(context) {
     const codecPrivate = findChild(entry, "CodecPrivate");
     const codecPrivateBytes = codecPrivate ? codecPrivate.fields.bytes : null;
     const opusHead = codec === "A_OPUS" && codecPrivateBytes ? parseOpusHead(codecPrivateBytes) : null;
+    const av1Config = codec === "V_AV1" && codecPrivateBytes ? parseAv1C(codecPrivateBytes) : null;
     const samplingFrequency = audio ? (numberField(audio, "SamplingFrequency") || 0) : 0;
     const channels = audio ? (numberField(audio, "Channels") || 0) : 0;
     const handlerType = trackType === 1 ? "vide" : trackType === 2 ? "soun" : "unknown";
@@ -280,15 +281,15 @@ function buildWebmTracks(context) {
       channelDescription: channels ? channels + (channels === 1 ? " channel" : " channels") : "audio",
       samplingFrequency: codec === "A_OPUS" ? 48000 : samplingFrequency,
       opusHead
-    } : codec === "V_AV1" ? {
+    } : codec === "V_AV1" ? (av1Config || {
       codecString: "av01",
       codecFamily: "AV1"
-    } : null;
+    }) : null;
     return {
       trackId: trackNumber,
       handlerType,
       codec,
-      codecDescriptor: codec === "A_OPUS" ? "opus" : codec === "V_AV1" ? "av1" : codec,
+      codecDescriptor: codec === "A_OPUS" ? "opus" : codec === "V_AV1" ? "av1" : codec === "V_VP9" ? "vp9" : codec,
       codecConfig,
       timescale: 1000000000,
       duration: String(context.duration || 0),

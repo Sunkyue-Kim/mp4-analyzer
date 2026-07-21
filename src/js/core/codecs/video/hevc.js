@@ -1,5 +1,6 @@
 import { ByteCursor, hexByte } from "../../common/binary.js";
 import { BitReader, removeEmulationPreventionBytes } from "../../common/bitstream.js";
+import { parseHevcFrameInternals } from "./internals/hevc-internals.js";
 
 const HEVC_IRAP_NAL_TYPES = new Set([16, 17, 18, 19, 20, 21, 22, 23]);
 
@@ -40,9 +41,11 @@ function parseHevcC(bytes) {
       const nalUnitLength = cursor.uint16(offset);
       offset += 2;
       if (offset + nalUnitLength > cursor.length) break;
+      const nalUnitBytes = cursor.bytesAt(offset, nalUnitLength).slice();
       nalUnits.push({
         length: nalUnitLength,
-        previewHex: Array.from(cursor.bytesAt(offset, Math.min(nalUnitLength, 12))).map(hexByte).join("")
+        previewHex: Array.from(nalUnitBytes.subarray(0, 12)).map(hexByte).join(""),
+        bytes: nalUnitBytes
       });
       offset += nalUnitLength;
     }
@@ -160,6 +163,7 @@ const hevcVideoCodec = {
   parseSample(bytes, context) {
     return parseHevcSample(bytes, context.nalLengthSize);
   },
+  parseFrameInternals: parseHevcFrameInternals,
   getNalTypeName: hevcNalTypeName
 };
 
@@ -167,5 +171,6 @@ export {
   hevcVideoCodec,
   parseHevcC,
   parseHevcSample,
+  parseHevcFrameInternals,
   hevcNalTypeName
 };

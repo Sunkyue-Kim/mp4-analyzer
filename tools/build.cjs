@@ -25,11 +25,23 @@ async function build() {
 
 async function buildSingleFileOutputs(templateHtml) {
   const normalCss = await buildCss({ minify: false });
-  const normalWorkerJs = await buildWorkerJavaScript({ minify: false, sourceMap: false });
-  const normalJs = await buildJavaScript({ minify: false, sourceMap: false, workerJs: normalWorkerJs });
+  const normalWorkerJs = await buildWorkerJavaScript({ entryFile: "analyzer-worker.js", minify: false, sourceMap: false });
+  const normalFrameInternalsWorkerJs = await buildWorkerJavaScript({ entryFile: "frame-internals-worker.js", minify: false, sourceMap: false });
+  const normalJs = await buildJavaScript({
+    minify: false,
+    sourceMap: false,
+    workerJs: normalWorkerJs,
+    frameInternalsWorkerJs: normalFrameInternalsWorkerJs
+  });
   const minifiedCss = await buildCss({ minify: true });
-  const minifiedWorkerJs = await buildWorkerJavaScript({ minify: true, sourceMap: false });
-  const minifiedJs = await buildJavaScript({ minify: true, sourceMap: false, workerJs: minifiedWorkerJs });
+  const minifiedWorkerJs = await buildWorkerJavaScript({ entryFile: "analyzer-worker.js", minify: true, sourceMap: false });
+  const minifiedFrameInternalsWorkerJs = await buildWorkerJavaScript({ entryFile: "frame-internals-worker.js", minify: true, sourceMap: false });
+  const minifiedJs = await buildJavaScript({
+    minify: true,
+    sourceMap: false,
+    workerJs: minifiedWorkerJs,
+    frameInternalsWorkerJs: minifiedFrameInternalsWorkerJs
+  });
 
   const normalHtml = inlineAssets({
     templateHtml,
@@ -66,7 +78,8 @@ async function buildChunkedOutput(templateHtml) {
     absWorkingDir: sourceDirectory,
     entryPoints: {
       app: "./app.js",
-      "analyzer-worker": "./js/worker/analyzer-worker.js"
+      "analyzer-worker": "./js/worker/analyzer-worker.js",
+      "frame-internals-worker": "./js/worker/frame-internals-worker.js"
     },
     plugins: [localSourcePlugin()],
     bundle: true,
@@ -85,14 +98,17 @@ async function buildChunkedOutput(templateHtml) {
   });
   const appOutputPath = findMetafileEntry(scriptResult.metafile, "app.js");
   const workerOutputPath = findMetafileEntry(scriptResult.metafile, "js/worker/analyzer-worker.js");
+  const frameInternalsWorkerOutputPath = findMetafileEntry(scriptResult.metafile, "js/worker/frame-internals-worker.js");
   const appHref = toRootRelativeHref(appOutputPath);
   const workerHref = toRootRelativeHref(workerOutputPath);
+  const frameInternalsWorkerHref = toRootRelativeHref(frameInternalsWorkerOutputPath);
   const cssHref = "chunked/assets/" + cssFileName;
   const chunkedHtmlBeforeHtmlPass = createChunkedHtml({
     templateHtml,
     cssHref,
     appHref,
-    workerHref
+    workerHref,
+    frameInternalsWorkerHref
   });
   const chunkedHtml = (await minifyHtml(chunkedHtmlBeforeHtmlPass, {
     collapseBooleanAttributes: true,
@@ -108,7 +124,8 @@ async function buildChunkedOutput(templateHtml) {
   await verifyChunkedHtml({
     html: chunkedHtml,
     appOutputPath,
-    workerOutputPath
+    workerOutputPath,
+    frameInternalsWorkerOutputPath
   });
   console.log(`Built chunked ${path.relative(rootDirectory, outputChunkedHtmlPath)} (${chunkedHtml.length} bytes)`);
   console.log(`Built chunked assets (${Object.keys(scriptResult.metafile.outputs).length + 1} files)`);
@@ -124,7 +141,7 @@ async function buildCss({ minify }) {
   return result.code.trim();
 }
 
-async function buildJavaScript({ minify, sourceMap, workerJs }) {
+async function buildJavaScript({ minify, sourceMap, workerJs, frameInternalsWorkerJs }) {
   const entrySource = await fs.readFile(path.join(sourceDirectory, "app.js"), "utf8");
   const result = await esbuild.build({
     stdin: {
@@ -135,7 +152,7 @@ async function buildJavaScript({ minify, sourceMap, workerJs }) {
     },
     plugins: [localSourcePlugin()],
     bundle: true,
-    banner: { js: createInlineWorkerSourceScript(workerJs) },
+    banner: { js: createInlineWorkerSourceScript(workerJs, frameInternalsWorkerJs) },
     write: false,
     format: "iife",
     minify,
@@ -146,13 +163,13 @@ async function buildJavaScript({ minify, sourceMap, workerJs }) {
   return result.outputFiles[0].text.trim();
 }
 
-async function buildWorkerJavaScript({ minify, sourceMap }) {
-  const entrySource = await fs.readFile(path.join(sourceDirectory, "js", "worker", "analyzer-worker.js"), "utf8");
+async function buildWorkerJavaScript({ entryFile, minify, sourceMap }) {
+  const entrySource = await fs.readFile(path.join(sourceDirectory, "js", "worker", entryFile), "utf8");
   const result = await esbuild.build({
     stdin: {
       contents: entrySource,
       resolveDir: path.join(sourceDirectory, "js", "worker"),
-      sourcefile: "analyzer-worker.js",
+      sourcefile: entryFile,
       loader: "js"
     },
     plugins: [localSourcePlugin()],
@@ -167,11 +184,11 @@ async function buildWorkerJavaScript({ minify, sourceMap }) {
   return result.outputFiles[0].text.trim();
 }
 
-function createInlineWorkerSourceScript(workerJs) {
-  return `if (typeof window !== "undefined") window.MP4AnalyzerWorkerSource = ${JSON.stringify(workerJs)};`;
+function createInlineWorkerSourceScript(workerJs, frameInternalsWorkerJs) {
+  return `if (typeof window !== "undefined") { window.MP4AnalyzerWorkerSource = ${JSON.stringify(workerJs)}; window.MP4FrameInternalsWorkerSource = ${JSON.stringify(frameInternalsWorkerJs)}; }`;
 }
 
-function createChunkedHtml({ templateHtml, cssHref, appHref, workerHref }) {
+function createChunkedHtml({ templateHtml, cssHref, appHref, workerHref, frameInternalsWorkerHref }) {
   const withBase = templateHtml.replace(/<head>/i, '<head>\n  <base href="../">');
   const withCss = withBase.replace(
     /<link\s+rel="stylesheet"\s+href="\.\/styles\.css"\s*>/i,
@@ -179,7 +196,7 @@ function createChunkedHtml({ templateHtml, cssHref, appHref, workerHref }) {
   );
   return withCss.replace(
     /<script\s+src="\.\/app\.js"><\/script>/i,
-    `<script>window.MP4AnalyzerWorkerModuleUrl = ${JSON.stringify(workerHref)};</script>\n  <script type="module" src="${appHref}"></script>`
+    `<script>window.MP4AnalyzerWorkerModuleUrl = ${JSON.stringify(workerHref)};window.MP4FrameInternalsWorkerModuleUrl = ${JSON.stringify(frameInternalsWorkerHref)};</script>\n  <script type="module" src="${appHref}"></script>`
   );
 }
 
@@ -306,13 +323,16 @@ function extractSingleInlineScript(filePath, html) {
   return html.slice(startIndex + startMarker.length, endIndex);
 }
 
-async function verifyChunkedHtml({ html, appOutputPath, workerOutputPath }) {
+async function verifyChunkedHtml({ html, appOutputPath, workerOutputPath, frameInternalsWorkerOutputPath }) {
   if (!/<script\s+type="module"\s+src=/.test(html)) throw new Error("chunked HTML must load app as a module script.");
   if (!/MP4AnalyzerWorkerModuleUrl/.test(html)) throw new Error("chunked HTML must expose the worker module URL.");
+  if (!/MP4FrameInternalsWorkerModuleUrl/.test(html)) throw new Error("chunked HTML must expose the frame internals worker module URL.");
   await fs.access(workerOutputPath);
+  await fs.access(frameInternalsWorkerOutputPath);
   await verifyChunkedJavaScriptSourceMaps(outputChunkedAssetsDirectory, new Set([
     path.resolve(appOutputPath),
-    path.resolve(workerOutputPath)
+    path.resolve(workerOutputPath),
+    path.resolve(frameInternalsWorkerOutputPath)
   ]));
 
   const previousWindow = global.window;

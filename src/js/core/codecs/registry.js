@@ -28,6 +28,15 @@ const VIDEO_CODEC_DESCRIPTORS = [
     loadImplementation: () => import("./video/hevc.js").then((module) => module.hevcVideoCodec)
   },
   {
+    id: "vp9",
+    label: "VP9",
+    kind: "video",
+    sampleEntryTypes: ["vp09", "V_VP9", "vp9"],
+    configurationBoxTypes: ["vpcC"],
+    canScanSamples: false,
+    loadImplementation: () => import("./video/vp9.js").then((module) => module.vp9VideoCodec)
+  },
+  {
     id: "av1",
     label: "AV1",
     kind: "video",

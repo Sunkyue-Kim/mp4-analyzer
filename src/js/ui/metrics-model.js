@@ -76,7 +76,7 @@ function buildMovingAveragePoints(track, rows, windowSize) {
     const first = sampleMetrics[startIndex];
     const last = sampleMetrics[startIndex + boundedWindowSize - 1];
     points.push({
-      time: getWindowCenterTimeSeconds(first, last, track),
+      time: getRowTimeSeconds(first.row, () => track),
       bitrate: windowDuration > 0 ? windowBytes * 8 / windowDuration : 0,
       fps: windowDuration > 0 ? boundedWindowSize / windowDuration : 0,
       sampleCount: boundedWindowSize,
@@ -91,15 +91,6 @@ function buildMovingAveragePoints(track, rows, windowSize) {
     }
   }
   return points;
-}
-
-function getWindowCenterTimeSeconds(first, last, track) {
-  const windowStartTime = getRowTimeSeconds(first.row, () => track);
-  const windowEndTime = getRowTimeSeconds(last.row, () => track) + Math.max(0, last.durationSeconds);
-  if (!Number.isFinite(windowStartTime) || !Number.isFinite(windowEndTime) || windowEndTime <= windowStartTime) {
-    return windowStartTime;
-  }
-  return windowStartTime + (windowEndTime - windowStartTime) / 2;
 }
 
 function getMedian(sortedValues) {

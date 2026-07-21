@@ -1,5 +1,4 @@
 import {
-  clamp,
   formatMetricNumber
 } from "../core/analyzer-core.js";
 import {
@@ -16,9 +15,11 @@ import {
 } from "./frame-internals-map.js";
 
 export function renderVideoFrameInternals(model, options = {}) {
+  const cells = Array.isArray(model.cells) ? model.cells : [];
   const frameClass = getFrameTypeClass(model.frameType);
   const frameOverlay = normalizeFrameOverlayOptions(options.frameOverlay);
-  const pathGroups = buildFrameInternalsPathGroups(model.cells);
+  const pathGroups = getFrameInternalsPathGroups(model, cells, options);
+  const displayCellCount = getFrameInternalsDisplayCellCount(model, cells, pathGroups);
   const viewportClass = [
     "block-map-viewport",
     frameOverlay.enabled ? "frame-overlay-enabled" : "",
@@ -27,34 +28,75 @@ export function renderVideoFrameInternals(model, options = {}) {
   const stats = [
     [t("frameInternals.codec"), model.codecFamily],
     [t("frameInternals.frame"), options.frameLabel || t("value.notAvailable")],
-    [t("frameInternals.unit"), model.unitName + " " + model.unitWidth + "x" + model.unitHeight],
+    [t("frameInternals.unit"), formatCodingUnit(model)],
     [t("frameInternals.mediaSize"), formatVideoMediaSize(model)],
-    [t("frameInternals.nominalGrid"), model.nominalColumns + "x" + model.nominalRows + " (" + model.nominalUnitCount + ")"],
-    [t("frameInternals.displayedGrid"), formatVideoDisplayedGrid(model)],
+    [t("frameInternals.blockGrid"), formatBlockGrid(model)],
+    [t("frameInternals.rootBlocks"), formatMetricNumber(model.nominalUnitCount, 0)],
+    [t("frameInternals.codedBlocks"), formatMetricNumber(model.partitionBlockCount, 0)],
+    [t("frameInternals.leafBlocks"), formatMetricNumber(model.leafBlockCount, 0)],
+    [t("frameInternals.retainedNodes"), formatMetricNumber(model.retainedStructureRecordCount, 0)],
+    [t("frameInternals.renderedCells"), formatMetricNumber(model.displayCellCount, 0)],
     [t("frameInternals.partitionModes"), formatPartitionModes(model.partitionModes)],
-    [t("frameInternals.sampleBits"), formatBits(model.sampleBits)],
-    [t("frameInternals.colorScale"), formatFrameInternalsColorScale(model.colorScale)],
-    [t("frameInternals.accuracy"), t("frameInternals.nominal")]
+    [t("frameInternals.partitionDepths"), formatPartitionDepths(model.partitionDepths)],
+    [t("frameInternals.frameBits"), formatBits(model.sampleBits)],
+    [t("frameInternals.attributedBits"), formatBits(model.attributedBits)],
+    [t("frameInternals.overheadBits"), formatBits(model.overheadBits)],
+    [t("frameInternals.bitAccounting"), formatFrameInternalsBitAccounting(model)],
+    [t("frameInternals.source"), formatFrameInternalsSource(model)],
+    [t("frameInternals.accuracy"), formatFrameInternalsAccuracy(model)]
   ];
   return '<div class="frame-internals-layout">' +
     '<div class="frame-internals-summary">' +
-    '<div class="frame-internals-title-row"><strong>' + escapeHtml(model.title) + '</strong><span class="pill ' + frameClass + '">' + escapeHtml(formatFrameTypeLabel(model.frameType)) + '</span></div>' +
-    '<p class="frame-internals-note">' + escapeHtml(model.note) + '</p>' +
+    '<div class="frame-internals-title-row"><strong>' + escapeHtml(formatFrameInternalsTitle(model)) + '</strong><span class="pill ' + frameClass + '">' + escapeHtml(formatFrameTypeLabel(model.frameType)) + '</span></div>' +
+    '<p class="frame-internals-note">' + escapeHtml(t(model.granularity === "root-units" ? "frameInternals.rootGridAccuracy" : "frameInternals.bitstreamSyntaxAccuracy")) + '</p>' +
+    renderStructureBudgetNote(model) +
     renderFrameInternalsStats(stats) +
     '</div>' +
     '<div class="block-heatmap-wrap">' +
     '<div class="' + viewportClass + '" tabindex="0" role="region" aria-label="' + escapeHtml(t("frameInternals.zoomPlotAria")) + '" style="' + renderVideoBlockMapStyle(model) + '">' +
-    '<svg class="block-map" viewBox="0 0 ' + formatSvgNumber(model.mediaWidth) + ' ' + formatSvgNumber(model.mediaHeight) + '" data-media-width="' + escapeHtml(String(model.mediaWidth)) + '" data-media-height="' + escapeHtml(String(model.mediaHeight)) + '" data-block-count="' + escapeHtml(String(model.cells.length)) + '" data-path-count="' + escapeHtml(String(pathGroups.length)) + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+    '<svg class="block-map" viewBox="0 0 ' + formatSvgNumber(model.mediaWidth) + ' ' + formatSvgNumber(model.mediaHeight) + '" data-media-width="' + escapeHtml(String(model.mediaWidth)) + '" data-media-height="' + escapeHtml(String(model.mediaHeight)) + '" data-block-count="' + escapeHtml(String(displayCellCount)) + '" data-path-count="' + escapeHtml(String(pathGroups.length)) + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
       renderFrameOverlayImage(model, frameOverlay) +
       pathGroups.map((group) => renderVideoBlockPathGroup(group, frameClass)).join("") +
       '<rect class="block-hover-outline" visibility="hidden"></rect>' +
     '</svg>' +
     renderFrameOverlayStatus(frameOverlay) +
     '</div>' +
-    '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.videoEstimateNote")) + '</p>' +
+    '<p class="frame-internals-note">' + escapeHtml(t(model.granularity === "root-units" ? "frameInternals.rootGridLimitations" : "frameInternals.videoLimitations")) + '</p>' +
     '</div>' +
-    '</div>' +
-    renderVideoInternalsMetrics(model);
+    '</div>';
+}
+
+function getFrameInternalsPathGroups(model, cells, options) {
+  if (Array.isArray(options.pathGroups)) return options.pathGroups;
+  if (Array.isArray(model.pathGroups)) return model.pathGroups;
+  return buildFrameInternalsPathGroups(cells, { heatmapBucketCount: 32 });
+}
+
+function getFrameInternalsDisplayCellCount(model, cells, pathGroups) {
+  const declaredDisplayCellCount = Number(model.displayCellCount);
+  if (Number.isFinite(declaredDisplayCellCount) && declaredDisplayCellCount >= 0) {
+    return Math.round(declaredDisplayCellCount);
+  }
+  if (cells.length) return cells.length;
+  return pathGroups.reduce(
+    (totalCellCount, pathGroup) => totalCellCount + Math.max(0, Number(pathGroup.cellCount) || 0),
+    0
+  );
+}
+
+function renderStructureBudgetNote(model) {
+  if (!model.structureTruncated) return "";
+  return '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.structureBudgetNote", {
+    decoded: formatMetricNumber(model.partitionBlockCount, 0),
+    retained: formatMetricNumber(model.retainedStructureRecordCount, 0),
+    omitted: formatMetricNumber(model.omittedPartitionCount, 0)
+  })) + '</p>';
+}
+
+function formatFrameInternalsTitle(model) {
+  return t(model.granularity === "root-units" ? "frameInternals.rootTitle" : "frameInternals.videoTitle", {
+    codec: String(model.codecFamily || model.codec || t("value.unknown"))
+  });
 }
 
 function normalizeFrameOverlayOptions(frameOverlay) {
@@ -93,17 +135,32 @@ function renderVideoBlockMapStyle(model) {
   ].join(";");
 }
 
-function formatVideoDisplayedGrid(model) {
-  const blocks = model.partitionBlockCount || model.displayCellCount || 0;
-  const roots = model.displayColumns && model.displayRows ? model.displayColumns + "x" + model.displayRows : t("value.notAvailable");
-  const depth = model.maxPartitionDepth ? ", " + t("frameInternals.maxDepth", { depth: model.maxPartitionDepth }) : "";
-  const aggregation = model.aggregation > 1 ? ", " + t("frameInternals.rootAggregation", { value: model.aggregation }) : "";
-  return t("frameInternals.partitionBlocks", { count: blocks }) + " (" + roots + depth + aggregation + ")";
+function formatCodingUnit(model) {
+  const unitWidth = getPositiveNumber(model.unitWidth);
+  const unitHeight = getPositiveNumber(model.unitHeight);
+  const size = unitWidth && unitHeight ? " " + unitWidth + "x" + unitHeight : "";
+  return String(model.unitName || "block") + size;
+}
+
+function formatBlockGrid(model) {
+  const columns = getPositiveNumber(model.nominalColumns, model.displayColumns);
+  const rows = getPositiveNumber(model.nominalRows, model.displayRows);
+  if (!columns || !rows) return t("value.notAvailable");
+  return columns + "x" + rows;
 }
 
 function formatPartitionModes(modes) {
   if (!Array.isArray(modes) || !modes.length) return t("value.notAvailable");
-  return modes.slice(0, 4).map((entry) => entry.mode + " " + entry.count).join(", ");
+  return modes.slice(0, 6).map((entry) =>
+    String(entry.mode || t("value.unknown")) + " " + formatMetricNumber(entry.count, 0)
+  ).join(", ");
+}
+
+function formatPartitionDepths(depths) {
+  if (!Array.isArray(depths) || !depths.length) return t("value.notAvailable");
+  return depths.map((entry) =>
+    "D" + formatMetricNumber(entry.depth, 0) + " " + formatMetricNumber(entry.count, 0)
+  ).join(", ");
 }
 
 function formatVideoMediaSize(model) {
@@ -121,33 +178,47 @@ function formatVideoMediaSize(model) {
 
 export function createVideoBlockTooltipPayload(cell, model) {
   const displayBounds = getFrameInternalsDisplayBounds(cell);
-  const title = model.unitName + " " + (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0) + " @ " + cell.pixelLeft + "," + cell.pixelTop;
+  const codedBlockWidth = getPositiveNumber(cell.codedBlockWidth, cell.blockWidth, Number(cell.pixelRight) - Number(cell.pixelLeft));
+  const codedBlockHeight = getPositiveNumber(cell.codedBlockHeight, cell.blockHeight, Number(cell.pixelBottom) - Number(cell.pixelTop));
+  const ownSyntaxBits = getNullableNonNegativeNumber(cell.ownBits, cell.syntaxBits);
+  const subtreeBits = getNullableNonNegativeNumber(cell.subtreeBits, ownSyntaxBits);
+  const blockArea = Math.max(1, codedBlockWidth * codedBlockHeight);
+  const attributedBitsPerPixel = subtreeBits === null ? null : subtreeBits / blockArea;
   return {
-    title,
+    title: t("frameInternals.tooltip.blockTitle", {
+      type: String(cell.type || cell.partitionMode || model.unitName || "block"),
+      id: String(cell.id || t("value.notAvailable"))
+    }),
     rows: [
-      [t("frameInternals.tooltip.encodedPixelRange"), cell.pixelLeft + "," + cell.pixelTop + " - " + cell.pixelRight + "," + cell.pixelBottom],
+      [t("frameInternals.tooltip.partitionType"), String(cell.partitionMode || cell.type || t("value.notAvailable"))],
+      [t("frameInternals.tooltip.partitionDepth"), formatMetricNumber(cell.depth, 0)],
+      [t("frameInternals.tooltip.framePixelRange"), formatCellBounds({
+        left: cell.pixelLeft,
+        top: cell.pixelTop,
+        right: cell.pixelRight,
+        bottom: cell.pixelBottom
+      })],
       [t("frameInternals.tooltip.displayPixelRange"), formatCellBounds(displayBounds)],
-      [t("frameInternals.tooltip.blockSize"), (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)],
-      [t("frameInternals.tooltip.partition"), cell.partitionMode || t("value.notAvailable")],
-      [t("frameInternals.tooltip.depth"), cell.depth || 0],
-      [t("frameInternals.tooltip.estimatedBits"), formatBits(cell.estimatedBits)],
-      [t("frameInternals.tooltip.bitDensity"), formatBitDensity(cell.estimatedBitsPerPixel, cell.normalizedBitDensity)],
-      [t("frameInternals.tooltip.globalPercentile"), formatMetricNumber((cell.globalPercentile || 0) * 100, 1) + "%"],
-      [t("frameInternals.tooltip.nominalUnits"), cell.nominalUnits],
-      [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
+      [t("frameInternals.tooltip.codedBlockSize"), codedBlockWidth + "x" + codedBlockHeight],
+      [t("frameInternals.tooltip.ownSyntaxBits"), formatBits(ownSyntaxBits)],
+      [t("frameInternals.tooltip.subtreeBits"), formatBits(subtreeBits)],
+      [t("frameInternals.tooltip.bitAccounting"), formatFrameInternalsBitAccounting(model)],
+      [t("frameInternals.tooltip.bitsPerPixel"), attributedBitsPerPixel === null ? t("value.notAvailable") : formatMetricNumber(attributedBitsPerPixel, 4)],
+      [t("frameInternals.tooltip.aggregatedBlocks"), formatMetricNumber(cell.aggregatedDescendantCount || 0, 0)],
+      [t("frameInternals.tooltip.accuracy"), formatFrameInternalsAccuracy(model)]
     ],
-    note: t("frameInternals.videoEstimateNote")
+    note: t(model.granularity === "root-units" ? "frameInternals.rootGridLimitations" : "frameInternals.videoLimitations")
   };
 }
 
 function renderVideoBlockPathGroup(group, frameClass) {
   return '<path class="block-cell block-cell-path ' + frameClass + '"' +
-    ' d="' + group.pathData + '"' +
-    ' data-cell-count="' + group.cellCount + '"' +
-    ' style="--cell-red:' + group.red +
-      ';--cell-green:' + group.green +
-      ';--cell-blue:' + group.blue +
-      ';--cell-alpha:' + group.alpha.toFixed(3) + '"></path>';
+    ' d="' + escapeHtml(String(group.pathData || "")) + '"' +
+    ' style="--cell-red:' + formatSvgNumber(group.red) +
+      ';--cell-green:' + formatSvgNumber(group.green) +
+      ';--cell-blue:' + formatSvgNumber(group.blue) +
+      ';--cell-alpha:' + formatSvgNumber(group.alpha) + '"' +
+    ' data-cell-count="' + escapeHtml(String(Math.max(0, Number(group.cellCount) || 0))) + '"></path>';
 }
 
 function formatSvgNumber(value) {
@@ -171,167 +242,42 @@ function formatCellCoordinate(value) {
     : formatMetricNumber(numberValue, 2);
 }
 
-function formatBitDensity(bitsPerPixel, normalizedBitDensity) {
-  const density = Number(bitsPerPixel);
-  const normalized = Number(normalizedBitDensity);
-  if (!Number.isFinite(density) || density < 0) return t("value.notAvailable");
-  const normalizedText = Number.isFinite(normalized) && normalized >= 0
-    ? ", " + formatMetricNumber(normalized, 2) + "x"
-    : "";
-  return formatMetricNumber(density, getBitPrecision(density)) + " bits/px" + normalizedText;
+function formatFrameInternalsSource(model) {
+  const source = String(model.source || "native-js-bitstream-parser");
+  return source === "native-js-bitstream-parser" ? t("frameInternals.nativeJsParser") : source;
 }
 
-function formatFrameInternalsColorScale(colorScale) {
-  if (!colorScale) return t("value.notAvailable");
-  if (colorScale.mode === "global-track-percentile") {
-    return t("frameInternals.globalTrackPercentile", {
-      count: colorScale.sampleCount,
-      values: colorScale.valueCount
-    });
-  }
-  if (colorScale.mode === "selected-frame-percentile") return t("frameInternals.selectedFramePercentile");
+function formatFrameInternalsAccuracy(model) {
+  const accuracy = String(model.accuracy || "bitstream-syntax-decoded");
+  if (accuracy === "bitstream-root-units") return t("frameInternals.rootUnitsDecoded");
+  return accuracy === "bitstream-syntax-decoded" ? t("frameInternals.syntaxDecoded") : accuracy;
+}
+
+function formatFrameInternalsBitAccounting(model) {
+  if (model.accountingKind === "cavlc-syntax-bit-length") return t("frameInternals.bitAccounting.cavlc");
+  if (model.accountingKind === "cabac-renormalization-cursor-delta") return t("frameInternals.bitAccounting.cabac");
   return t("value.notAvailable");
 }
 
-function renderVideoInternalsMetrics(model) {
-  const cells = Array.isArray(model.cells) ? model.cells : [];
-  if (!cells.length) return "";
-  const densities = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBitsPerPixel)));
-  const estimatedBits = sortFiniteMetricValues(cells.map((cell) => Number(cell.estimatedBits)));
-  const areas = sortFiniteMetricValues(cells.map((cell) => Math.max(1, Number(cell.blockWidth) * Number(cell.blockHeight) || 1)));
-  const blockSizeGroups = getTopCountGroups(cells.map((cell) => (cell.blockWidth || 0) + "x" + (cell.blockHeight || 0)), 6);
-  const depthGroups = getPartitionDepthGroups(model, cells);
-  const modeGroups = getTopCountGroups(cells.map((cell) => cell.partitionMode || t("value.unknown")), 8);
-  const commonBlock = blockSizeGroups[0];
-  const sampleBits = Math.max(0, Number(model.sampleBits) || sumNumbers(estimatedBits));
-  const cards = [
-    [t("frameInternals.stats.blocks"), formatMetricNumber(cells.length, 0)],
-    [t("frameInternals.stats.totalBits"), formatBits(sampleBits)],
-    [t("frameInternals.stats.commonBlock"), commonBlock ? commonBlock.label + " (" + commonBlock.count + ")" : t("value.notAvailable")],
-    [t("frameInternals.stats.medianArea"), formatArea(getSortedQuantile(areas, 0.5))],
-    [t("frameInternals.stats.medianDensity"), formatDensityValue(getSortedQuantile(densities, 0.5))],
-    [t("frameInternals.stats.p95Density"), formatDensityValue(getSortedQuantile(densities, 0.95))],
-    [t("frameInternals.stats.maxBlockBits"), formatBits(estimatedBits.at(-1) || 0)],
-    [t("frameInternals.stats.p95BlockBits"), formatBits(getSortedQuantile(estimatedBits, 0.95))]
-  ];
-  return renderInternalsMetricsSection([
-    renderInternalMetricCards(cards),
-    '<div class="frame-internals-chart-grid">' +
-      renderInternalsBarChart(t("frameInternals.stats.blockSizeDistribution"), blockSizeGroups.map((group) => ({
-        label: group.label,
-        value: group.count,
-        detail: t("frameInternals.stats.blockCount", { count: group.count })
-      }))) +
-      renderInternalsBarChart(t("frameInternals.stats.bitDensityDistribution"), buildHistogramEntries(densities, 6, formatDensityValue, { sorted: true })) +
-      renderInternalsBarChart(t("frameInternals.stats.partitionModes"), modeGroups.map((group) => ({
-        label: group.label,
-        value: group.count,
-        detail: t("frameInternals.stats.blockCount", { count: group.count })
-      }))) +
-      renderInternalsBarChart(t("frameInternals.stats.partitionDepth"), depthGroups.map((group) => ({
-        label: group.label,
-        value: group.count,
-        detail: t("frameInternals.stats.blockCount", { count: group.count })
-      }))) +
-    '</div>'
-  ].join(""));
-}
-
-function getPartitionDepthGroups(model, cells) {
-  const modelDepths = Array.isArray(model.partitionDepths) ? model.partitionDepths : [];
-  const normalizedModelDepths = modelDepths
-    .map((entry) => ({
-      depth: Math.max(0, Math.round(Number(entry && entry.depth) || 0)),
-      count: Math.max(0, Number(entry && entry.count) || 0)
-    }))
-    .filter((entry) => entry.count > 0)
-    .sort((left, right) => left.depth - right.depth);
-  if (normalizedModelDepths.length) {
-    return normalizedModelDepths.map((entry) => ({
-      label: t("frameInternals.depthLabel", { depth: entry.depth }),
-      count: entry.count,
-      value: entry.count
-    }));
+function getPositiveNumber(...values) {
+  for (const value of values) {
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue) && numberValue > 0) return Math.round(numberValue);
   }
-  return getTopCountGroups(cells.map((cell) => t("frameInternals.depthLabel", { depth: cell.depth || 0 })), 8);
+  return 0;
 }
 
-export function renderAudioFrameInternals(model, options = {}) {
-  const stats = [
-    [t("frameInternals.codec"), model.title],
-    [t("frameInternals.frame"), options.frameLabel || t("value.notAvailable")],
-    [t("frameInternals.sampleBits"), formatBits(model.sampleBits)],
-    [t("frameInternals.sampleRate"), model.sampleRate ? formatMetricNumber(model.sampleRate, 0) + " Hz" : t("value.notAvailable")],
-    [t("frameInternals.activeBandwidth"), formatAudioFrequency(model.activeBandwidthHz)],
-    [t("frameInternals.channels"), model.channelCount || t("value.notAvailable")]
-  ];
-  return '<div class="frame-internals-layout">' +
-    '<div class="frame-internals-summary">' +
-    '<div class="frame-internals-title-row"><strong>' + escapeHtml(t("frameInternals.audioBands")) + '</strong><span class="pill aac">' + escapeHtml(formatFrameTypeLabel(model.frameType)) + '</span></div>' +
-    '<p class="frame-internals-note">' + escapeHtml(model.note) + '</p>' +
-    renderFrameInternalsStats(stats) +
-    '</div>' +
-    '<div class="block-heatmap-wrap">' +
-    '<div class="audio-band-plot">' + model.bands.map(renderAudioBandRow).join("") + '</div>' +
-    '<p class="frame-internals-note">' + escapeHtml(t("frameInternals.audioEstimateNote")) + '</p>' +
-    '</div>' +
-    '</div>' +
-    renderAudioInternalsMetrics(model);
+function getNullableNonNegativeNumber(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue) && numberValue >= 0) return numberValue;
+  }
+  return null;
 }
 
-function renderAudioInternalsMetrics(model) {
-  const bands = Array.isArray(model.bands) ? model.bands : [];
-  if (!bands.length) return "";
-  const estimatedBits = bands.map((band) => Number(band.estimatedBits)).filter(isFiniteNonNegative);
-  const totalBits = Math.max(0, Number(model.sampleBits) || sumNumbers(estimatedBits));
-  const activeBands = bands.filter((band) => band.active).length;
-  const peakBand = bands.reduce((currentPeak, band) =>
-    Number(band.estimatedBits) > Number(currentPeak && currentPeak.estimatedBits || -1) ? band : currentPeak,
-  null);
-  const cards = [
-    [t("frameInternals.stats.bands"), formatMetricNumber(bands.length, 0)],
-    [t("frameInternals.stats.activeBands"), formatMetricNumber(activeBands, 0)],
-    [t("frameInternals.stats.totalBits"), formatBits(totalBits)],
-    [t("frameInternals.stats.peakBand"), peakBand ? peakBand.label : t("value.notAvailable")],
-    [t("frameInternals.stats.medianBandBits"), formatBits(getQuantile(estimatedBits, 0.5))],
-    [t("frameInternals.activeBandwidth"), formatAudioFrequency(model.activeBandwidthHz)]
-  ];
-  return renderInternalsMetricsSection([
-    renderInternalMetricCards(cards),
-    '<div class="frame-internals-chart-grid">' +
-      renderInternalsBarChart(t("frameInternals.stats.bandBitShare"), bands.map((band) => ({
-        label: band.label,
-        value: Number(band.estimatedBits) || 0,
-        detail: formatBits(Number(band.estimatedBits) || 0) + " · " + formatMetricNumber((band.ratio || 0) * 100, 1) + "%"
-      }))) +
-      renderInternalsBarChart(t("frameInternals.stats.bandActivity"), bands.map((band) => ({
-        label: band.label,
-        value: band.active ? 1 : 0.08,
-        detail: band.active ? t("frameInternals.stats.active") : t("frameInternals.stats.inactive")
-      }))) +
-    '</div>'
-  ].join(""));
-}
-
-function renderAudioBandRow(band) {
-  const widthPercent = clamp(band.ratio * 100, band.active ? 2 : 0.8, 100);
-  const tooltipRows = [
-    [t("frameInternals.tooltip.frequencyRange"), band.range],
-    [t("frameInternals.tooltip.estimatedBits"), formatBits(band.estimatedBits)],
-    [t("frameInternals.tooltip.relativeShare"), formatMetricNumber(band.ratio * 100, 1) + "%"],
-    [t("frameInternals.tooltip.accuracy"), t("frameInternals.tooltip.nominalEstimate")]
-  ];
-  return '<div class="audio-band-row"' +
-    renderFrameInternalsTooltipAttributes({
-      title: band.label,
-      rows: tooltipRows,
-      note: t("frameInternals.audioEstimateNote")
-    }) +
-    '>' +
-    '<div class="audio-band-label">' + escapeHtml(band.label) + '<br><small>' + escapeHtml(band.range) + '</small></div>' +
-    '<div class="audio-band-bar"><span class="audio-band-fill" style="width:' + widthPercent.toFixed(3) + '%;--band-alpha:' + band.intensity.toFixed(3) + '"></span></div>' +
-    '<div class="audio-band-size">' + escapeHtml(formatBits(band.estimatedBits)) + '</div>' +
-    '</div>';
+export function renderAudioFrameInternals() {
+  return '<div class="empty compact">' + escapeHtml(t("frameInternals.audioUnsupported")) + '</div>';
 }
 
 export function renderFrameInternalsTooltipAttributes(payload) {
@@ -370,106 +316,9 @@ function renderFrameInternalsStats(stats) {
   ).join("") + '</div>';
 }
 
-function renderInternalsMetricsSection(content) {
-  return '<section class="frame-internals-metrics">' +
-    '<div class="frame-internals-metrics-head">' +
-      '<h3>' + escapeHtml(t("frameInternals.stats.title")) + '</h3>' +
-      '<span>' + escapeHtml(t("frameInternals.stats.subtitle")) + '</span>' +
-    '</div>' +
-    content +
-  '</section>';
-}
-
-function renderInternalMetricCards(cards) {
-  return '<div class="frame-internals-metric-cards">' + cards.map(([label, value]) =>
-    '<div class="frame-internals-metric-card"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(String(value)) + '</strong></div>'
-  ).join("") + '</div>';
-}
-
-function renderInternalsBarChart(title, entries) {
-  const visibleEntries = (Array.isArray(entries) ? entries : []).filter((entry) => entry && isFiniteNonNegative(entry.value));
-  if (!visibleEntries.length) return '<section class="frame-internals-chart-card"><h4>' + escapeHtml(title) + '</h4>' + escapeHtml(t("value.notAvailable")) + '</section>';
-  const maxValue = Math.max(...visibleEntries.map((entry) => entry.value), 1);
-  return '<section class="frame-internals-chart-card">' +
-    '<h4>' + escapeHtml(title) + '</h4>' +
-    '<div class="frame-internals-bar-list">' +
-      visibleEntries.map((entry) => renderInternalsBarRow(entry, maxValue)).join("") +
-    '</div>' +
-  '</section>';
-}
-
-function renderInternalsBarRow(entry, maxValue) {
-  const widthPercent = clamp((Number(entry.value) || 0) * 100 / Math.max(1, maxValue), 1.2, 100);
-  return '<div class="frame-internals-bar-row">' +
-    '<span class="frame-internals-bar-label">' + escapeHtml(entry.label) + '</span>' +
-    '<span class="frame-internals-bar-track"><span style="width:' + widthPercent.toFixed(3) + '%"></span></span>' +
-    '<strong>' + escapeHtml(entry.detail || formatMetricNumber(entry.value, 0)) + '</strong>' +
-  '</div>';
-}
-
-function getTopCountGroups(values, limit) {
-  const counts = new Map();
-  for (const value of values) {
-    const label = String(value || t("value.unknown"));
-    counts.set(label, (counts.get(label) || 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .map(([label, count]) => ({ label, count, value: count }))
-    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label))
-    .slice(0, limit);
-}
-
-function buildHistogramEntries(values, binCount, formatter, options = {}) {
-  const sortedValues = options.sorted ? values : sortFiniteMetricValues(values);
-  if (!sortedValues.length) return [];
-  const minValue = sortedValues[0];
-  const maxValue = sortedValues[sortedValues.length - 1];
-  if (minValue === maxValue) {
-    return [{
-      label: formatter(minValue),
-      value: sortedValues.length,
-      detail: t("frameInternals.stats.blockCount", { count: sortedValues.length })
-    }];
-  }
-  const bins = Array.from({ length: binCount }, (_, index) => ({
-    index,
-    start: minValue + (maxValue - minValue) * index / binCount,
-    end: minValue + (maxValue - minValue) * (index + 1) / binCount,
-    count: 0
-  }));
-  for (const value of sortedValues) {
-    const rawIndex = Math.floor((value - minValue) * binCount / (maxValue - minValue));
-    bins[Math.min(binCount - 1, Math.max(0, rawIndex))].count += 1;
-  }
-  return bins
-    .filter((bin) => bin.count > 0)
-    .map((bin) => ({
-      label: formatter(bin.start) + " - " + formatter(bin.end),
-      value: bin.count,
-      detail: t("frameInternals.stats.blockCount", { count: bin.count })
-    }));
-}
-
-function getQuantile(values, quantile) {
-  return getSortedQuantile(sortFiniteMetricValues(values), quantile);
-}
-
-function getSortedQuantile(sortedValues, quantile) {
-  if (!sortedValues.length) return 0;
-  const position = (sortedValues.length - 1) * clamp(quantile, 0, 1);
-  const lowerIndex = Math.floor(position);
-  const upperIndex = Math.ceil(position);
-  if (lowerIndex === upperIndex) return sortedValues[lowerIndex];
-  const weight = position - lowerIndex;
-  return sortedValues[lowerIndex] * (1 - weight) + sortedValues[upperIndex] * weight;
-}
-
-function sortFiniteMetricValues(values) {
-  return values.filter(isFiniteNonNegative).sort((left, right) => left - right);
-}
-
 function formatBits(value) {
-  const bits = Math.max(0, Number(value) || 0);
+  if (value === null || value === undefined || value === "" || !Number.isFinite(Number(value))) return t("value.notAvailable");
+  const bits = Math.max(0, Number(value));
   if (bits < 1000) return formatMetricNumber(bits, getBitPrecision(bits)) + " bits";
   if (bits < 1000000) return formatMetricNumber(bits / 1000, bits < 10000 ? 2 : 1) + " Kbits";
   return formatMetricNumber(bits / 1000000, bits < 10000000 ? 2 : 1) + " Mbits";
@@ -483,34 +332,10 @@ function getBitPrecision(value) {
   return 0;
 }
 
-function formatArea(value) {
-  return formatMetricNumber(Math.max(0, Number(value) || 0), 0) + " px";
-}
-
-function formatDensityValue(value) {
-  const density = Math.max(0, Number(value) || 0);
-  return formatMetricNumber(density, getBitPrecision(density)) + " bits/px";
-}
-
-function sumNumbers(values) {
-  return values.reduce((sum, value) => sum + (Number(value) || 0), 0);
-}
-
-function isFiniteNonNegative(value) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue >= 0;
-}
-
 export function formatFrameTypeLabel(type) {
   if (type === "unknown") return t("value.unknown");
   if (type === "audio") return t("value.audio");
   if (type === "sample") return t("value.sample");
   if (String(type).startsWith("mixed") && getLanguage() === "ko") return type.replace("mixed", "혼합");
   return type;
-}
-
-function formatAudioFrequency(value) {
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue) || numberValue <= 0) return t("value.notAvailable");
-  return numberValue >= 1000 ? formatMetricNumber(numberValue / 1000, 1) + " kHz" : formatMetricNumber(numberValue, 0) + " Hz";
 }
