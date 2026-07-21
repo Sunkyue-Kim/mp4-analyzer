@@ -1,5 +1,10 @@
 import { ByteCursor, hexByte } from "../../common/binary.js";
 import { BitReader, removeEmulationPreventionBytes } from "../../common/bitstream.js";
+import {
+  parseAvcFrameInternals,
+  parsePpsNalUnit,
+  parseSpsNalUnit
+} from "./internals/avc-internals.js";
 
 function parseAvcC(bytes) {
   const cursor = new ByteCursor(bytes);
@@ -15,7 +20,12 @@ function parseAvcC(bytes) {
     const length = cursor.uint16(offset);
     offset += 2;
     if (offset + length > cursor.length) break;
-    sps.push({ length, previewHex: Array.from(cursor.bytesAt(offset, Math.min(length, 10))).map(hexByte).join("") });
+    const nalUnit = cursor.bytesAt(offset, length);
+    sps.push({
+      length,
+      previewHex: Array.from(nalUnit.subarray(0, Math.min(length, 10))).map(hexByte).join(""),
+      bytes: Array.from(nalUnit)
+    });
     offset += length;
   }
   let ppsCount = 0;
@@ -27,10 +37,16 @@ function parseAvcC(bytes) {
       const length = cursor.uint16(offset);
       offset += 2;
       if (offset + length > cursor.length) break;
-      pps.push({ length, previewHex: Array.from(cursor.bytesAt(offset, Math.min(length, 10))).map(hexByte).join("") });
+      const nalUnit = cursor.bytesAt(offset, length);
+      pps.push({
+        length,
+        previewHex: Array.from(nalUnit.subarray(0, Math.min(length, 10))).map(hexByte).join(""),
+        bytes: Array.from(nalUnit)
+      });
       offset += length;
     }
   }
+  parseRetainedParameterSets(sps, pps);
   return {
     configurationVersion: cursor.uint8(0),
     profile,
@@ -104,6 +120,25 @@ function parseAvcSample(bytes, nalLengthSize) {
   return { frameType, nalTypes };
 }
 
+function parseRetainedParameterSets(spsEntries, ppsEntries) {
+  const sequenceParameterSetsById = new Map();
+  for (const entry of spsEntries) {
+    try {
+      entry.parsed = parseSpsNalUnit(entry.bytes);
+      sequenceParameterSetsById.set(entry.parsed.sequenceParameterSetId, entry.parsed);
+    } catch (error) {
+      entry.parseError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  for (const entry of ppsEntries) {
+    try {
+      entry.parsed = parsePpsNalUnit(entry.bytes, sequenceParameterSetsById);
+    } catch (error) {
+      entry.parseError = error instanceof Error ? error.message : String(error);
+    }
+  }
+}
+
 const avcVideoCodec = {
   id: "avc",
   label: "AVC / H.264",
@@ -119,12 +154,16 @@ const avcVideoCodec = {
   parseSample(bytes, context) {
     return parseAvcSample(bytes, context.nalLengthSize);
   },
+  parseFrameInternals(sampleBytes, codecConfig, track) {
+    return parseAvcFrameInternals(sampleBytes, codecConfig, track);
+  },
   getNalTypeName: nalTypeName
 };
 
 export {
   avcVideoCodec,
   parseAvcC,
+  parseAvcFrameInternals,
   parseAvcSample,
   nalTypeName
 };

@@ -8,6 +8,7 @@ import {
   getFrameTypeScanner
 } from "./codecs/registry.js";
 import { scanFrameTypes, shouldAutoScan } from "./codecs/frame-scanner.js";
+import { analyzeFrameInternals } from "./codecs/frame-internals-analyzer.js";
 import { buildFrameInternalsColorScale, buildFrameInternalsModel } from "./codecs/frame-internals.js";
 import { runParserSelfTests } from "./self-tests.js";
 import {
@@ -33,6 +34,7 @@ async function analyzeFile(file, options) {
 
 export const Core = {
   analyzeFile,
+  analyzeFrameInternals,
   scanFrameTypes,
   codecs: CODEC_DESCRIPTORS,
   getCodecByConfigurationBoxType,

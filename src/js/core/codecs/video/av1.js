@@ -20,6 +20,8 @@ const AV1_FRAME_TYPES = {
   3: { label: "SWITCH_FRAME", frameType: "P" }
 };
 
+const MAX_AV1_OBU_COUNT = 10000;
+
 function parseAv1C(bytes) {
   const cursor = new ByteCursor(bytes);
   if (cursor.length < 4) return { error: "av1C too short" };
@@ -60,6 +62,7 @@ function parseAv1C(bytes) {
     initialPresentationDelayPresent,
     initialPresentationDelayMinusOne: initialPresentationDelayPresent ? fourthByte & 0x0f : null,
     configOBUByteLength: configOBUs.byteLength,
+    configOBUBytes: new Uint8Array(configOBUs),
     configOBUs: parsedObus.obus,
     warnings: parsedObus.warnings
   };
@@ -225,6 +228,323 @@ function av1ObuTypeName(type) {
   return AV1_OBU_TYPES[type] || "OBU " + type;
 }
 
+function parseAv1SequenceHeader(payload) {
+  const bitReader = new BitReader(payload);
+  const seqProfile = bitReader.readBits(3);
+  const stillPicture = Boolean(bitReader.readBit());
+  const reducedStillPictureHeader = Boolean(bitReader.readBit());
+  let decoderModelInfoPresent = false;
+  let initialDisplayDelayPresent = false;
+  let bufferDelayLength = 0;
+  let framePresentationTimeLength = 0;
+  let equalPictureInterval = false;
+  if (reducedStillPictureHeader) {
+    bitReader.readBits(5);
+  } else {
+    const timingInfoPresent = Boolean(bitReader.readBit());
+    if (timingInfoPresent) {
+      bitReader.readBits(32);
+      bitReader.readBits(32);
+      equalPictureInterval = Boolean(bitReader.readBit());
+      if (equalPictureInterval) bitReader.readUE();
+      decoderModelInfoPresent = Boolean(bitReader.readBit());
+      if (decoderModelInfoPresent) {
+        bufferDelayLength = bitReader.readBits(5) + 1;
+        bitReader.readBits(32);
+        bitReader.readBits(5);
+        framePresentationTimeLength = bitReader.readBits(5) + 1;
+      }
+    }
+    initialDisplayDelayPresent = Boolean(bitReader.readBit());
+    const operatingPointsCount = bitReader.readBits(5) + 1;
+    for (let index = 0; index < operatingPointsCount; index += 1) {
+      bitReader.readBits(12);
+      const sequenceLevelIndex = bitReader.readBits(5);
+      if (sequenceLevelIndex > 7) bitReader.readBit();
+      if (decoderModelInfoPresent) {
+        const decoderModelPresentForPoint = Boolean(bitReader.readBit());
+        if (decoderModelPresentForPoint) {
+          bitReader.readBits(bufferDelayLength);
+          bitReader.readBits(bufferDelayLength);
+          bitReader.readBit();
+        }
+      }
+      if (initialDisplayDelayPresent && bitReader.readBit()) bitReader.readBits(4);
+    }
+  }
+  const frameWidthBits = bitReader.readBits(4) + 1;
+  const frameHeightBits = bitReader.readBits(4) + 1;
+  const maximumFrameWidth = bitReader.readBits(frameWidthBits) + 1;
+  const maximumFrameHeight = bitReader.readBits(frameHeightBits) + 1;
+  const frameIdNumbersPresent = reducedStillPictureHeader ? false : Boolean(bitReader.readBit());
+  let deltaFrameIdLengthMinus2 = 0;
+  let additionalFrameIdLengthMinus1 = 0;
+  if (frameIdNumbersPresent) {
+    deltaFrameIdLengthMinus2 = bitReader.readBits(4);
+    additionalFrameIdLengthMinus1 = bitReader.readBits(3);
+  }
+  const use128x128Superblock = Boolean(bitReader.readBit());
+  bitReader.readBit();
+  bitReader.readBit();
+  let seqForceScreenContentTools = 2;
+  let seqForceIntegerMv = 2;
+  let orderHintBits = 0;
+  if (!reducedStillPictureHeader) {
+    bitReader.readBit();
+    bitReader.readBit();
+    bitReader.readBit();
+    bitReader.readBit();
+    const enableOrderHint = Boolean(bitReader.readBit());
+    if (enableOrderHint) {
+      bitReader.readBit();
+      bitReader.readBit();
+    }
+    const seqChooseScreenContentTools = Boolean(bitReader.readBit());
+    if (!seqChooseScreenContentTools) seqForceScreenContentTools = bitReader.readBit();
+    if (seqForceScreenContentTools > 0) {
+      const seqChooseIntegerMv = Boolean(bitReader.readBit());
+      if (!seqChooseIntegerMv) seqForceIntegerMv = bitReader.readBit();
+    }
+    if (enableOrderHint) orderHintBits = bitReader.readBits(3) + 1;
+  }
+  const enableSuperres = Boolean(bitReader.readBit());
+  return {
+    seqProfile,
+    stillPicture,
+    reducedStillPictureHeader,
+    maximumFrameWidth,
+    maximumFrameHeight,
+    frameWidthBits,
+    frameHeightBits,
+    frameIdNumbersPresent,
+    deltaFrameIdLengthMinus2,
+    additionalFrameIdLengthMinus1,
+    decoderModelInfoPresent,
+    equalPictureInterval,
+    framePresentationTimeLength,
+    seqForceScreenContentTools,
+    seqForceIntegerMv,
+    orderHintBits,
+    enableSuperres,
+    use128x128Superblock,
+    superblockSize: use128x128Superblock ? 128 : 64,
+    bitsRead: bitReader.bitOffset
+  };
+}
+
+function parseAv1FrameSizeOverrideFlag(payload, sequenceHeader) {
+  if (sequenceHeader.reducedStillPictureHeader) return false;
+  const bitReader = new BitReader(payload);
+  const showExistingFrame = Boolean(bitReader.readBit());
+  if (showExistingFrame) return null;
+  const frameType = bitReader.readBits(2);
+  const showFrame = Boolean(bitReader.readBit());
+  if (showFrame && sequenceHeader.decoderModelInfoPresent && !sequenceHeader.equalPictureInterval) {
+    bitReader.readBits(sequenceHeader.framePresentationTimeLength);
+  }
+  if (!showFrame) bitReader.readBit();
+  if (frameType !== 3 && !(frameType === 0 && showFrame)) bitReader.readBit();
+  bitReader.readBit();
+  let allowScreenContentTools = sequenceHeader.seqForceScreenContentTools;
+  if (allowScreenContentTools === 2) allowScreenContentTools = bitReader.readBit();
+  if (allowScreenContentTools) {
+    if (sequenceHeader.seqForceIntegerMv === 2) bitReader.readBit();
+  }
+  if (sequenceHeader.frameIdNumbersPresent) {
+    const frameIdLength = sequenceHeader.additionalFrameIdLengthMinus1 + sequenceHeader.deltaFrameIdLengthMinus2 + 3;
+    bitReader.readBits(frameIdLength);
+  }
+  return frameType === 3 ? true : Boolean(bitReader.readBit());
+}
+
+function getAv1ObuPayloads(bytes) {
+  const payloads = [];
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    if (payloads.length >= MAX_AV1_OBU_COUNT) {
+      throw new Error("AV1 sample exceeds the 10,000-OBU safety limit.");
+    }
+    const obuOffset = offset;
+    const header = parseAv1ObuHeader(bytes, offset);
+    if (!header) break;
+    offset += header.headerSize;
+    let payloadSize = bytes.byteLength - offset;
+    let sizeFieldLength = 0;
+    if (header.hasSizeField) {
+      const leb128 = readLeb128(bytes, offset);
+      if (!leb128) break;
+      payloadSize = Number(leb128.value);
+      sizeFieldLength = leb128.length;
+      offset += sizeFieldLength;
+    }
+    if (!Number.isSafeInteger(payloadSize) || payloadSize < 0 || offset + payloadSize > bytes.byteLength) break;
+    payloads.push({
+      ...header,
+      obuOffset,
+      payloadOffset: offset,
+      payloadSize,
+      sizeFieldLength,
+      payload: bytes.subarray(offset, offset + payloadSize)
+    });
+    offset += payloadSize;
+    if (!header.hasSizeField) break;
+  }
+  return payloads;
+}
+
+function createAv1RootBlocks(width, height, superblockSize) {
+  const columns = Math.max(1, Math.ceil(width / superblockSize));
+  const rows = Math.max(1, Math.ceil(height / superblockSize));
+  if (columns * rows > 100000) throw new Error("AV1 superblock grid exceeds the 100,000-cell safety limit.");
+  const roots = [];
+  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < columns; columnIndex += 1) {
+      const index = rowIndex * columns + columnIndex;
+      roots.push({
+        id: "av1-sb-" + index,
+        left: columnIndex * superblockSize,
+        top: rowIndex * superblockSize,
+        width: Math.min(superblockSize, width - columnIndex * superblockSize),
+        height: Math.min(superblockSize, height - rowIndex * superblockSize),
+        codedBlockWidth: superblockSize,
+        codedBlockHeight: superblockSize,
+        depth: 0,
+        type: "superblock",
+        partitionMode: "root",
+        ownBits: null,
+        subtreeBits: null,
+        children: []
+      });
+    }
+  }
+  return { roots, columns, rows };
+}
+
+function parseAv1FrameInternals(sampleBytes, codecConfig, track = {}) {
+  let sampleObus;
+  let configurationObus;
+  try {
+    sampleObus = getAv1ObuPayloads(sampleBytes);
+    const configurationBytes = codecConfig && codecConfig.configOBUBytes;
+    configurationObus = configurationBytes instanceof Uint8Array
+      ? getAv1ObuPayloads(configurationBytes)
+      : [];
+  } catch (error) {
+    return {
+      kind: "unavailable",
+      complete: false,
+      reason: error.message,
+      warnings: []
+    };
+  }
+  const sequenceHeaderObu = sampleObus.find((obu) => obu.type === 1) || configurationObus.find((obu) => obu.type === 1);
+  if (!sequenceHeaderObu) {
+    return {
+      kind: "unavailable",
+      complete: false,
+      reason: "AV1 sequence header OBU is unavailable.",
+      warnings: []
+    };
+  }
+  let sequenceHeader;
+  try {
+    sequenceHeader = parseAv1SequenceHeader(sequenceHeaderObu.payload);
+  } catch (error) {
+    return {
+      kind: "unavailable",
+      complete: false,
+      reason: "AV1 sequence header is truncated: " + error.message,
+      warnings: []
+    };
+  }
+  const frameObu = sampleObus.find((obu) => obu.type === 3 || obu.type === 6 || obu.type === 7);
+  if (!frameObu) {
+    return {
+      kind: "unavailable",
+      complete: false,
+      reason: "The AV1 sample does not contain a frame header or frame OBU.",
+      warnings: []
+    };
+  }
+  if (!sequenceHeader.reducedStillPictureHeader) {
+    try {
+      const frameHeaderReader = new BitReader(frameObu.payload);
+      if (frameHeaderReader.readBit()) {
+        return {
+          kind: "unavailable",
+          complete: false,
+          reason: "show_existing_frame carries no coded block tree in this sample.",
+          warnings: []
+        };
+      }
+    } catch (error) {
+      return {
+        kind: "unavailable",
+        complete: false,
+        reason: "AV1 frame header is truncated: " + error.message,
+        warnings: []
+      };
+    }
+  }
+  let frameSizeOverrideFlag;
+  try {
+    frameSizeOverrideFlag = parseAv1FrameSizeOverrideFlag(frameObu.payload, sequenceHeader);
+  } catch (error) {
+    return {
+      kind: "unavailable",
+      complete: false,
+      reason: "AV1 frame size flags are truncated: " + error.message,
+      warnings: []
+    };
+  }
+  if (frameSizeOverrideFlag || sequenceHeader.enableSuperres) {
+    return {
+      kind: "unavailable",
+      complete: false,
+      reason: frameSizeOverrideFlag
+        ? "The AV1 frame overrides the sequence dimensions; exact frame-size traversal is not implemented."
+        : "AV1 super-resolution can change the coded block grid; exact super-resolution traversal is not implemented.",
+      warnings: []
+    };
+  }
+  const width = sequenceHeader.maximumFrameWidth;
+  const height = sequenceHeader.maximumFrameHeight;
+  let rootLayout;
+  try {
+    rootLayout = createAv1RootBlocks(width, height, sequenceHeader.superblockSize);
+  } catch (error) {
+    return {
+      kind: "unavailable",
+      complete: false,
+      reason: error.message,
+      warnings: []
+    };
+  }
+  return {
+    kind: "av1-frame-internals",
+    complete: true,
+    granularity: "root-units",
+    codecFamily: "AV1",
+    unitName: "superblock",
+    unitWidth: sequenceHeader.superblockSize,
+    unitHeight: sequenceHeader.superblockSize,
+    codedWidth: rootLayout.columns * sequenceHeader.superblockSize,
+    codedHeight: rootLayout.rows * sequenceHeader.superblockSize,
+    width,
+    height,
+    columns: rootLayout.columns,
+    rows: rootLayout.rows,
+    roots: rootLayout.roots,
+    structureRecordCount: rootLayout.roots.length,
+    decodedStructureRecordCount: rootLayout.roots.length,
+    sampleBits: sampleBytes.byteLength * 8,
+    attributedBits: null,
+    overheadBits: null,
+    sequenceHeader,
+    warnings: ["AV1 entropy-coded child partitions are not decoded; only exact sequence-signaled superblock roots are shown."]
+  };
+}
+
 const av1VideoCodec = {
   id: "av1",
   label: "AV1",
@@ -243,6 +563,9 @@ const av1VideoCodec = {
   parseSample(bytes, context) {
     return parseAv1Sample(bytes, context);
   },
+  parseFrameInternals(sampleBytes, codecConfig, track) {
+    return parseAv1FrameInternals(sampleBytes, codecConfig, track);
+  },
   getNalTypeName: av1ObuTypeName
 };
 
@@ -251,5 +574,9 @@ export {
   parseAv1C,
   parseAv1Sample,
   parseAv1ObuStream,
+  parseAv1SequenceHeader,
+  parseAv1FrameSizeOverrideFlag,
+  parseAv1FrameInternals,
+  createAv1RootBlocks,
   av1ObuTypeName
 };

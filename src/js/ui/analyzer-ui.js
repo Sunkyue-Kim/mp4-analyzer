@@ -13,7 +13,6 @@ import {
   findDescendants,
   getDefaultSampleFrameType,
   getFrameTypeScanner,
-  buildFrameInternalsColorScale,
   buildFrameInternalsModel
 } from "../core/analyzer-core.js";
 import {
@@ -34,6 +33,7 @@ import { createRecyclerView } from "./recycler-view.js";
 import { downloadRemoteMediaFile, probeRemoteMediaResource } from "./remote-loader.js";
 import {
   createMediaPreviewPlan,
+  prepareMediaPreviewFrame,
   shouldDownloadRemoteOnceForSharedPlayback
 } from "./media-source.js";
 import { renderJsonViewer } from "./json-viewer.js";
@@ -85,9 +85,13 @@ const FRAME_TABLE_HEADER_HEIGHT = 34;
 const FRAME_TABLE_MINIMUM_WIDTH = "1048px";
 const FRAME_INTERNALS_MAP_MINIMUM_SCALE = 1;
 const FRAME_INTERNALS_MAP_MAXIMUM_SCALE = 32;
+const FRAME_INTERNALS_PREFETCH_COUNT = 8;
+const FRAME_INTERNALS_ANALYSIS_CACHE_LIMIT = 32;
+const FRAME_INTERNALS_ANALYSIS_CACHE_RECORD_LIMIT = 200_000;
 const METRIC_PLAYBACK_CURSOR_INTERVAL_MS = 100;
 const state = {
   analysis: null,
+  mainAnalysisBusy: false,
   language: options.initialLanguage || getLanguage(),
   activeTab: options.initialActiveTab || "summary",
   selectedBox: null,
@@ -118,8 +122,12 @@ const state = {
   frameInternalsMapDrag: null,
   frameInternalsMapGesture: null,
   frameInternalsMapPointers: new Map(),
+  frameInternalsRenderPending: false,
   frameInternalsMapView: createDefaultFrameInternalsMapView(),
-  frameInternalsColorScaleCache: new Map(),
+  frameInternalsAnalysisCache: new Map(),
+  frameInternalsAnalysisRequests: new Map(),
+  frameInternalsAnalysisEpoch: 0,
+  frameInternalsAnalysisPaused: false,
   frameInternalsModelKey: "",
   frameInternalsModel: null,
   frameInternalsSpatialIndex: null,
@@ -205,6 +213,10 @@ const elements = {
   remoteUrlCancelButton: document.getElementById("remoteUrlCancelButton"),
   remoteUrlSubmitButton: document.getElementById("remoteUrlSubmitButton")
 };
+
+state.frameInternalsFrameOverlayEnabled = Boolean(
+  elements.frameInternalsOverlayToggle && elements.frameInternalsOverlayToggle.checked
+);
 
 const frameTableRecycler = createRecyclerView({
   scrollElement: elements.frameWrap,
@@ -371,9 +383,12 @@ document.addEventListener("click", handleDocumentBoxTreeClick, true);
 document.addEventListener("pointerup", handleDocumentBoxTreePointerUp, true);
 
 elements.cancelButton.addEventListener("click", () => {
+  const wasMainAnalysisBusy = state.mainAnalysisBusy;
   if (state.remoteAbortController) state.remoteAbortController.abort();
+  pauseFrameInternalsAnalysis();
   analysisWorkerClient.cancel();
-  setProgress("Cancelling...", 0);
+  renderFrameInternals();
+  if (wasMainAnalysisBusy) setProgress("Cancelling...", 0);
 });
 
 elements.scanButton.addEventListener("click", async () => {
@@ -448,7 +463,10 @@ elements.filePreview.addEventListener("seeked", () => {
   scheduleFrameInternalsFrameOverlayCapture({ force: true });
 });
 elements.filePreview.addEventListener("loadeddata", () => scheduleFrameInternalsFrameOverlayCapture({ force: true }));
-elements.filePreview.addEventListener("loadedmetadata", () => synchronizeSelectionsToPlayback({ force: true }));
+elements.filePreview.addEventListener("loadedmetadata", () => {
+  synchronizeSelectionsToPlayback({ force: true });
+  scheduleFrameInternalsFrameOverlayCapture({ force: true });
+});
 for (const input of [elements.trackFilter, elements.typeFilter, elements.syncFilter, elements.minSizeFilter, elements.maxSizeFilter, elements.warningOnlyFilter]) {
   input.addEventListener("input", renderFrames);
   input.addEventListener("change", renderFrames);
@@ -752,6 +770,7 @@ function findFrameRowByKey(frameKey) {
 }
 
 function activateFrameRow(row) {
+  resumeFrameInternalsAnalysis();
   state.selectedFrameKey = getFrameRowKey(row);
   const previousFragmentIndex = state.selectedFragmentIndex;
   synchronizeFragmentSelectionToFrameRow(row);
@@ -765,6 +784,7 @@ function activateFragmentByIndex(fragmentIndex) {
   if (!Number.isFinite(fragmentIndex)) return null;
   const fragment = findFragmentRowByIndex(fragmentIndex);
   if (!fragment) return null;
+  resumeFrameInternalsAnalysis();
   state.selectedFragmentIndex = fragment.fragmentIndex;
   state.lastPlaybackSynchronizationFragmentIndex = fragment.fragmentIndex;
   if (fragment.startFrameRow) {
@@ -1136,8 +1156,8 @@ async function scanCurrentAnalysis() {
   try {
     const analysis = await analysisWorkerClient.scanFrameTypes(state.analysis, { onProgress: setProgress });
     state.analysis = analysis;
-    state.frameInternalsColorScaleCache = new Map();
-    clearFrameInternalsModelCache();
+    state.frameInternalsAnalysisPaused = false;
+    clearFrameInternalsModelCache({ clearAnalysisResults: true });
     setProgress("Frame type scan complete", 100);
     renderFrames();
     renderTracks();
@@ -1152,25 +1172,30 @@ async function scanCurrentAnalysis() {
 }
 
 function setBusy(isBusy) {
-  elements.cancelButton.disabled = !isBusy;
+  state.mainAnalysisBusy = Boolean(isBusy);
+  updateCancelButtonState();
   elements.openButton.disabled = isBusy;
   elements.openUrlButton.disabled = isBusy;
   elements.remoteUrlSubmitButton.disabled = isBusy;
   elements.sampleSelect.disabled = isBusy || !canUseSampleCatalog();
 }
 
+function updateCancelButtonState() {
+  elements.cancelButton.disabled = !state.mainAnalysisBusy && state.frameInternalsAnalysisRequests.size === 0;
+}
+
 function resetView(file, options = {}) {
   stopPlaybackSynchronizationLoop();
   resetFrameInternalsMapInteractionState();
   state.analysis = null;
+  state.frameInternalsAnalysisPaused = false;
   state.selectedBox = null;
   state.selectedFrameKey = "";
   state.selectedFragmentIndex = 0;
   state.lastPlaybackSynchronizationFrameKey = "";
   state.lastPlaybackSynchronizationFragmentIndex = 0;
   state.fragmentRows = [];
-  state.frameInternalsColorScaleCache = new Map();
-  clearFrameInternalsModelCache();
+  clearFrameInternalsModelCache({ clearAnalysisResults: true });
   state.frameInternalsMapView = createDefaultFrameInternalsMapView();
   clearFrameInternalsFrameOverlay();
   state.transientWarnings = options.initialWarnings ? options.initialWarnings.slice() : [];
@@ -1979,10 +2004,23 @@ function renderFrames() {
 function renderFrameInternals() {
   if (!elements.frameInternalsBody) return;
   if (state.analysis && state.activeTab !== "frames") return;
+  if (hasActiveFrameInternalsMapInteraction()) {
+    state.frameInternalsRenderPending = true;
+    return;
+  }
+  state.frameInternalsRenderPending = false;
   hideFrameInternalsTooltip();
   const model = buildSelectedFrameInternalsModel();
   if (model.kind === "empty") {
     elements.frameInternalsBody.innerHTML = emptyHtml("frameInternals.empty");
+    return;
+  }
+  if (model.kind === "loading") {
+    elements.frameInternalsBody.innerHTML = emptyHtml("frameInternals.loading");
+    return;
+  }
+  if (model.kind === "cancelled") {
+    elements.frameInternalsBody.innerHTML = emptyHtml("frameInternals.cancelled");
     return;
   }
   if (model.kind === "video-grid") {
@@ -1998,7 +2036,7 @@ function renderFrameInternals() {
     elements.frameInternalsBody.innerHTML = renderAudioFrameInternals(model, { frameLabel: formatSelectedFrameLabel() });
     return;
   }
-  elements.frameInternalsBody.innerHTML = '<div class="empty compact">' + escapeHtml(model.note || t("frameInternals.unsupported")) + '</div>';
+  elements.frameInternalsBody.innerHTML = '<div class="empty compact">' + escapeHtml(t("frameInternals.unsupported")) + '</div>';
 }
 
 function buildSelectedFrameInternalsModel() {
@@ -2014,43 +2052,223 @@ function buildSelectedFrameInternalsModel() {
   }
   const row = findFrameRowByKey(state.selectedFrameKey);
   const track = row ? getRowTrack(row) : null;
-  const model = buildFrameInternalsModel(row, track, {
-    colorScale: getFrameInternalsColorScale(track)
-  });
+  const cachedAnalysis = getCachedFrameInternalsAnalysis(state.selectedFrameKey);
+  const canAnalyzeFrameInternals = isFrameInternalsCodecTrack(track);
+  if (row && canAnalyzeFrameInternals && !cachedAnalysis && !state.frameInternalsAnalysisPaused) {
+    requestFrameInternalsAnalysis(row, state.selectedFrameKey);
+  }
+  const model = state.frameInternalsAnalysisPaused && row && canAnalyzeFrameInternals && !cachedAnalysis
+    ? { kind: "cancelled" }
+    : (cachedAnalysis && cachedAnalysis.model
+      ? cachedAnalysis.model
+      : buildFrameInternalsModel(row, track, {
+        loading: Boolean(row && canAnalyzeFrameInternals && !cachedAnalysis),
+        parsedFrameInternals: cachedAnalysis && cachedAnalysis.result
+      }));
   state.frameInternalsModelKey = state.selectedFrameKey;
   state.frameInternalsModel = model;
   state.frameInternalsSpatialIndex = model.kind === "video-grid"
-    ? createFrameInternalsSpatialIndex(model)
+    ? ((cachedAnalysis && cachedAnalysis.spatialIndex) || createFrameInternalsSpatialIndex(model))
     : null;
   return model;
 }
 
-function clearFrameInternalsModelCache() {
+function isFrameInternalsCodecTrack(track) {
+  if (!track || track.handlerType !== "vide") return false;
+  return ["avc", "hevc", "vp9", "av1"].includes(String(track.codecDescriptor || "").toLowerCase()) ||
+    ["avc1", "avc2", "avc3", "avc4", "hvc1", "hev1", "vp09", "v_vp9", "vp9", "av01", "v_av1"]
+      .includes(String(track.codec || "").toLowerCase());
+}
+
+function clearFrameInternalsModelCache(options = {}) {
   state.frameInternalsModelKey = "";
   state.frameInternalsModel = null;
   state.frameInternalsSpatialIndex = null;
+  if (options.clearAnalysisResults) {
+    state.frameInternalsAnalysisCache = new Map();
+    invalidateFrameInternalsAnalysisRequests();
+  }
 }
 
-function getFrameInternalsColorScale(track) {
-  if (!track || track.handlerType !== "vide" || !state.analysis) return null;
-  const cacheKey = [
-    track.trackId,
-    track.codec,
-    track.codecDescriptor || "",
-    track.width || 0,
-    track.height || 0,
-    track.displayWidth || 0,
-    track.displayHeight || 0,
-    track.displayRotationDegrees || 0,
-    state.analysis.sampleRows.length
-  ].join(":");
-  if (!state.frameInternalsColorScaleCache.has(cacheKey)) {
-    state.frameInternalsColorScaleCache.set(
-      cacheKey,
-      buildFrameInternalsColorScale(track, state.analysis.sampleRows)
-    );
+function invalidateFrameInternalsAnalysisRequests() {
+  state.frameInternalsAnalysisEpoch += 1;
+  state.frameInternalsAnalysisRequests = new Map();
+  updateCancelButtonState();
+}
+
+function pauseFrameInternalsAnalysis() {
+  state.frameInternalsAnalysisPaused = true;
+  invalidateFrameInternalsAnalysisRequests();
+  clearFrameInternalsModelCache();
+}
+
+function resumeFrameInternalsAnalysis() {
+  if (!state.frameInternalsAnalysisPaused) return;
+  state.frameInternalsAnalysisPaused = false;
+  clearFrameInternalsModelCache();
+}
+
+function requestFrameInternalsAnalysis(row, frameKey) {
+  if (
+    !state.analysis ||
+    state.frameInternalsAnalysisPaused ||
+    state.frameInternalsAnalysisCache.has(frameKey)
+  ) return;
+  const requestedAnalysis = state.analysis;
+  const requestEpoch = state.frameInternalsAnalysisEpoch;
+  const rows = getFrameInternalsPrefetchRows(row);
+  for (const candidateRow of rows) {
+    if (state.frameInternalsAnalysisRequests.size >= FRAME_INTERNALS_PREFETCH_COUNT) break;
+    const candidateFrameKey = getFrameRowKey(candidateRow);
+    if (
+      state.frameInternalsAnalysisCache.has(candidateFrameKey) ||
+      state.frameInternalsAnalysisRequests.has(candidateFrameKey)
+    ) continue;
+    const requestPromise = analysisWorkerClient.analyzeFrameInternals(requestedAnalysis, candidateRow);
+    state.frameInternalsAnalysisRequests.set(candidateFrameKey, requestPromise);
+    updateCancelButtonState();
+    requestPromise.then((result) => {
+      if (state.analysis !== requestedAnalysis || state.frameInternalsAnalysisEpoch !== requestEpoch) return;
+      cacheFrameInternalsAnalysis(candidateFrameKey, createFrameInternalsCacheValue(result));
+    }).catch((error) => {
+      if (state.analysis !== requestedAnalysis || state.frameInternalsAnalysisEpoch !== requestEpoch) return;
+      if (error && error.code === "FRAME_INTERNALS_CANCELLED") return;
+      cacheFrameInternalsAnalysis(candidateFrameKey, {
+        result: {
+          kind: "unavailable",
+          complete: false,
+          reason: error && error.message ? error.message : String(error),
+          warnings: []
+        }
+      });
+    }).finally(() => {
+      if (state.frameInternalsAnalysisEpoch !== requestEpoch) return;
+      if (state.frameInternalsAnalysisRequests.get(candidateFrameKey) !== requestPromise) return;
+      state.frameInternalsAnalysisRequests.delete(candidateFrameKey);
+      updateCancelButtonState();
+      if (state.analysis !== requestedAnalysis) return;
+      const selectedFrameNeedsRequest = Boolean(
+        state.selectedFrameKey &&
+        !state.frameInternalsAnalysisCache.has(state.selectedFrameKey) &&
+        !state.frameInternalsAnalysisRequests.has(state.selectedFrameKey)
+      );
+      if (state.selectedFrameKey !== candidateFrameKey && !selectedFrameNeedsRequest) return;
+      clearFrameInternalsModelCache();
+      renderFrameInternals();
+    });
   }
-  return state.frameInternalsColorScaleCache.get(cacheKey);
+}
+
+function createFrameInternalsCacheValue(result) {
+  if (result && result.version === 1 && result.model) {
+    return {
+      model: {
+        ...result.model,
+        pathGroups: Array.isArray(result.pathGroups) ? result.pathGroups : []
+      },
+      spatialIndex: result.spatialIndex || null
+    };
+  }
+  return { result };
+}
+
+function getCachedFrameInternalsAnalysis(frameKey) {
+  const cachedAnalysis = state.frameInternalsAnalysisCache.get(frameKey);
+  if (!cachedAnalysis) return null;
+  state.frameInternalsAnalysisCache.delete(frameKey);
+  state.frameInternalsAnalysisCache.set(frameKey, cachedAnalysis);
+  return cachedAnalysis;
+}
+
+function cacheFrameInternalsAnalysis(frameKey, cachedAnalysis) {
+  const cacheEntry = {
+    ...cachedAnalysis,
+    structureRecordCount: getFrameInternalsStructureRecordCount(cachedAnalysis)
+  };
+  state.frameInternalsAnalysisCache.delete(frameKey);
+  state.frameInternalsAnalysisCache.set(frameKey, cacheEntry);
+  let cachedStructureRecordCount = getCachedFrameInternalsStructureRecordCount();
+  while (
+    state.frameInternalsAnalysisCache.size > FRAME_INTERNALS_ANALYSIS_CACHE_LIMIT ||
+    cachedStructureRecordCount > FRAME_INTERNALS_ANALYSIS_CACHE_RECORD_LIMIT
+  ) {
+    const oldestFrameKey = state.frameInternalsAnalysisCache.keys().next().value;
+    if (oldestFrameKey === state.selectedFrameKey) {
+      if (state.frameInternalsAnalysisCache.size === 1) break;
+      const selectedAnalysis = state.frameInternalsAnalysisCache.get(oldestFrameKey);
+      state.frameInternalsAnalysisCache.delete(oldestFrameKey);
+      state.frameInternalsAnalysisCache.set(oldestFrameKey, selectedAnalysis);
+      continue;
+    }
+    const removedAnalysis = state.frameInternalsAnalysisCache.get(oldestFrameKey);
+    state.frameInternalsAnalysisCache.delete(oldestFrameKey);
+    cachedStructureRecordCount -= Number(removedAnalysis && removedAnalysis.structureRecordCount) || 0;
+  }
+}
+
+function getCachedFrameInternalsStructureRecordCount() {
+  let recordCount = 0;
+  for (const cachedAnalysis of state.frameInternalsAnalysisCache.values()) {
+    recordCount += Number(cachedAnalysis && cachedAnalysis.structureRecordCount) || 0;
+  }
+  return recordCount;
+}
+
+function getFrameInternalsStructureRecordCount(cachedAnalysis) {
+  const preparedDisplayCellCount = Math.round(Number(
+    cachedAnalysis && cachedAnalysis.model && cachedAnalysis.model.displayCellCount
+  ));
+  if (Number.isFinite(preparedDisplayCellCount) && preparedDisplayCellCount >= 0) {
+    return preparedDisplayCellCount;
+  }
+  const result = cachedAnalysis && Object.prototype.hasOwnProperty.call(cachedAnalysis, "result")
+    ? cachedAnalysis.result
+    : cachedAnalysis;
+  const explicitRecordCount = Math.round(Number(result && result.structureRecordCount));
+  if (Number.isFinite(explicitRecordCount) && explicitRecordCount >= 0) return explicitRecordCount;
+  if (!result || result.complete !== true) return 0;
+  const roots = [result.roots, result.macroblocks, result.ctus, result.superblocks, result.blocks]
+    .find((candidate) => Array.isArray(candidate)) || [];
+  let recordCount = 0;
+  const pendingBlocks = roots.slice();
+  while (pendingBlocks.length) {
+    const block = pendingBlocks.pop();
+    recordCount += 1;
+    if (Array.isArray(block && block.children)) pendingBlocks.push(...block.children);
+  }
+  return recordCount;
+}
+
+function getFrameInternalsPrefetchRows(selectedRow) {
+  if (!state.analysis || !selectedRow) return [];
+  const filteredRowIndex = state.filteredRows.indexOf(selectedRow);
+  const candidateRows = filteredRowIndex >= 0 ? state.filteredRows : state.analysis.sampleRows;
+  const selectedRowIndex = filteredRowIndex >= 0
+    ? filteredRowIndex
+    : candidateRows.indexOf(selectedRow);
+  if (selectedRowIndex < 0) return Number(selectedRow.size) > 0 ? [selectedRow] : [];
+
+  const rows = [];
+  const selectedTrackId = String(selectedRow.trackId);
+  const appendCandidate = (candidateRow) => {
+    if (
+      rows.length < FRAME_INTERNALS_PREFETCH_COUNT &&
+      candidateRow &&
+      String(candidateRow.trackId) === selectedTrackId &&
+      Number(candidateRow.size) > 0
+    ) rows.push(candidateRow);
+  };
+  appendCandidate(selectedRow);
+  for (
+    let distance = 1;
+    rows.length < FRAME_INTERNALS_PREFETCH_COUNT &&
+      (selectedRowIndex - distance >= 0 || selectedRowIndex + distance < candidateRows.length);
+    distance += 1
+  ) {
+    appendCandidate(candidateRows[selectedRowIndex - distance]);
+    appendCandidate(candidateRows[selectedRowIndex + distance]);
+  }
+  return rows;
 }
 
 function handleFrameInternalsOverlayToggleChange() {
@@ -2086,6 +2304,11 @@ function clearFrameInternalsFrameOverlay() {
 
 function scheduleFrameInternalsFrameOverlayCapture(options = {}) {
   if (!shouldCaptureFrameInternalsFrameOverlay(options)) return;
+  const previewFrame = prepareMediaPreviewFrame(elements.filePreview);
+  if (previewFrame.status !== "ready") {
+    if (previewFrame.status === "unavailable") markFrameInternalsFrameOverlayUnavailable();
+    return;
+  }
   if (state.frameInternalsFrameOverlayCaptureRequestId && !options.force) return;
   if (state.frameInternalsFrameOverlayCaptureRequestId) {
     cancelAnimationFrame(state.frameInternalsFrameOverlayCaptureRequestId);
@@ -2133,11 +2356,7 @@ function captureFrameInternalsFrameOverlay() {
       unavailable: false
     };
   } catch (_) {
-    state.frameInternalsFrameOverlay = {
-      frameKey,
-      imageUrl: "",
-      unavailable: true
-    };
+    markFrameInternalsFrameOverlayUnavailable(frameKey);
   }
   if (
     frameKey === state.selectedFrameKey &&
@@ -2145,6 +2364,15 @@ function captureFrameInternalsFrameOverlay() {
   ) {
     renderFrameInternals();
   }
+}
+
+function markFrameInternalsFrameOverlayUnavailable(frameKey = state.selectedFrameKey) {
+  state.frameInternalsFrameOverlay = {
+    frameKey,
+    imageUrl: "",
+    unavailable: true
+  };
+  if (frameKey === state.selectedFrameKey) updateFrameInternalsFrameOverlayDom();
 }
 
 function updateFrameInternalsFrameOverlayDom() {
@@ -2429,6 +2657,15 @@ function handleFrameInternalsMapPointerUp(event) {
       // Pointer capture may already be gone after pointercancel.
     }
   }
+  if (state.frameInternalsRenderPending && !hasActiveFrameInternalsMapInteraction()) renderFrameInternals();
+}
+
+function hasActiveFrameInternalsMapInteraction() {
+  return Boolean(
+    state.frameInternalsMapDrag ||
+    state.frameInternalsMapGesture ||
+    state.frameInternalsMapPointers.size
+  );
 }
 
 function getFrameInternalsMapViewport(eventTarget) {
@@ -2727,6 +2964,7 @@ function resetFrameInternalsMapInteractionState() {
   state.frameInternalsMapDrag = null;
   state.frameInternalsMapGesture = null;
   state.frameInternalsMapPointers.clear();
+  state.frameInternalsRenderPending = false;
 }
 
 function getFrameInternalsTooltipTarget(eventTarget) {

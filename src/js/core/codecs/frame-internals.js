@@ -1,6 +1,4 @@
 const MAX_VIDEO_DISPLAY_CELLS = 100000;
-const MAX_GLOBAL_DISTRIBUTION_VALUES = 120000;
-const BITS_PER_BYTE = 8;
 
 const HEAT_COLOR_STOPS = [
   { percentile: 0, red: 226, green: 245, blue: 241 },
@@ -13,94 +11,37 @@ const HEAT_COLOR_STOPS = [
 
 const VIDEO_CODING_UNITS = [
   {
+    id: "avc",
     matches: (track) => track.codecDescriptor === "avc" || ["avc1", "avc2", "avc3", "avc4"].includes(track.codec),
     codecFamily: "AVC / H.264",
     unitName: "macroblock",
     unitWidth: 16,
-    unitHeight: 16,
-    accuracy: "nominal-exact-grid",
-    note: "AVC uses a 16x16 macroblock raster. This view can show estimated rectangular macroblock partitions, but exact mb_type/sub_mb_type and transform block structure require slice-data syntax decoding.",
-    partitionProfile: {
-      baseWidth: 16,
-      baseHeight: 16,
-      minimumWidth: 4,
-      minimumHeight: 4,
-      maxDepth: 2,
-      modes: ["split", "vertical", "horizontal"]
-    }
+    unitHeight: 16
   },
   {
+    id: "hevc",
     matches: (track) => track.codecDescriptor === "hevc" || ["hvc1", "hev1"].includes(track.codec),
     codecFamily: "HEVC / H.265",
     unitName: "CTU",
     unitWidth: 64,
-    unitHeight: 64,
-    accuracy: "nominal-grid",
-    note: "HEVC CTU size is signaled in SPS. This view shows an estimated CTU/CU rectangular partition map using the common 64x64 CTU base until SPS/CABAC partition parsing is added.",
-    partitionProfile: {
-      baseWidth: 64,
-      baseHeight: 64,
-      minimumWidth: 8,
-      minimumHeight: 8,
-      maxDepth: 4,
-      modes: ["split", "vertical", "horizontal"]
-    }
+    unitHeight: 64
   },
   {
-    matches: (track) => track.codec === "V_VP9" || track.codecDescriptor === "V_VP9" || String(track.codec).toLowerCase() === "vp9",
+    id: "vp9",
+    matches: (track) => track.codecDescriptor === "vp9" || ["vp09", "V_VP9", "vp9"].includes(track.codec),
     codecFamily: "VP9",
     unitName: "superblock",
     unitWidth: 64,
-    unitHeight: 64,
-    accuracy: "nominal-grid",
-    note: "VP9 superblock partition data is entropy coded in frame payloads. This view shows an estimated rectangular superblock partition map until frame-payload partition parsing is added.",
-    partitionProfile: {
-      baseWidth: 64,
-      baseHeight: 64,
-      minimumWidth: 4,
-      minimumHeight: 4,
-      maxDepth: 4,
-      modes: ["split", "vertical", "horizontal", "verticalA", "verticalB", "horizontalA", "horizontalB"]
-    }
+    unitHeight: 64
   },
   {
-    matches: (track) => track.codec === "av01" || track.codecDescriptor === "av1",
+    id: "av1",
+    matches: (track) => track.codecDescriptor === "av1" || ["av01", "V_AV1"].includes(track.codec),
     codecFamily: "AV1",
     unitName: "superblock",
     unitWidth: 128,
-    unitHeight: 128,
-    accuracy: "future-nominal-grid",
-    note: "AV1 can use 64x64 or 128x128 superblocks and many non-square partition modes. This view uses a partition-ready rectangular block model that supports AV1-style non-square splits until sequence/frame syntax parsing is added.",
-    partitionProfile: {
-      baseWidth: 128,
-      baseHeight: 128,
-      minimumWidth: 4,
-      minimumHeight: 4,
-      maxDepth: 5,
-      modes: [
-        "split",
-        "vertical",
-        "horizontal",
-        "vertical4",
-        "horizontal4",
-        "verticalA",
-        "verticalB",
-        "horizontalA",
-        "horizontalB"
-      ]
-    }
+    unitHeight: 128
   }
-];
-
-const AUDIO_BANDS = [
-  { label: "Sub", range: "20-60 Hz", startHz: 20, endHz: 60 },
-  { label: "Bass", range: "60-250 Hz", startHz: 60, endHz: 250 },
-  { label: "Low mid", range: "250-500 Hz", startHz: 250, endHz: 500 },
-  { label: "Mid", range: "500 Hz-2 kHz", startHz: 500, endHz: 2000 },
-  { label: "High mid", range: "2-4 kHz", startHz: 2000, endHz: 4000 },
-  { label: "Presence", range: "4-6 kHz", startHz: 4000, endHz: 6000 },
-  { label: "Brilliance", range: "6-12 kHz", startHz: 6000, endHz: 12000 },
-  { label: "Air", range: "12-20 kHz", startHz: 12000, endHz: 20000 }
 ];
 
 function buildFrameInternalsModel(row, track, options = {}) {
@@ -108,64 +49,124 @@ function buildFrameInternalsModel(row, track, options = {}) {
     return {
       kind: "empty",
       title: "No frame selected",
-      note: "Select a frame row to inspect its nominal internal structure."
+      note: "Select a video frame to inspect its coded block structure."
     };
   }
-  if (track.handlerType === "vide") return buildVideoInternalsModel(row, track, options);
-  if (track.handlerType === "soun") return buildAudioInternalsModel(row, track);
-  return {
-    kind: "unsupported",
-    title: "Internal structure unavailable",
-    note: "This track type does not expose a supported nominal frame structure."
-  };
-}
-
-function buildVideoInternalsModel(row, track, options = {}) {
+  if (track.handlerType !== "vide") {
+    return {
+      kind: "unsupported",
+      title: "Block structure unavailable",
+      note: "Macroblocks, coding units, and superblocks apply to video coding tracks only."
+    };
+  }
   const descriptor = VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
-  const dimensions = getVideoTrackDimensions(track);
-  const width = dimensions.encodedWidth;
-  const height = dimensions.encodedHeight;
-  if (!descriptor || !width || !height) {
+  if (!descriptor) {
     return {
       kind: "unsupported",
       title: "Video block view unavailable",
-      note: "This video codec or track size is not mapped to a nominal coding-unit grid yet.",
+      note: "No native JavaScript block-syntax parser is registered for this codec.",
+      codec: track.codec
+    };
+  }
+  if (options.loading) {
+    return {
+      kind: "loading",
+      title: descriptor.codecFamily + " block syntax",
+      note: "Reading and parsing the selected sample bitstream."
+    };
+  }
+  const parsedFrameInternals = options.parsedFrameInternals;
+  if (!parsedFrameInternals) {
+    return {
+      kind: "loading",
+      title: descriptor.codecFamily + " block syntax",
+      note: "Reading and parsing the selected sample bitstream."
+    };
+  }
+  if (parsedFrameInternals.complete !== true) {
+    return {
+      kind: "unsupported",
+      title: descriptor.codecFamily + " block syntax unavailable",
+      note: parsedFrameInternals.reason || "The selected frame uses syntax that cannot be traversed exactly.",
+      codec: track.codec,
+      warnings: parsedFrameInternals.warnings || []
+    };
+  }
+  return buildActualVideoInternalsModel(row, track, descriptor, parsedFrameInternals);
+}
+
+function buildActualVideoInternalsModel(row, track, descriptor, parsedFrameInternals) {
+  const dimensions = getVideoTrackDimensions(track);
+  const rawRoots = getParsedRoots(parsedFrameInternals);
+  const roots = rawRoots.map((block, index) => normalizeParsedBlock(block, {
+    fallbackId: descriptor.id + "-root-" + index,
+    depth: 0,
+    rootIndex: index,
+    parentId: ""
+  })).filter(Boolean);
+  if (!roots.length) {
+    return {
+      kind: "unsupported",
+      title: descriptor.codecFamily + " block syntax unavailable",
+      note: "The syntax parser completed without returning any coded blocks.",
       codec: track.codec
     };
   }
 
-  const nominalColumns = Math.max(1, Math.ceil(width / descriptor.unitWidth));
-  const nominalRows = Math.max(1, Math.ceil(height / descriptor.unitHeight));
-  const partitionCellModel = buildVideoPartitionCellModel({
-    row,
-    descriptor,
-    width,
-    height,
-    maxCells: MAX_VIDEO_DISPLAY_CELLS
-  });
-  const cells = partitionCellModel.cells;
-  const intrinsicBounds = getPartitionCellIntrinsicBounds(cells, width, height);
-  const displayDimensions = getDisplayDimensionsForIntrinsicBounds(intrinsicBounds, dimensions);
-  orientVideoPartitionCells(cells, dimensions, intrinsicBounds);
-  const partitionSummary = summarizePartitionCells(cells);
-  const colorScale = options.colorScale || buildFrameInternalsColorScale(track, options.sampleRows, {
-    descriptor,
-    width,
-    height,
-    fallbackCells: cells
-  });
+  const allBlocks = flattenBlockTree(roots);
+  const cells = selectDisplayCells(roots, MAX_VIDEO_DISPLAY_CELLS);
+  const intrinsicBounds = getPartitionCellIntrinsicBounds(
+    allBlocks,
+    positiveDimension(parsedFrameInternals.codedWidth) || dimensions.encodedWidth,
+    positiveDimension(parsedFrameInternals.codedHeight) || dimensions.encodedHeight
+  );
+  const declaredVisibleWidth = positiveDimension(parsedFrameInternals.width) ||
+    positiveDimension(parsedFrameInternals.metadata && parsedFrameInternals.metadata.displayWidth) ||
+    dimensions.encodedWidth;
+  const declaredVisibleHeight = positiveDimension(parsedFrameInternals.height) ||
+    positiveDimension(parsedFrameInternals.metadata && parsedFrameInternals.metadata.displayHeight) ||
+    dimensions.encodedHeight;
+  const visibleBounds = declaredVisibleWidth && declaredVisibleHeight
+    ? { width: declaredVisibleWidth, height: declaredVisibleHeight }
+    : getPartitionCellIntrinsicBounds(allBlocks, dimensions.encodedWidth, dimensions.encodedHeight);
+  const displayDimensions = getDisplayDimensionsForIntrinsicBounds(visibleBounds, dimensions);
+  orientVideoPartitionCells(cells, dimensions, visibleBounds);
+  const colorScale = buildFrameInternalsColorScale(track, [], { cells });
   applyVideoColorScale(cells, colorScale);
+  const retainedPartitionSummary = summarizeParsedBlocks(allBlocks);
+  const partitionSummary = {
+    maxDepth: positiveIntegerOrZero(parsedFrameInternals.maxPartitionDepth, retainedPartitionSummary.maxDepth),
+    depths: normalizeCountEntries(parsedFrameInternals.partitionDepths, "depth", retainedPartitionSummary.depths),
+    modes: normalizeCountEntries(parsedFrameInternals.partitionModes, "mode", retainedPartitionSummary.modes)
+  };
+  const rootWidth = positiveDimension(parsedFrameInternals.unitWidth) || positiveDimension(roots[0] && roots[0].blockWidth) || descriptor.unitWidth;
+  const rootHeight = positiveDimension(parsedFrameInternals.unitHeight) || positiveDimension(roots[0] && roots[0].blockHeight) || descriptor.unitHeight;
+  const nominalColumns = positiveInteger(parsedFrameInternals.columns) || Math.max(1, Math.ceil(intrinsicBounds.width / rootWidth));
+  const nominalRows = positiveInteger(parsedFrameInternals.rows) || Math.max(1, Math.ceil(intrinsicBounds.height / rootHeight));
+  const sampleBits = finiteNonNegative(parsedFrameInternals.sampleBits, Number(row.size) * 8);
+  const hasTreeBitAccounting = roots.every((root) => root.subtreeBits !== null);
+  const attributedBits = nullableNonNegative(parsedFrameInternals.attributedBits,
+    hasTreeBitAccounting ? sumNumbers(roots.map((root) => root.subtreeBits)) : null);
+  const overheadBits = nullableNonNegative(parsedFrameInternals.overheadBits,
+    attributedBits === null ? null : Math.max(0, sampleBits - attributedBits));
+  const granularity = String(parsedFrameInternals.granularity || "partition-tree");
 
   return {
     kind: "video-grid",
-    title: descriptor.codecFamily + " " + descriptor.unitName + " grid",
-    codecFamily: descriptor.codecFamily,
+    title: descriptor.codecFamily + (granularity === "root-units" ? " actual root block grid" : " actual block structure"),
+    codecFamily: parsedFrameInternals.codecFamily || descriptor.codecFamily,
     codec: track.codec,
     frameType: row.frameType || "unknown",
-    sampleBits: getSampleBitCount(row),
-    unitName: descriptor.unitName,
-    unitWidth: descriptor.unitWidth,
-    unitHeight: descriptor.unitHeight,
+    sampleBits,
+    attributedBits,
+    overheadBits,
+    accountingKind: String(parsedFrameInternals.accountingKind || "unavailable"),
+    bitAccountingComplete: attributedBits !== null && overheadBits !== null &&
+      Math.abs(sampleBits - attributedBits - overheadBits) < 0.01,
+    granularity,
+    unitName: parsedFrameInternals.unitName || descriptor.unitName,
+    unitWidth: rootWidth,
+    unitHeight: rootHeight,
     mediaWidth: displayDimensions.width,
     mediaHeight: displayDimensions.height,
     intrinsicWidth: intrinsicBounds.width,
@@ -179,64 +180,176 @@ function buildVideoInternalsModel(row, track, options = {}) {
     layout: "partition-map",
     nominalColumns,
     nominalRows,
-    nominalUnitCount: nominalColumns * nominalRows,
-    displayColumns: partitionSummary.rootColumns,
-    displayRows: partitionSummary.rootRows,
+    nominalUnitCount: roots.length,
+    displayColumns: nominalColumns,
+    displayRows: nominalRows,
     displayCellCount: cells.length,
-    aggregation: partitionSummary.aggregation,
-    partitionBlockCount: cells.length,
+    aggregation: cells.some((cell) => cell.aggregatedDescendantCount > 0) ? "actual-tree-budget" : "none",
+    partitionBlockCount: positiveInteger(parsedFrameInternals.decodedStructureRecordCount) || allBlocks.length,
+    leafBlockCount: positiveInteger(parsedFrameInternals.leafBlockCount) ||
+      allBlocks.filter((block) => !block.children.length).length,
+    retainedStructureRecordCount: positiveInteger(parsedFrameInternals.structureRecordCount) || allBlocks.length,
+    structureTruncated: Boolean(parsedFrameInternals.structureTruncated),
+    omittedPartitionCount: positiveIntegerOrZero(parsedFrameInternals.omittedPartitionCount, 0),
     maxPartitionDepth: partitionSummary.maxDepth,
-    partitionDepths: partitionCellModel.partitionDepths,
+    partitionDepths: partitionSummary.depths,
     partitionModes: partitionSummary.modes,
-    accuracy: descriptor.accuracy,
+    accuracy: granularity === "root-units" ? "bitstream-root-units" : "bitstream-syntax-decoded",
+    source: "native-js-bitstream-parser",
     colorScale: summarizeColorScale(colorScale),
-    note: descriptor.note,
+    note: granularity === "root-units"
+      ? "Root coding-unit geometry is exact; this result does not claim that entropy-coded child partitions were decoded."
+      : "Block geometry comes from the selected frame bitstream. No decoded pixels are used to infer partitions.",
+    warnings: parsedFrameInternals.warnings || [],
+    roots,
     cells
   };
 }
 
-function buildFrameInternalsColorScale(track, sampleRows, options = {}) {
-  if (!track || track.handlerType !== "vide") return buildValueDistribution([], "unavailable", 0);
-  const descriptor = options.descriptor || VIDEO_CODING_UNITS.find((candidate) => candidate.matches(track));
-  const dimensions = getVideoTrackDimensions(track);
-  const width = options.width || dimensions.encodedWidth;
-  const height = options.height || dimensions.encodedHeight;
-  if (!descriptor || !width || !height) return buildValueDistribution([], "unavailable", 0);
+function getParsedRoots(parsedFrameInternals) {
+  const candidates = [
+    parsedFrameInternals.roots,
+    parsedFrameInternals.macroblocks,
+    parsedFrameInternals.ctus,
+    parsedFrameInternals.superblocks,
+    parsedFrameInternals.blocks
+  ];
+  return candidates.find((candidate) => Array.isArray(candidate) && candidate.length) || [];
+}
 
-  const rows = getVideoScaleRows(track, sampleRows);
-
-  if (!rows.length) {
-    const fallbackValues = (options.fallbackCells || [])
-      .map((cell) => getCellHeatValue(cell))
-      .filter((value) => value >= 0);
-    return buildValueDistribution(fallbackValues, "selected-frame-percentile", fallbackValues.length ? 1 : 0);
-  }
-
-  const scaleOptions = {
-    descriptor,
-    width,
-    height
+function normalizeParsedBlock(block, context) {
+  if (!block || typeof block !== "object") return null;
+  const left = firstFiniteNumber(block.left, block.x, block.pixelLeft);
+  const top = firstFiniteNumber(block.top, block.y, block.pixelTop);
+  const width = firstPositiveNumber(block.visibleWidth, block.metadata && block.metadata.visibleWidth,
+    block.width, block.blockWidth, block.codedBlockWidth,
+    Number(block.right) - left, Number(block.pixelRight) - left);
+  const height = firstPositiveNumber(block.visibleHeight, block.metadata && block.metadata.visibleHeight,
+    block.height, block.blockHeight, block.codedBlockHeight,
+    Number(block.bottom) - top, Number(block.pixelBottom) - top);
+  if (!Number.isFinite(left) || !Number.isFinite(top) || !width || !height) return null;
+  const id = String(block.id || context.fallbackId);
+  const rawChildren = [block.children, block.partitions, block.blocks]
+    .find((candidate) => Array.isArray(candidate)) || [];
+  const children = rawChildren.map((child, index) => normalizeParsedBlock(child, {
+    fallbackId: id + "-" + index,
+    depth: context.depth + 1,
+    rootIndex: context.rootIndex,
+    parentId: id
+  })).filter(Boolean);
+  const ownBits = nullableNonNegative(block.ownBits, block.syntaxBits);
+  const signaledSubtreeBits = nullableNonNegative(block.subtreeBits);
+  const hasCompleteChildBits = children.every((child) => child.subtreeBits !== null);
+  const childBits = sumNumbers(children.map((child) => child.subtreeBits));
+  const subtreeBits = signaledSubtreeBits !== null
+    ? signaledSubtreeBits
+    : ownBits !== null && hasCompleteChildBits
+      ? ownBits + childBits
+      : null;
+  const type = String(block.type || block.partitionType || block.partitionMode || block.mode || "block");
+  const codedBlockWidth = firstPositiveNumber(block.codedBlockWidth, block.blockWidth, block.width, width);
+  const codedBlockHeight = firstPositiveNumber(block.codedBlockHeight, block.blockHeight, block.height, height);
+  const normalizedBlock = {
+    ...block,
+    id,
+    parentId: context.parentId,
+    rootIndex: context.rootIndex,
+    index: context.rootIndex,
+    depth: positiveIntegerOrZero(block.depth, context.depth),
+    type,
+    partitionMode: String(block.partitionMode || block.partitionType || block.mode || type),
+    pixelLeft: left,
+    pixelTop: top,
+    pixelRight: left + width,
+    pixelBottom: top + height,
+    blockWidth: codedBlockWidth,
+    blockHeight: codedBlockHeight,
+    codedBlockWidth,
+    codedBlockHeight,
+    ownBits,
+    syntaxBits: ownBits,
+    subtreeBits,
+    attributedBitsPerPixel: subtreeBits === null ? null : subtreeBits / Math.max(1, codedBlockWidth * codedBlockHeight),
+    children
   };
-  const estimatedCellCount = estimateVideoPartitionCellCount(scaleOptions);
-  const rowStride = Math.max(1, Math.ceil((rows.length * estimatedCellCount) / MAX_GLOBAL_DISTRIBUTION_VALUES));
-  const sampledValues = [];
-  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += rowStride) {
-    const sampleRow = rows[rowIndex];
-    const sampleBits = getSampleBitCount(sampleRow);
-    if (!sampleBits) continue;
-    const cells = buildVideoPartitionCells({
-      row: sampleRow,
-      descriptor,
-      width,
-      height,
-      maxCells: MAX_VIDEO_DISPLAY_CELLS
-    });
-    const cellStride = Math.max(1, Math.ceil(cells.length / Math.max(1, Math.floor(MAX_GLOBAL_DISTRIBUTION_VALUES / Math.ceil(rows.length / rowStride)))));
-    for (let cellIndex = 0; cellIndex < cells.length; cellIndex += cellStride) {
-      sampledValues.push(getCellHeatValue(cells[cellIndex]));
-    }
+  return normalizedBlock;
+}
+
+function flattenBlockTree(roots) {
+  const flattened = [];
+  const stack = roots.slice().reverse();
+  while (stack.length) {
+    const block = stack.pop();
+    flattened.push(block);
+    const children = Array.isArray(block.children) ? block.children : [];
+    for (let index = children.length - 1; index >= 0; index -= 1) stack.push(children[index]);
   }
-  return buildValueDistribution(sampledValues, "global-track-percentile", rows.length);
+  return flattened;
+}
+
+function selectDisplayCells(roots, maximumCells) {
+  let cells = roots.slice();
+  if (cells.length > maximumCells) return [];
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    const nextCells = [];
+    let availableGrowth = maximumCells - cells.length;
+    for (const cell of cells) {
+      const children = Array.isArray(cell.children) ? cell.children : [];
+      const growth = children.length - 1;
+      if (growth > 0 && growth <= availableGrowth) {
+        nextCells.push(...children);
+        availableGrowth -= growth;
+        expanded = true;
+      } else {
+        nextCells.push(cell);
+      }
+    }
+    cells = nextCells;
+  }
+  for (const cell of cells) {
+    const children = Array.isArray(cell.children) ? cell.children : [];
+    const retainedDescendantCount = children.length ? flattenBlockTree(children).length : 0;
+    cell.aggregatedDescendantCount = retainedDescendantCount +
+      positiveIntegerOrZero(cell.omittedDescendantCount, 0);
+  }
+  return cells;
+}
+
+function summarizeParsedBlocks(blocks) {
+  const depthCounts = new Map();
+  const modeCounts = new Map();
+  let maxDepth = 0;
+  for (const block of blocks) {
+    const depth = positiveIntegerOrZero(block.depth, 0);
+    maxDepth = Math.max(maxDepth, depth);
+    depthCounts.set(depth, (depthCounts.get(depth) || 0) + 1);
+    modeCounts.set(block.partitionMode, (modeCounts.get(block.partitionMode) || 0) + 1);
+  }
+  return {
+    maxDepth,
+    depths: Array.from(depthCounts.entries()).sort((left, right) => left[0] - right[0])
+      .map(([depth, count]) => ({ depth, count })),
+    modes: Array.from(modeCounts.entries()).sort((left, right) => right[1] - left[1])
+      .map(([mode, count]) => ({ mode, count }))
+  };
+}
+
+function normalizeCountEntries(entries, keyName, fallbackEntries) {
+  if (!Array.isArray(entries) || !entries.length) return fallbackEntries;
+  const normalizedEntries = entries.map((entry) => ({
+    [keyName]: entry && entry[keyName],
+    count: positiveIntegerOrZero(entry && entry.count, 0)
+  })).filter((entry) => entry[keyName] !== undefined && entry.count > 0);
+  return normalizedEntries.length ? normalizedEntries : fallbackEntries;
+}
+
+function buildFrameInternalsColorScale(track, _sampleRows, options = {}) {
+  if (!track || track.handlerType !== "vide") return buildValueDistribution([], "unavailable", 0);
+  const cells = options.cells || options.fallbackCells || [];
+  const values = cells.map(getCellHeatValue).filter((value) => value !== null);
+  return buildValueDistribution(values, values.length ? "selected-frame-actual" : "unavailable", values.length ? 1 : 0);
 }
 
 function getVideoTrackDimensions(track) {
@@ -247,8 +360,6 @@ function getVideoTrackDimensions(track) {
   return {
     encodedWidth,
     encodedHeight,
-    displayWidth: getOrientedDisplayWidth(encodedWidth, encodedHeight, displayRotationDegrees, pixelAspectRatio.value),
-    displayHeight: getOrientedDisplayHeight(encodedWidth, encodedHeight, displayRotationDegrees, pixelAspectRatio.value),
     displayRotationDegrees,
     pixelAspectRatioNumerator: pixelAspectRatio.numerator,
     pixelAspectRatioDenominator: pixelAspectRatio.denominator,
@@ -259,18 +370,71 @@ function getVideoTrackDimensions(track) {
 function getTrackPixelAspectRatio(track) {
   const numerator = positiveDimension(track && track.pixelAspectRatioNumerator) ||
     positiveDimension(track && track.pixelAspectRatio && track.pixelAspectRatio.numerator) ||
-    positiveDimension(track && track.pixelAspectRatio && track.pixelAspectRatio.hSpacing) ||
-    1;
+    positiveDimension(track && track.pixelAspectRatio && track.pixelAspectRatio.hSpacing) || 1;
   const denominator = positiveDimension(track && track.pixelAspectRatioDenominator) ||
     positiveDimension(track && track.pixelAspectRatio && track.pixelAspectRatio.denominator) ||
-    positiveDimension(track && track.pixelAspectRatio && track.pixelAspectRatio.vSpacing) ||
-    1;
-  const value = numerator > 0 && denominator > 0 ? numerator / denominator : 1;
+    positiveDimension(track && track.pixelAspectRatio && track.pixelAspectRatio.vSpacing) || 1;
+  const value = numerator / denominator;
+  return { numerator, denominator, value: Number.isFinite(value) && value > 0 ? value : 1 };
+}
+
+function getPartitionCellIntrinsicBounds(cells, fallbackWidth, fallbackHeight) {
+  let maximumRight = Math.max(1, Number(fallbackWidth) || 1);
+  let maximumBottom = Math.max(1, Number(fallbackHeight) || 1);
+  for (const cell of cells || []) {
+    maximumRight = Math.max(maximumRight, Number(cell.pixelRight) || 0);
+    maximumBottom = Math.max(maximumBottom, Number(cell.pixelBottom) || 0);
+  }
+  return { width: maximumRight, height: maximumBottom };
+}
+
+function getDisplayDimensionsForIntrinsicBounds(intrinsicBounds, dimensions) {
   return {
-    numerator,
-    denominator,
-    value: Number.isFinite(value) && value > 0 ? value : 1
+    width: getOrientedDisplayWidth(intrinsicBounds.width, intrinsicBounds.height, dimensions.displayRotationDegrees, dimensions.pixelAspectRatio),
+    height: getOrientedDisplayHeight(intrinsicBounds.width, intrinsicBounds.height, dimensions.displayRotationDegrees, dimensions.pixelAspectRatio)
   };
+}
+
+function orientVideoPartitionCells(cells, dimensions, intrinsicBounds) {
+  for (const cell of cells) {
+    const displayBounds = transformIntrinsicRectangleToDisplay(cell, dimensions, intrinsicBounds);
+    cell.displayPixelLeft = displayBounds.left;
+    cell.displayPixelTop = displayBounds.top;
+    cell.displayPixelRight = displayBounds.right;
+    cell.displayPixelBottom = displayBounds.bottom;
+    cell.displayBlockWidth = displayBounds.right - displayBounds.left;
+    cell.displayBlockHeight = displayBounds.bottom - displayBounds.top;
+  }
+}
+
+function transformIntrinsicRectangleToDisplay(cell, dimensions, intrinsicBounds) {
+  const intrinsicWidth = Math.max(1, intrinsicBounds.width);
+  const intrinsicHeight = Math.max(1, intrinsicBounds.height);
+  const displayDimensions = getDisplayDimensionsForIntrinsicBounds(intrinsicBounds, dimensions);
+  const rotation = dimensions.displayRotationDegrees || 0;
+  const pixelAspectRatio = getSafePixelAspectRatio(dimensions.pixelAspectRatio);
+  const squarePixelWidth = intrinsicWidth * pixelAspectRatio;
+  const squarePixelHeight = intrinsicHeight;
+  const corners = [
+    rotateIntrinsicPointToDisplay(cell.pixelLeft, cell.pixelTop, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight),
+    rotateIntrinsicPointToDisplay(cell.pixelRight, cell.pixelTop, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight),
+    rotateIntrinsicPointToDisplay(cell.pixelLeft, cell.pixelBottom, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight),
+    rotateIntrinsicPointToDisplay(cell.pixelRight, cell.pixelBottom, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight)
+  ];
+  return {
+    left: clamp(Math.min(...corners.map((point) => point.x)), 0, displayDimensions.width),
+    top: clamp(Math.min(...corners.map((point) => point.y)), 0, displayDimensions.height),
+    right: clamp(Math.max(...corners.map((point) => point.x)), 0, displayDimensions.width),
+    bottom: clamp(Math.max(...corners.map((point) => point.y)), 0, displayDimensions.height)
+  };
+}
+
+function rotateIntrinsicPointToDisplay(x, y, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight) {
+  const squarePixelX = x * pixelAspectRatio;
+  if (rotation === 90) return { x: squarePixelHeight - y, y: squarePixelX };
+  if (rotation === -90) return { x: y, y: squarePixelWidth - squarePixelX };
+  if (Math.abs(rotation) === 180) return { x: squarePixelWidth - squarePixelX, y: squarePixelHeight - y };
+  return { x: squarePixelX, y };
 }
 
 function getOrientedDisplayWidth(width, height, rotationDegrees, pixelAspectRatio) {
@@ -285,563 +449,45 @@ function getOrientedDisplayHeight(width, height, rotationDegrees, pixelAspectRat
   return Math.abs(rotationDegrees) === 90 ? squarePixelWidth : squarePixelHeight;
 }
 
-function getSafePixelAspectRatio(pixelAspectRatio) {
-  const value = Number(pixelAspectRatio);
-  return Number.isFinite(value) && value > 0 ? value : 1;
-}
-
-function positiveRoundedDimension(value) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0 ? Math.round(numberValue) : 0;
-}
-
-function positiveDimension(value) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
-}
-
-function normalizeRotationDegrees(value) {
-  const numberValue = Number(value) || 0;
-  let normalized = numberValue % 360;
-  if (normalized > 180) normalized -= 360;
-  if (normalized <= -180) normalized += 360;
-  return Object.is(normalized, -0) ? 0 : normalized;
-}
-
-function getVideoScaleRows(track, sampleRows) {
-  if (!Array.isArray(sampleRows)) return [];
-  return sampleRows.filter((row) =>
-    row &&
-    String(row.trackId) === String(track.trackId) &&
-    Math.max(0, Number(row.size) || 0) > 0
-  );
-}
-
-function buildVideoPartitionCells(options) {
-  return buildVideoPartitionCellModel(options).cells;
-}
-
-function buildVideoPartitionCellModel(options) {
-  const profile = options.descriptor.partitionProfile || getDefaultPartitionProfile(options.descriptor);
-  const rootLayout = getPartitionRootLayout(options, profile);
-  let cells = buildRootPartitionCells(options, profile, rootLayout);
-  const depthCounts = createPartitionDepthCounts(cells);
-  const expansionDepth = getTrackPartitionExpansionDepth(cells.length, profile, options.maxCells);
-  cells = refinePartitionCells(cells, options, profile, expansionDepth, depthCounts);
-  return {
-    cells: assignPartitionBitEstimates(cells, options),
-    partitionDepths: formatPartitionDepthCounts(depthCounts)
-  };
-}
-
-function getDefaultPartitionProfile(descriptor) {
-  return {
-    baseWidth: descriptor.unitWidth,
-    baseHeight: descriptor.unitHeight,
-    minimumWidth: descriptor.unitWidth,
-    minimumHeight: descriptor.unitHeight,
-    maxDepth: 0,
-    modes: []
-  };
-}
-
-function getPartitionRootLayout(options, profile) {
-  const baseWidth = Math.max(1, profile.baseWidth || options.descriptor.unitWidth);
-  const baseHeight = Math.max(1, profile.baseHeight || options.descriptor.unitHeight);
-  const rawColumns = Math.max(1, Math.ceil(options.width / baseWidth));
-  const rawRows = Math.max(1, Math.ceil(options.height / baseHeight));
-  const rootCount = rawColumns * rawRows;
-  const maxCells = Math.max(1, options.maxCells || MAX_VIDEO_DISPLAY_CELLS);
-  const aggregation = Math.max(1, Math.ceil(Math.sqrt(rootCount / maxCells)));
-  const rootWidth = baseWidth * aggregation;
-  const rootHeight = baseHeight * aggregation;
-  return {
-    baseWidth,
-    baseHeight,
-    rawColumns,
-    rawRows,
-    aggregation,
-    columns: Math.max(1, Math.ceil(options.width / rootWidth)),
-    rows: Math.max(1, Math.ceil(options.height / rootHeight)),
-    rootWidth,
-    rootHeight
-  };
-}
-
-function getFullDepthSplitReserve(profile) {
-  if (!profile.maxDepth || !Array.isArray(profile.modes) || !profile.modes.length) return 1;
-  return Math.max(2, ...profile.modes.map(getPartitionModeMaximumFanOut));
-}
-
-function getPartitionModeMaximumFanOut(mode) {
-  if (mode === "verticalA" || mode === "verticalB" || mode === "horizontalA" || mode === "horizontalB") return 3;
-  if (mode === "split" || mode === "vertical4" || mode === "horizontal4") return 4;
-  if (mode === "vertical" || mode === "horizontal") return 2;
-  return 1;
-}
-
-function buildRootPartitionCells(options, profile, layout) {
-  const cells = [];
-  for (let rowIndex = 0; rowIndex < layout.rows; rowIndex += 1) {
-    for (let columnIndex = 0; columnIndex < layout.columns; columnIndex += 1) {
-      const pixelLeft = columnIndex * layout.rootWidth;
-      const pixelTop = rowIndex * layout.rootHeight;
-      const pixelRight = pixelLeft + layout.rootWidth;
-      const pixelBottom = pixelTop + layout.rootHeight;
-      cells.push(createPartitionCell({
-        descriptor: options.descriptor,
-        profile,
-        layout,
-        rowIndex,
-        columnIndex,
-        pixelLeft,
-        pixelTop,
-        pixelRight,
-        pixelBottom,
-        depth: 0,
-        partitionMode: layout.aggregation > 1 ? "aggregated-root" : "root"
-      }));
-    }
-  }
-  return cells;
-}
-
-function refinePartitionCells(cells, options, profile, expansionDepth, depthCounts) {
-  if (!profile.maxDepth || !profile.modes.length) return cells;
-  const depthLimit = Math.min(profile.maxDepth, Math.max(0, Number(expansionDepth) || 0));
-  for (let depth = 0; depth < depthLimit; depth += 1) {
-    const currentDepthCells = cells.filter((cell) => cell.depth === depth);
-    if (currentDepthCells.length !== cells.length) break;
-    if (currentDepthCells.some((cell) => !canSplitPartitionCell(cell, profile))) break;
-    const replacementMap = new Map();
-    for (const cell of currentDepthCells) {
-      const mode = choosePartitionMode(cell, options.row, profile);
-      const children = splitPartitionCell(cell, mode, profile, options);
-      if (children.length <= 1) continue;
-      replacementMap.set(cell.id, children);
-      addPartitionDepthCounts(depthCounts, children);
-    }
-    if (replacementMap.size !== currentDepthCells.length) break;
-    cells = cells.flatMap((cell) => replacementMap.get(cell.id) || [cell]);
-  }
-  return cells;
-}
-
-function createPartitionDepthCounts(cells) {
-  const counts = new Map();
-  addPartitionDepthCounts(counts, cells);
-  return counts;
-}
-
-function addPartitionDepthCounts(counts, cells) {
-  for (const cell of cells || []) {
-    const depth = Math.max(0, Math.round(Number(cell && cell.depth) || 0));
-    counts.set(depth, (counts.get(depth) || 0) + 1);
-  }
-}
-
-function formatPartitionDepthCounts(counts) {
-  return Array.from(counts.entries())
-    .sort((left, right) => left[0] - right[0])
-    .map(([depth, count]) => ({ depth, count }));
-}
-
-function canSplitPartitionCell(cell, profile) {
-  return (cell.pixelRight - cell.pixelLeft) >= profile.minimumWidth * 2 ||
-    (cell.pixelBottom - cell.pixelTop) >= profile.minimumHeight * 2;
-}
-
-function choosePartitionMode(cell, row, profile) {
-  const availableModes = profile.modes.filter((mode) => splitPartitionCell(cell, mode, profile, null).length > 1);
-  if (!availableModes.length) return "none";
-  const noise = deterministicNoise(row, cell.rowIndex + 11, cell.columnIndex + 17 + cell.depth);
-  const area = Math.max(1, (cell.pixelRight - cell.pixelLeft) * (cell.pixelBottom - cell.pixelTop));
-  const rectangularBias = Math.abs(cell.pixelRight - cell.pixelLeft - (cell.pixelBottom - cell.pixelTop)) / Math.sqrt(area);
-  const modeIndex = Math.min(availableModes.length - 1, Math.floor((noise + rectangularBias * 0.071) * availableModes.length) % availableModes.length);
-  return availableModes[modeIndex];
-}
-
-function splitPartitionCell(cell, mode, profile, options) {
-  const width = cell.pixelRight - cell.pixelLeft;
-  const height = cell.pixelBottom - cell.pixelTop;
-  if (mode === "none" || width <= 0 || height <= 0) return [cell];
-  const verticalHalf = Math.floor(width / 2);
-  const horizontalHalf = Math.floor(height / 2);
-  if (mode === "vertical" && width >= profile.minimumWidth * 2) {
-    return createSplitChildren(cell, mode, [
-      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelBottom],
-      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelBottom]
-    ], profile, options);
-  }
-  if (mode === "horizontal" && height >= profile.minimumHeight * 2) {
-    return createSplitChildren(cell, mode, [
-      [cell.pixelLeft, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
-      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
-    ], profile, options);
-  }
-  if (mode === "split" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
-    return createSplitChildren(cell, mode, [
-      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf],
-      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
-      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelLeft + verticalHalf, cell.pixelBottom],
-      [cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
-    ], profile, options);
-  }
-  if (mode === "vertical4" && width >= profile.minimumWidth * 4) return splitIntoBands(cell, mode, 4, "vertical", profile, options);
-  if (mode === "horizontal4" && height >= profile.minimumHeight * 4) return splitIntoBands(cell, mode, 4, "horizontal", profile, options);
-  if (mode === "verticalA" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
-    return createSplitChildren(cell, mode, [
-      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelBottom],
-      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
-      [cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
-    ], profile, options);
-  }
-  if (mode === "verticalB" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
-    return createSplitChildren(cell, mode, [
-      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf],
-      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelLeft + verticalHalf, cell.pixelBottom],
-      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelBottom]
-    ], profile, options);
-  }
-  if (mode === "horizontalA" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
-    return createSplitChildren(cell, mode, [
-      [cell.pixelLeft, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
-      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelLeft + verticalHalf, cell.pixelBottom],
-      [cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
-    ], profile, options);
-  }
-  if (mode === "horizontalB" && width >= profile.minimumWidth * 2 && height >= profile.minimumHeight * 2) {
-    return createSplitChildren(cell, mode, [
-      [cell.pixelLeft, cell.pixelTop, cell.pixelLeft + verticalHalf, cell.pixelTop + horizontalHalf],
-      [cell.pixelLeft + verticalHalf, cell.pixelTop, cell.pixelRight, cell.pixelTop + horizontalHalf],
-      [cell.pixelLeft, cell.pixelTop + horizontalHalf, cell.pixelRight, cell.pixelBottom]
-    ], profile, options);
-  }
-  return [cell];
-}
-
-function splitIntoBands(cell, mode, count, direction, profile, options) {
-  const rectangles = [];
-  if (direction === "vertical") {
-    const width = cell.pixelRight - cell.pixelLeft;
-    for (let index = 0; index < count; index += 1) {
-      rectangles.push([
-        cell.pixelLeft + Math.floor(width * index / count),
-        cell.pixelTop,
-        cell.pixelLeft + Math.floor(width * (index + 1) / count),
-        cell.pixelBottom
-      ]);
-    }
-  } else {
-    const height = cell.pixelBottom - cell.pixelTop;
-    for (let index = 0; index < count; index += 1) {
-      rectangles.push([
-        cell.pixelLeft,
-        cell.pixelTop + Math.floor(height * index / count),
-        cell.pixelRight,
-        cell.pixelTop + Math.floor(height * (index + 1) / count)
-      ]);
-    }
-  }
-  return createSplitChildren(cell, mode, rectangles, profile, options);
-}
-
-function createSplitChildren(parent, mode, rectangles, profile, options) {
-  const descriptor = options && options.descriptor ? options.descriptor : null;
-  return rectangles
-    .filter(([left, top, right, bottom]) => right > left && bottom > top)
-    .map(([left, top, right, bottom], childIndex) => createPartitionCell({
-      descriptor: descriptor || parent.descriptor,
-      profile,
-      layout: parent.layout,
-      rowIndex: parent.rowIndex,
-      columnIndex: parent.columnIndex,
-      pixelLeft: left,
-      pixelTop: top,
-      pixelRight: right,
-      pixelBottom: bottom,
-      depth: parent.depth + 1,
-      partitionMode: mode,
-      parentId: parent.id,
-      childIndex
-    }));
-}
-
-function createPartitionCell(options) {
-  const descriptor = options.descriptor;
-  const unitWidth = descriptor ? descriptor.unitWidth : Math.max(1, options.profile.minimumWidth);
-  const unitHeight = descriptor ? descriptor.unitHeight : Math.max(1, options.profile.minimumHeight);
-  const width = Math.max(0, options.pixelRight - options.pixelLeft);
-  const height = Math.max(0, options.pixelBottom - options.pixelTop);
-  const nominalUnits = Math.max(1, Math.round((width * height) / Math.max(1, unitWidth * unitHeight)));
-  return {
-    id: [
-      options.rowIndex,
-      options.columnIndex,
-      options.depth || 0,
-      Math.round(options.pixelLeft),
-      Math.round(options.pixelTop),
-      options.childIndex || 0
-    ].join(":"),
-    descriptor,
-    layout: options.layout,
-    rowIndex: options.rowIndex,
-    columnIndex: options.columnIndex,
-    unitColumnStart: Math.floor(options.pixelLeft / unitWidth),
-    unitColumnEnd: Math.max(1, Math.ceil(options.pixelRight / unitWidth)),
-    unitRowStart: Math.floor(options.pixelTop / unitHeight),
-    unitRowEnd: Math.max(1, Math.ceil(options.pixelBottom / unitHeight)),
-    nominalUnits,
-    pixelLeft: Math.round(options.pixelLeft),
-    pixelTop: Math.round(options.pixelTop),
-    pixelRight: Math.round(options.pixelRight),
-    pixelBottom: Math.round(options.pixelBottom),
-    blockWidth: Math.round(width),
-    blockHeight: Math.round(height),
-    depth: options.depth || 0,
-    partitionMode: options.partitionMode,
-    parentId: options.parentId || "",
-    childIndex: options.childIndex || 0
-  };
-}
-
-function getTrackPartitionExpansionDepth(rootCellCount, profile, maxCells) {
-  if (!profile.maxDepth || !Array.isArray(profile.modes) || !profile.modes.length) return 0;
-  const maximumFanOut = getFullDepthSplitReserve(profile);
-  const cellLimit = Math.max(1, maxCells || MAX_VIDEO_DISPLAY_CELLS);
-  let expansionDepth = 0;
-  let worstCaseCellCount = Math.max(1, rootCellCount);
-  while (expansionDepth < profile.maxDepth && worstCaseCellCount * maximumFanOut <= cellLimit) {
-    worstCaseCellCount *= maximumFanOut;
-    expansionDepth += 1;
-  }
-  return expansionDepth;
-}
-
-function estimateVideoPartitionCellCount(options) {
-  const profile = options.descriptor.partitionProfile || getDefaultPartitionProfile(options.descriptor);
-  const rootLayout = getPartitionRootLayout({ ...options, maxCells: MAX_VIDEO_DISPLAY_CELLS }, profile);
-  let cellCount = rootLayout.columns * rootLayout.rows;
-  const maximumFanOut = getFullDepthSplitReserve(profile);
-  const expansionDepth = getTrackPartitionExpansionDepth(cellCount, profile, MAX_VIDEO_DISPLAY_CELLS);
-  for (let depth = 0; depth < expansionDepth; depth += 1) {
-    cellCount *= maximumFanOut;
-  }
-  return Math.max(1, Math.min(MAX_VIDEO_DISPLAY_CELLS, cellCount));
-}
-
-function assignPartitionBitEstimates(cells, options) {
-  const intrinsicBounds = getPartitionCellIntrinsicBounds(cells, options.width, options.height);
-  const intrinsicWidth = Math.max(1, intrinsicBounds.width);
-  const intrinsicHeight = Math.max(1, intrinsicBounds.height);
-  const complexityWeights = cells.map((cell) => {
-    const centerColumn = clamp((cell.pixelLeft + cell.pixelRight) / 2 / intrinsicWidth, 0, 1);
-    const centerRow = clamp((cell.pixelTop + cell.pixelBottom) / 2 / intrinsicHeight, 0, 1);
-    return getSyntheticSpatialWeightAt(options.row, centerColumn, centerRow);
-  });
-  return allocatePartitionBits(cells, getSampleBitCount(options.row), complexityWeights);
-}
-
-function allocatePartitionBits(cells, sampleBits, complexityWeights = []) {
-  const sampleBitCount = Number(sampleBits);
-  const normalizedSampleBits = Number.isFinite(sampleBitCount) && sampleBitCount > 0 ? sampleBitCount : 0;
-  const cellAreas = cells.map((cell) => Math.max(1, cell.blockWidth * cell.blockHeight));
-  let allocationWeights = cellAreas.map(
-    (area, index) => area * normalizeComplexityWeight(complexityWeights[index])
-  );
-  let totalWeight = sumNumbers(allocationWeights);
-  if (totalWeight <= 0) {
-    allocationWeights = cellAreas.slice();
-    totalWeight = sumNumbers(allocationWeights);
-  }
-  const frameArea = Math.max(1, sumNumbers(cellAreas));
-  const frameAverageBitsPerPixel = normalizedSampleBits / frameArea;
-  for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
-    const cell = cells[cellIndex];
-    const cellArea = cellAreas[cellIndex];
-    const bitEstimate = totalWeight > 0 ? normalizedSampleBits * allocationWeights[cellIndex] / totalWeight : 0;
-    const estimatedBitsPerPixel = bitEstimate / cellArea;
-    cell.estimatedBits = bitEstimate;
-    cell.estimatedBitsPerPixel = estimatedBitsPerPixel;
-    cell.normalizedBitDensity = frameAverageBitsPerPixel > 0 ? estimatedBitsPerPixel / frameAverageBitsPerPixel : 0;
-  }
-  return cells;
-}
-
-function normalizeComplexityWeight(value) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : 1;
-}
-
-function getSampleBitCount(row) {
-  const sampleByteCount = Number(row && row.size);
-  return Number.isFinite(sampleByteCount) && sampleByteCount > 0 ? sampleByteCount * BITS_PER_BYTE : 0;
-}
-
-function sumNumbers(values) {
-  return values.reduce((total, value) => total + (Number(value) || 0), 0);
-}
-
-function getPartitionCellIntrinsicBounds(cells, fallbackWidth, fallbackHeight) {
-  let maximumRight = Math.max(1, Number(fallbackWidth) || 1);
-  let maximumBottom = Math.max(1, Number(fallbackHeight) || 1);
-  for (const cell of cells || []) {
-    maximumRight = Math.max(maximumRight, Number(cell.pixelRight) || 0);
-    maximumBottom = Math.max(maximumBottom, Number(cell.pixelBottom) || 0);
-  }
-  return {
-    width: maximumRight,
-    height: maximumBottom
-  };
-}
-
-function getDisplayDimensionsForIntrinsicBounds(intrinsicBounds, dimensions) {
-  return {
-    width: getOrientedDisplayWidth(
-      intrinsicBounds.width,
-      intrinsicBounds.height,
-      dimensions.displayRotationDegrees,
-      dimensions.pixelAspectRatio
-    ),
-    height: getOrientedDisplayHeight(
-      intrinsicBounds.width,
-      intrinsicBounds.height,
-      dimensions.displayRotationDegrees,
-      dimensions.pixelAspectRatio
-    )
-  };
-}
-
-function orientVideoPartitionCells(cells, dimensions, intrinsicBounds) {
-  for (const cell of cells) {
-    const displayBounds = transformIntrinsicRectangleToDisplay(cell, dimensions, intrinsicBounds);
-    cell.displayPixelLeft = displayBounds.left;
-    cell.displayPixelTop = displayBounds.top;
-    cell.displayPixelRight = displayBounds.right;
-    cell.displayPixelBottom = displayBounds.bottom;
-    cell.displayBlockWidth = displayBounds.right - displayBounds.left;
-    cell.displayBlockHeight = displayBounds.bottom - displayBounds.top;
-  }
-  return cells;
-}
-
-function transformIntrinsicRectangleToDisplay(cell, dimensions, intrinsicBounds) {
-  const intrinsicWidth = Math.max(1, intrinsicBounds.width);
-  const intrinsicHeight = Math.max(1, intrinsicBounds.height);
-  const displayDimensions = getDisplayDimensionsForIntrinsicBounds(intrinsicBounds, dimensions);
-  const displayWidth = Math.max(1, displayDimensions.width);
-  const displayHeight = Math.max(1, displayDimensions.height);
-  const rotation = dimensions.displayRotationDegrees || 0;
-  const pixelAspectRatio = getSafePixelAspectRatio(dimensions.pixelAspectRatio);
-  const squarePixelWidth = intrinsicWidth * pixelAspectRatio;
-  const squarePixelHeight = intrinsicHeight;
-  const corners = [
-    rotateIntrinsicPointToDisplay(cell.pixelLeft, cell.pixelTop, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight),
-    rotateIntrinsicPointToDisplay(cell.pixelRight, cell.pixelTop, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight),
-    rotateIntrinsicPointToDisplay(cell.pixelLeft, cell.pixelBottom, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight),
-    rotateIntrinsicPointToDisplay(cell.pixelRight, cell.pixelBottom, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight)
-  ];
-  const left = Math.min(...corners.map((point) => point.x));
-  const top = Math.min(...corners.map((point) => point.y));
-  const right = Math.max(...corners.map((point) => point.x));
-  const bottom = Math.max(...corners.map((point) => point.y));
-  return {
-    left: clampDisplayCoordinate(left, displayWidth),
-    top: clampDisplayCoordinate(top, displayHeight),
-    right: clampDisplayCoordinate(right, displayWidth),
-    bottom: clampDisplayCoordinate(bottom, displayHeight)
-  };
-}
-
-function rotateIntrinsicPointToDisplay(x, y, rotation, pixelAspectRatio, squarePixelWidth, squarePixelHeight) {
-  const squarePixelX = x * pixelAspectRatio;
-  const squarePixelY = y;
-  if (rotation === 90) return { x: squarePixelHeight - squarePixelY, y: squarePixelX };
-  if (rotation === -90) return { x: squarePixelY, y: squarePixelWidth - squarePixelX };
-  if (Math.abs(rotation) === 180) return { x: squarePixelWidth - squarePixelX, y: squarePixelHeight - squarePixelY };
-  return { x: squarePixelX, y: squarePixelY };
-}
-
-function clampDisplayCoordinate(value, maximum) {
-  if (!Number.isFinite(value)) return 0;
-  return clamp(value, 0, maximum);
-}
-
-function summarizePartitionCells(cells) {
-  const modes = new Map();
-  let maxDepth = 0;
-  let rootColumns = 1;
-  let rootRows = 1;
-  let aggregation = 1;
-  for (const cell of cells) {
-    maxDepth = Math.max(maxDepth, cell.depth || 0);
-    modes.set(cell.partitionMode || "unknown", (modes.get(cell.partitionMode || "unknown") || 0) + 1);
-    if (cell.layout) {
-      rootColumns = cell.layout.columns || rootColumns;
-      rootRows = cell.layout.rows || rootRows;
-      aggregation = cell.layout.aggregation || aggregation;
-    }
-  }
-  return {
-    rootColumns,
-    rootRows,
-    aggregation,
-    maxDepth,
-    modes: Array.from(modes.entries())
-      .sort((left, right) => right[1] - left[1])
-      .map(([mode, count]) => ({ mode, count }))
-  };
-}
-
 function applyVideoColorScale(cells, colorScale) {
-  const values = colorScale && colorScale.values || [];
+  const values = colorScale.values || [];
   for (const cell of cells) {
-    const percentile = getPercentileRank(values, getCellHeatValue(cell));
-    const color = getPercentileHeatColor(percentile);
+    const heatValue = getCellHeatValue(cell);
+    const percentile = heatValue === null ? 0.5 : getPercentileRank(values, heatValue);
     cell.globalPercentile = percentile;
-    cell.intensity = getPercentileAlpha(percentile);
-    cell.color = color;
+    cell.intensity = heatValue === null ? 0.45 : 0.72 + getNonlinearHeatPercentile(percentile) * 0.28;
+    cell.color = heatValue === null ? { red: 148, green: 163, blue: 184 } : getPercentileHeatColor(percentile);
   }
 }
 
 function getCellHeatValue(cell) {
-  const value = Number(cell && cell.estimatedBitsPerPixel);
-  if (Number.isFinite(value) && value >= 0) return value;
-  const bits = Number(cell && cell.estimatedBits) || 0;
-  const area = Math.max(1, Number(cell && cell.blockWidth) * Number(cell && cell.blockHeight) || 1);
-  return bits / area;
+  const bits = nullableNonNegative(cell && cell.subtreeBits, cell && cell.syntaxBits);
+  if (bits === null) return null;
+  return bits / Math.max(1, Number(cell.blockWidth) * Number(cell.blockHeight) || 1);
 }
 
 function buildValueDistribution(values, mode, sampleCount) {
-  const sortedValues = values
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value >= 0)
-    .sort((left, right) => left - right);
+  const sortedValues = values.map(Number).filter((value) => Number.isFinite(value) && value >= 0).sort((left, right) => left - right);
   if (!sortedValues.length) sortedValues.push(0);
   return {
     mode,
     values: sortedValues,
-    valueCount: sortedValues.length,
+    valueCount: mode === "unavailable" ? 0 : sortedValues.length,
     sampleCount,
     min: sortedValues[0],
     max: sortedValues[sortedValues.length - 1],
-    p10: getQuantile(sortedValues, 0.1),
-    p25: getQuantile(sortedValues, 0.25),
     p50: getQuantile(sortedValues, 0.5),
-    p75: getQuantile(sortedValues, 0.75),
     p90: getQuantile(sortedValues, 0.9),
-    p95: getQuantile(sortedValues, 0.95),
     p99: getQuantile(sortedValues, 0.99)
   };
 }
 
 function summarizeColorScale(colorScale) {
-  const { values, ...summary } = colorScale || buildValueDistribution([], "unavailable", 0);
+  const { values: _values, ...summary } = colorScale;
   return summary;
 }
 
 function getQuantile(sortedValues, percentile) {
-  if (!sortedValues.length) return 0;
   const position = clamp(percentile, 0, 1) * (sortedValues.length - 1);
   const lowerIndex = Math.floor(position);
   const upperIndex = Math.ceil(position);
@@ -851,15 +497,7 @@ function getQuantile(sortedValues, percentile) {
 }
 
 function getPercentileRank(sortedValues, value) {
-  if (!sortedValues.length) return 0.5;
-  const minimum = sortedValues[0];
-  const maximum = sortedValues[sortedValues.length - 1];
-  if (maximum <= minimum) return 0.5;
-  const index = upperBound(sortedValues, value);
-  return clamp((index - 1) / (sortedValues.length - 1), 0, 1);
-}
-
-function upperBound(sortedValues, value) {
+  if (sortedValues.length <= 1 || sortedValues.at(-1) <= sortedValues[0]) return 0.5;
   let low = 0;
   let high = sortedValues.length;
   while (low < high) {
@@ -867,18 +505,13 @@ function upperBound(sortedValues, value) {
     if (sortedValues[middle] <= value) low = middle + 1;
     else high = middle;
   }
-  return low;
-}
-
-function getPercentileAlpha(percentile) {
-  const mappedPercentile = getNonlinearHeatPercentile(percentile);
-  return 0.72 + mappedPercentile * 0.28;
+  return clamp((low - 1) / (sortedValues.length - 1), 0, 1);
 }
 
 function getPercentileHeatColor(percentile) {
   const mappedPercentile = getNonlinearHeatPercentile(percentile);
   let lowerStop = HEAT_COLOR_STOPS[0];
-  let upperStop = HEAT_COLOR_STOPS[HEAT_COLOR_STOPS.length - 1];
+  let upperStop = HEAT_COLOR_STOPS.at(-1);
   for (let index = 1; index < HEAT_COLOR_STOPS.length; index += 1) {
     if (mappedPercentile <= HEAT_COLOR_STOPS[index].percentile) {
       lowerStop = HEAT_COLOR_STOPS[index - 1];
@@ -886,8 +519,7 @@ function getPercentileHeatColor(percentile) {
       break;
     }
   }
-  const span = Math.max(0.000001, upperStop.percentile - lowerStop.percentile);
-  const ratio = clamp((mappedPercentile - lowerStop.percentile) / span, 0, 1);
+  const ratio = clamp((mappedPercentile - lowerStop.percentile) / Math.max(0.000001, upperStop.percentile - lowerStop.percentile), 0, 1);
   return {
     red: Math.round(lowerStop.red + (upperStop.red - lowerStop.red) * ratio),
     green: Math.round(lowerStop.green + (upperStop.green - lowerStop.green) * ratio),
@@ -902,77 +534,73 @@ function getNonlinearHeatPercentile(percentile) {
   return 0.8 + 0.2 * Math.pow((value - 0.9) / 0.1, 0.45);
 }
 
-function getSyntheticSpatialWeightAt(row, x, y) {
-  const centerX = x - 0.5;
-  const centerY = y - 0.5;
-  const centerBias = 1.1 - Math.min(0.65, Math.sqrt(centerX * centerX + centerY * centerY));
-  const noiseWeight = 0.72 + deterministicNoise(row, Math.round(y * 1000), Math.round(x * 1000)) * 0.56;
-  return Math.max(0.1, centerBias * noiseWeight);
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue)) return numberValue;
+  }
+  return Number.NaN;
 }
 
-function deterministicNoise(row, rowIndex, columnIndex) {
-  let value = (
-    (Number(row.trackId) || 0) * 73856093 ^
-    (Number(row.sampleIndex) || 0) * 19349663 ^
-    rowIndex * 83492791 ^
-    columnIndex * 2654435761
-  ) >>> 0;
-  value ^= value << 13;
-  value ^= value >>> 17;
-  value ^= value << 5;
-  return ((value >>> 0) % 1000) / 999;
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue) && numberValue > 0) return numberValue;
+  }
+  return 0;
 }
 
-function buildAudioInternalsModel(row, track) {
-  const sampleBits = getSampleBitCount(row);
-  const sampleRate = getAudioSampleRate(track);
-  const activeBandwidthHz = getActiveAudioBandwidth(row, track, sampleRate);
-  const weights = AUDIO_BANDS.map((band, index) => getAudioBandWeight(band, index, row, activeBandwidthHz));
-  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || 1;
-  const bands = AUDIO_BANDS.map((band, index) => {
-    const estimatedBits = sampleBits * weights[index] / totalWeight;
-    return {
-      ...band,
-      active: band.startHz < activeBandwidthHz,
-      estimatedBits,
-      ratio: sampleBits > 0 ? estimatedBits / sampleBits : 0,
-      intensity: clamp(weights[index] / Math.max(...weights), 0.12, 1)
-    };
-  });
-  return {
-    kind: "audio-bands",
-    title: (track.codecConfig && track.codecConfig.audioObjectTypeName || track.codec || "Audio") + " band budget",
-    codec: track.codec,
-    frameType: row.frameType || "audio",
-    sampleBits,
-    sampleRate,
-    activeBandwidthHz,
-    channelCount: track.channelCount || 0,
-    note: "This is a packet-bit-count and codec-metadata estimate. Exact per-band bit allocation requires codec payload decoding.",
-    bands
-  };
+function nullableNonNegative(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue) && numberValue >= 0) return numberValue;
+  }
+  return null;
 }
 
-function getAudioSampleRate(track) {
-  const configRate = track.codecConfig && (track.codecConfig.samplingFrequency || track.codecConfig.inputSampleRate);
-  return Math.max(0, Number(configRate || track.sampleRate || 0));
+function finiteNonNegative(value, fallback) {
+  if (value !== null && value !== undefined && value !== "") {
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue) && numberValue >= 0) return numberValue;
+  }
+  const fallbackValue = Number(fallback);
+  return Number.isFinite(fallbackValue) && fallbackValue >= 0 ? fallbackValue : 0;
 }
 
-function getActiveAudioBandwidth(row, track, sampleRate) {
-  const tags = (row.nalTypes || []).map((value) => String(value));
-  const bandwidthTag = tags.find((value) => /^(NB|MB|WB|SWB|FB)$/.test(value));
-  const bandwidthMap = { NB: 4000, MB: 6000, WB: 8000, SWB: 12000, FB: 20000 };
-  if (bandwidthTag) return bandwidthMap[bandwidthTag];
-  const nyquist = sampleRate > 0 ? sampleRate / 2 : 20000;
-  return Math.max(4000, Math.min(20000, nyquist));
+function positiveDimension(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
 }
 
-function getAudioBandWeight(band, index, row, activeBandwidthHz) {
-  if (band.startHz >= activeBandwidthHz) return 0.04;
-  const activeEnd = Math.min(band.endHz, activeBandwidthHz);
-  const activeSpan = Math.max(0, activeEnd - band.startHz);
-  const spanWeight = Math.log2(1 + activeSpan / 40);
-  return Math.max(0.08, spanWeight * (0.72 + deterministicNoise(row, index, band.endHz) * 0.56));
+function positiveRoundedDimension(value) {
+  return Math.round(positiveDimension(value));
+}
+
+function positiveInteger(value) {
+  const numberValue = Math.round(Number(value));
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
+}
+
+function positiveIntegerOrZero(value, fallback) {
+  const numberValue = Math.round(Number(value));
+  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : fallback;
+}
+
+function normalizeRotationDegrees(value) {
+  let normalized = (Number(value) || 0) % 360;
+  if (normalized > 180) normalized -= 360;
+  if (normalized <= -180) normalized += 360;
+  return Object.is(normalized, -0) ? 0 : normalized;
+}
+
+function getSafePixelAspectRatio(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 1;
+}
+
+function sumNumbers(values) {
+  return values.reduce((total, value) => total + (Number(value) || 0), 0);
 }
 
 function clamp(value, minimum, maximum) {
@@ -980,9 +608,11 @@ function clamp(value, minimum, maximum) {
 }
 
 export {
-  AUDIO_BANDS,
+  MAX_VIDEO_DISPLAY_CELLS,
   VIDEO_CODING_UNITS,
-  allocatePartitionBits,
   buildFrameInternalsColorScale,
-  buildFrameInternalsModel
+  buildFrameInternalsModel,
+  flattenBlockTree,
+  normalizeParsedBlock,
+  selectDisplayCells
 };
