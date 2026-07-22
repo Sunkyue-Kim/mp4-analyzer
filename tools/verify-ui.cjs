@@ -33,6 +33,8 @@ class FakeElement {
     this.innerHTML = "";
     this.textContent = "";
     this.src = "";
+    this.playbackRate = 1;
+    this.defaultPlaybackRate = 1;
     this.scrollTop = 0;
     this.scrollLeft = 0;
     this.scrollHeight = 0;
@@ -256,6 +258,16 @@ function verifyResponsiveLayoutCss() {
     sourceCss,
     /\.toolbar\s*\{[\s\S]*?flex-wrap:\s*wrap;/,
     "Toolbar must wrap controls instead of clipping them at boundary widths."
+  );
+  assertCssRule(
+    sourceCss,
+    /\.playback-rate-presets\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\);/,
+    "Playback speed presets must share a compact six-column desktop grid."
+  );
+  assertCssRule(
+    sourceCss,
+    /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.playback-rate-presets\s*\{\s*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/,
+    "Playback speed presets must wrap to three columns on narrow screens."
   );
   assertCssRule(
     sourceCss,
@@ -520,6 +532,23 @@ async function main() {
   if (!/id="openUrlButton"/.test(sourceHtml) || !/id="remoteUrlModal"/.test(sourceHtml) || !/id="remoteUrlInput"/.test(sourceHtml)) {
     throw new Error("Source HTML must expose the remote URL button and modal controls.");
   }
+  const playbackRatePresets = Array.from(
+    sourceHtml.matchAll(/class="playback-rate-preset(?: active)?" data-playback-rate="([^"]+)"/g),
+    (match) => Number(match[1])
+  );
+  if (JSON.stringify(playbackRatePresets) !== JSON.stringify([0.25, 0.5, 1, 1.25, 1.5, 2])) {
+    throw new Error("Playback speed presets must expose 0.25, 0.5, 1, 1.25, 1.5, and 2 times rates.");
+  }
+  if (!/id="playbackRateSlider" type="range" min="0\.1" max="5" step="0\.01"/.test(sourceHtml)) {
+    throw new Error("Playback speed slider must cover 0.1 through 5 times with fine continuous steps.");
+  }
+  if (
+    !/filePreview\.addEventListener\("ratechange", synchronizePlaybackRateFromMedia\)/.test(sourceUi) ||
+    !/playbackRateSlider\.addEventListener\("input"/.test(sourceUi) ||
+    !/playbackRateButton\.addEventListener\("click"/.test(sourceUi)
+  ) {
+    throw new Error("Playback speed presets, slider, and media ratechange events must share synchronized state.");
+  }
   if (!/row\.sampleIndex[\s\S]*row\.trackId[\s\S]*formatFrameTypeLabel\(type\)[\s\S]*row\.offset/.test(sourceUi)) {
     throw new Error("Frame table row renderer must place Type immediately after Index and Track.");
   }
@@ -645,6 +674,35 @@ async function main() {
   if (!summary.loaded) throw new Error("UI analysis did not load.");
   if (summary.sampleRows !== 120) throw new Error(`Expected 120 sample rows, got ${summary.sampleRows}.`);
   if (summary.tracks.length !== 1) throw new Error(`Expected 1 track, got ${summary.tracks.length}.`);
+
+  const filePreview = fakeDocument.getElementById("filePreview");
+  const playbackRateSlider = fakeDocument.getElementById("playbackRateSlider");
+  const playbackRateValue = fakeDocument.getElementById("playbackRateValue");
+  if (playbackRateSlider.disabled) throw new Error("Playback speed controls must enable after media loads.");
+  if (window.MP4AnalyzerDevTools.getPlaybackRate() !== 1) throw new Error("Playback speed must start at 1×.");
+  window.MP4AnalyzerDevTools.setPlaybackRate(1.25);
+  if (
+    filePreview.playbackRate !== 1.25 ||
+    filePreview.defaultPlaybackRate !== 1.25 ||
+    playbackRateSlider.value !== "1.25" ||
+    playbackRateValue.textContent !== "1.25×"
+  ) {
+    throw new Error("Preset playback speed must update media, slider, and visible value together.");
+  }
+  playbackRateSlider.value = "3.37";
+  playbackRateSlider.dispatchEvent({ type: "input", target: playbackRateSlider });
+  if (filePreview.playbackRate !== 3.37 || window.MP4AnalyzerDevTools.getPlaybackRate() !== 3.37) {
+    throw new Error("Playback speed slider must update the media rate continuously.");
+  }
+  filePreview.playbackRate = 0.5;
+  filePreview.dispatchEvent({ type: "ratechange", target: filePreview });
+  if (playbackRateSlider.value !== "0.5" || playbackRateValue.textContent !== "0.5×") {
+    throw new Error("Native media playback-rate changes must update the custom controls.");
+  }
+  window.MP4AnalyzerDevTools.setPlaybackRate(9);
+  if (filePreview.playbackRate !== 5 || playbackRateSlider.value !== "5") {
+    throw new Error("Playback speed must stay within the 0.1× to 5× range.");
+  }
 
   const metricsSummary = window.MP4AnalyzerDevTools.getMetricsSummary();
   if (!metricsSummary || metricsSummary.averageBitrate <= 0) {
@@ -853,6 +911,7 @@ async function main() {
     loaded: summary.loaded,
     sampleRows: summary.sampleRows,
     frameTypes: Array.from(frameTypes).sort(),
+    playbackRate: window.MP4AnalyzerDevTools.getPlaybackRate(),
     averageBitrate: metricsSummary.averageBitrate,
     webmMetricTrackCodecs: webmSummary.tracks.map((track) => track.codec).sort()
   }, null, 2));

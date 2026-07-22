@@ -36,6 +36,12 @@ import {
   prepareMediaPreviewFrame,
   shouldDownloadRemoteOnceForSharedPlayback
 } from "./media-source.js";
+import {
+  DEFAULT_PLAYBACK_RATE,
+  formatPlaybackRate,
+  isPlaybackRatePresetActive,
+  normalizePlaybackRate
+} from "./playback-rate.js";
 import { renderJsonViewer } from "./json-viewer.js";
 import {
   compareRowsByDecodeTime as compareRowsByDecodeTimeModel,
@@ -104,6 +110,7 @@ const state = {
   graphMaxSize: 1,
   filePreviewUrl: "",
   filePreviewObjectUrl: false,
+  playbackRate: DEFAULT_PLAYBACK_RATE,
   dropHintHideTimer: 0,
   remoteAbortController: null,
   transientWarnings: [],
@@ -157,6 +164,10 @@ const elements = {
   mediaPreviewStatus: document.getElementById("mediaPreviewStatus"),
   mediaPreviewName: document.getElementById("mediaPreviewName"),
   mediaPreviewMeta: document.getElementById("mediaPreviewMeta"),
+  playbackRateControl: document.getElementById("playbackRateControl"),
+  playbackRatePresetButtons: Array.from(document.querySelectorAll("[data-playback-rate]")),
+  playbackRateSlider: document.getElementById("playbackRateSlider"),
+  playbackRateValue: document.getElementById("playbackRateValue"),
   dropOverlay: document.getElementById("dropOverlay"),
   boxTree: document.getElementById("boxTree"),
   boxDetail: document.getElementById("boxDetail"),
@@ -270,6 +281,8 @@ const devToolsApi = {
     hasVideoTrack: hasVideoPlaybackSynchronizationTrack(),
     shouldRun: shouldRunPlaybackSynchronizationLoop()
   }),
+  getPlaybackRate: () => state.playbackRate,
+  setPlaybackRate: (playbackRate) => applyPlaybackRate(playbackRate),
   synchronizeFrameSelectionToPlayback: (playbackSeconds) => {
     if (Number.isFinite(Number(playbackSeconds))) elements.filePreview.currentTime = Number(playbackSeconds);
     elements.autoPlaybackSynchronizationToggle.checked = true;
@@ -467,6 +480,11 @@ elements.filePreview.addEventListener("loadedmetadata", () => {
   synchronizeSelectionsToPlayback({ force: true });
   scheduleFrameInternalsFrameOverlayCapture({ force: true });
 });
+elements.filePreview.addEventListener("ratechange", synchronizePlaybackRateFromMedia);
+for (const playbackRateButton of elements.playbackRatePresetButtons) {
+  playbackRateButton.addEventListener("click", () => applyPlaybackRate(playbackRateButton.dataset.playbackRate));
+}
+elements.playbackRateSlider.addEventListener("input", () => applyPlaybackRate(elements.playbackRateSlider.value));
 for (const input of [elements.trackFilter, elements.typeFilter, elements.syncFilter, elements.minSizeFilter, elements.maxSizeFilter, elements.warningOnlyFilter]) {
   input.addEventListener("input", renderFrames);
   input.addEventListener("change", renderFrames);
@@ -485,6 +503,8 @@ elements.clearFiltersButton.addEventListener("click", () => {
   renderFrames();
 });
 
+updatePlaybackRateControls();
+setPlaybackRateControlsEnabled(false);
 setLanguage(options.initialLanguage || elements.languageSelect.value || "en");
 if (options.initialActiveTab) setActiveTab(options.initialActiveTab);
 if (options.initialFile) Promise.resolve().then(() => startAnalysis(options.initialFile));
@@ -1237,8 +1257,11 @@ function setFilePreview(file, options = {}) {
   elements.filePreview.controls = true;
   elements.filePreview.preload = previewPlan.preload;
   elements.filePreview.title = previewPlan.title;
+  elements.filePreview.defaultPlaybackRate = state.playbackRate;
   elements.filePreview.src = state.filePreviewUrl;
   elements.filePreview.load();
+  setPlaybackRateControlsEnabled(true);
+  applyPlaybackRate(state.playbackRate);
   elements.mediaPreviewStatus.removeAttribute("data-i18n");
   elements.mediaPreviewName.removeAttribute("data-i18n");
   elements.mediaPreviewMeta.removeAttribute("data-i18n");
@@ -1249,17 +1272,65 @@ function setFilePreview(file, options = {}) {
 
 function renderMediaPreviewPlaceholder() {
   if (state.filePreviewUrl) {
+    setPlaybackRateControlsEnabled(true);
+    updatePlaybackRateControls();
     elements.mediaPreviewStatus.textContent = t("preview.loadedMedia");
     return;
   }
   elements.mediaPreviewBar.classList.add("empty");
   elements.filePreview.controls = false;
+  setPlaybackRateControlsEnabled(false);
+  updatePlaybackRateControls();
   elements.mediaPreviewStatus.dataset.i18n = "preview.placeholderTitle";
   elements.mediaPreviewName.dataset.i18n = "preview.placeholderName";
   elements.mediaPreviewMeta.dataset.i18n = "preview.placeholderMeta";
   elements.mediaPreviewStatus.textContent = t("preview.placeholderTitle");
   elements.mediaPreviewName.textContent = t("preview.placeholderName");
   elements.mediaPreviewMeta.textContent = t("preview.placeholderMeta");
+}
+
+function applyPlaybackRate(value) {
+  const playbackRate = normalizePlaybackRate(value, state.playbackRate);
+  state.playbackRate = playbackRate;
+  elements.filePreview.defaultPlaybackRate = playbackRate;
+  if (Number(elements.filePreview.playbackRate) !== playbackRate) {
+    elements.filePreview.playbackRate = playbackRate;
+  }
+  updatePlaybackRateControls();
+  return playbackRate;
+}
+
+function synchronizePlaybackRateFromMedia() {
+  const playbackRate = normalizePlaybackRate(elements.filePreview.playbackRate, state.playbackRate);
+  state.playbackRate = playbackRate;
+  elements.filePreview.defaultPlaybackRate = playbackRate;
+  if (Number(elements.filePreview.playbackRate) !== playbackRate) {
+    elements.filePreview.playbackRate = playbackRate;
+  }
+  updatePlaybackRateControls();
+}
+
+function updatePlaybackRateControls() {
+  const formattedPlaybackRate = formatPlaybackRate(state.playbackRate);
+  elements.playbackRateSlider.value = String(state.playbackRate);
+  elements.playbackRateSlider.setAttribute("aria-valuetext", formattedPlaybackRate);
+  elements.playbackRateValue.value = formattedPlaybackRate;
+  elements.playbackRateValue.textContent = formattedPlaybackRate;
+  for (const playbackRateButton of elements.playbackRatePresetButtons) {
+    const isActive = isPlaybackRatePresetActive(state.playbackRate, playbackRateButton.dataset.playbackRate);
+    playbackRateButton.classList.toggle("active", isActive);
+    playbackRateButton.setAttribute("aria-pressed", String(isActive));
+  }
+}
+
+function setPlaybackRateControlsEnabled(enabled) {
+  const isEnabled = Boolean(enabled);
+  elements.playbackRateControl.classList.toggle("disabled", !isEnabled);
+  elements.playbackRateControl.setAttribute("aria-disabled", String(!isEnabled));
+  elements.playbackRateSlider.disabled = !isEnabled;
+  for (const playbackRateButton of elements.playbackRatePresetButtons) {
+    playbackRateButton.disabled = !isEnabled;
+  }
 }
 
 function updateMediaPreviewMeta(file, analysis) {
