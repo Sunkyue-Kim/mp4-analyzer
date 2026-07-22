@@ -1440,8 +1440,8 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   for (const id of [
     "fileInput", "languageSelect", "sampleField", "sampleSelect", "openButton", "openUrlButton",
     "scanButton", "cancelButton", "exportJsonButton", "exportCsvButton",
-    "mediaPreviewBar", "playbackRateControl", "playbackRateLabel", "playbackRateValue",
-    "playbackRateSlider", "summaryPanel", "summaryBody", "boxesPanel", "tracksPanel",
+    "mediaPreviewBar", "playbackRateControl", "playbackRateLabel", "playbackRateSlider",
+    "playbackRateNumberInput", "summaryPanel", "summaryBody", "boxesPanel", "tracksPanel",
     "tracksBody", "framesPanel", "metricsPanel", "fragmentsPanel", "warningsPanel",
     "warningsBody",
     "frameGraphButton", "frameTableButton", "autoPlaybackSynchronizationToggle",
@@ -1470,6 +1470,7 @@ test("source HTML has required controls, tabs, and no external runtime assets af
     [0.25, 0.5, 1, 1.25, 1.5, 2]
   );
   assert.match(sourceHtml, /id="playbackRateSlider" type="range" min="0\.1" max="5" step="0\.01" value="1"/);
+  assert.match(sourceHtml, /id="playbackRateNumberInput" type="number" min="0\.1" max="5" step="0\.01" value="1" inputmode="decimal"/);
   assert.match(sourceHtml, /id="playbackRateLabel" data-i18n="preview\.playbackRate">Playback speed<\/span>/);
   assert.match(sourceUi, /renderMediaPreviewPlaceholder/);
   assert.match(sourceUi, /mediaPreviewBar\.classList\.remove\("empty"\)/);
@@ -1477,6 +1478,9 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceUi, /from "\.\/playback-rate\.js"/);
   assert.match(sourceUi, /filePreview\.addEventListener\("ratechange", synchronizePlaybackRateFromMedia\)/);
   assert.match(sourceUi, /playbackRateSlider\.addEventListener\("input"/);
+  assert.match(sourceUi, /playbackRateNumberInput\.addEventListener\("input", synchronizePlaybackRateFromNumberInput\)/);
+  assert.match(sourceUi, /playbackRateNumberInput\.addEventListener\("change", commitPlaybackRateFromNumberInput\)/);
+  assert.match(sourceUi, /playbackRateNumberInput\.addEventListener\("keydown", adjustPlaybackRateFromNumberInputKey\)/);
   assert.match(sourceUi, /defaultPlaybackRate = state\.playbackRate/);
   assert.match(sourceUi, /setPlaybackRateControlsEnabled\(true\)/);
   assert.doesNotMatch(sourceUi, /mediaPreviewBar\.hidden\s*=\s*false/);
@@ -1486,6 +1490,7 @@ test("source HTML has required controls, tabs, and no external runtime assets af
   assert.match(sourceCss, /\.media-preview-bar:not\(\.empty\) \.media-preview-skeleton\s*\{[\s\S]*?display:\s*none;/);
   assert.match(sourceCss, /\.playback-rate-presets\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\);/);
   assert.match(sourceCss, /\.playback-rate-slider-row input\[type="range"\]\s*\{[\s\S]*?accent-color:\s*var\(--accent\);/);
+  assert.match(sourceCss, /\.playback-rate-number-field input\s*\{[\s\S]*?font-variant-numeric:\s*tabular-nums;/);
   assert.match(sourceCss, /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.playback-rate-presets\s*\{\s*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/);
   assert.match(sourceHtml, /id="autoPlaybackSynchronizationToggle" type="checkbox" checked/);
   assert.match(sourceUi, /requestVideoFrameCallback/);

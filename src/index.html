@@ -60,7 +60,6 @@
         <div id="playbackRateControl" class="playback-rate-control disabled" aria-disabled="true">
           <div class="playback-rate-heading">
             <span id="playbackRateLabel" data-i18n="preview.playbackRate">Playback speed</span>
-            <output id="playbackRateValue" for="playbackRateSlider">1×</output>
           </div>
           <div class="playback-rate-presets" role="group" aria-labelledby="playbackRateLabel">
             <button type="button" class="playback-rate-preset" data-playback-rate="0.25" aria-pressed="false" disabled>0.25×</button>
@@ -72,8 +71,12 @@
           </div>
           <div class="playback-rate-slider-row">
             <span aria-hidden="true">0.1×</span>
-            <input id="playbackRateSlider" type="range" min="0.1" max="5" step="0.01" value="1" aria-labelledby="playbackRateLabel" aria-describedby="playbackRateValue" aria-valuetext="1×" disabled>
+            <input id="playbackRateSlider" type="range" min="0.1" max="5" step="0.01" value="1" aria-labelledby="playbackRateLabel" aria-valuetext="1×" disabled>
             <span aria-hidden="true">5×</span>
+            <label class="playback-rate-number-field">
+              <input id="playbackRateNumberInput" type="number" min="0.1" max="5" step="0.01" value="1" inputmode="decimal" aria-labelledby="playbackRateLabel" disabled>
+              <span aria-hidden="true">×</span>
+            </label>
           </div>
         </div>
       </div>

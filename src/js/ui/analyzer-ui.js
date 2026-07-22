@@ -40,7 +40,10 @@ import {
   DEFAULT_PLAYBACK_RATE,
   formatPlaybackRate,
   isPlaybackRatePresetActive,
-  normalizePlaybackRate
+  normalizePlaybackRate,
+  PLAYBACK_RATE_MAXIMUM,
+  PLAYBACK_RATE_MINIMUM,
+  PLAYBACK_RATE_SLIDER_STEP
 } from "./playback-rate.js";
 import { renderJsonViewer } from "./json-viewer.js";
 import {
@@ -167,7 +170,7 @@ const elements = {
   playbackRateControl: document.getElementById("playbackRateControl"),
   playbackRatePresetButtons: Array.from(document.querySelectorAll("[data-playback-rate]")),
   playbackRateSlider: document.getElementById("playbackRateSlider"),
-  playbackRateValue: document.getElementById("playbackRateValue"),
+  playbackRateNumberInput: document.getElementById("playbackRateNumberInput"),
   dropOverlay: document.getElementById("dropOverlay"),
   boxTree: document.getElementById("boxTree"),
   boxDetail: document.getElementById("boxDetail"),
@@ -485,6 +488,9 @@ for (const playbackRateButton of elements.playbackRatePresetButtons) {
   playbackRateButton.addEventListener("click", () => applyPlaybackRate(playbackRateButton.dataset.playbackRate));
 }
 elements.playbackRateSlider.addEventListener("input", () => applyPlaybackRate(elements.playbackRateSlider.value));
+elements.playbackRateNumberInput.addEventListener("input", synchronizePlaybackRateFromNumberInput);
+elements.playbackRateNumberInput.addEventListener("change", commitPlaybackRateFromNumberInput);
+elements.playbackRateNumberInput.addEventListener("keydown", adjustPlaybackRateFromNumberInputKey);
 for (const input of [elements.trackFilter, elements.typeFilter, elements.syncFilter, elements.minSizeFilter, elements.maxSizeFilter, elements.warningOnlyFilter]) {
   input.addEventListener("input", renderFrames);
   input.addEventListener("change", renderFrames);
@@ -1310,12 +1316,41 @@ function synchronizePlaybackRateFromMedia() {
   updatePlaybackRateControls();
 }
 
+function synchronizePlaybackRateFromNumberInput() {
+  const playbackRate = readPlaybackRateNumberInput();
+  if (
+    playbackRate === null ||
+    playbackRate < PLAYBACK_RATE_MINIMUM ||
+    playbackRate > PLAYBACK_RATE_MAXIMUM
+  ) return;
+  applyPlaybackRate(playbackRate);
+}
+
+function commitPlaybackRateFromNumberInput() {
+  applyPlaybackRate(readPlaybackRateNumberInput() ?? state.playbackRate);
+}
+
+function adjustPlaybackRateFromNumberInputKey(event) {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  event.preventDefault();
+  const inputPlaybackRate = readPlaybackRateNumberInput();
+  const currentPlaybackRate = normalizePlaybackRate(inputPlaybackRate ?? state.playbackRate, state.playbackRate);
+  const adjustment = event.key === "ArrowUp" ? PLAYBACK_RATE_SLIDER_STEP : -PLAYBACK_RATE_SLIDER_STEP;
+  applyPlaybackRate(currentPlaybackRate + adjustment);
+}
+
+function readPlaybackRateNumberInput() {
+  const inputValue = String(elements.playbackRateNumberInput.value).trim();
+  if (!inputValue) return null;
+  const playbackRate = Number(inputValue);
+  return Number.isFinite(playbackRate) ? playbackRate : null;
+}
+
 function updatePlaybackRateControls() {
   const formattedPlaybackRate = formatPlaybackRate(state.playbackRate);
   elements.playbackRateSlider.value = String(state.playbackRate);
   elements.playbackRateSlider.setAttribute("aria-valuetext", formattedPlaybackRate);
-  elements.playbackRateValue.value = formattedPlaybackRate;
-  elements.playbackRateValue.textContent = formattedPlaybackRate;
+  elements.playbackRateNumberInput.value = String(state.playbackRate);
   for (const playbackRateButton of elements.playbackRatePresetButtons) {
     const isActive = isPlaybackRatePresetActive(state.playbackRate, playbackRateButton.dataset.playbackRate);
     playbackRateButton.classList.toggle("active", isActive);
@@ -1328,6 +1363,7 @@ function setPlaybackRateControlsEnabled(enabled) {
   elements.playbackRateControl.classList.toggle("disabled", !isEnabled);
   elements.playbackRateControl.setAttribute("aria-disabled", String(!isEnabled));
   elements.playbackRateSlider.disabled = !isEnabled;
+  elements.playbackRateNumberInput.disabled = !isEnabled;
   for (const playbackRateButton of elements.playbackRatePresetButtons) {
     playbackRateButton.disabled = !isEnabled;
   }
